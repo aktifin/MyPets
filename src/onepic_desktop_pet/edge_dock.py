@@ -74,11 +74,17 @@ class EdgeDockController(QObject):
             self.reveal_from_edge(immediate=True)
         elif event_type == QEvent.Type.MouseMove and self.attached:
             if isinstance(event, QMouseEvent) and event.buttons():
-                self.detach(keep_position=True)
+                # 事件过滤器先于 PetWindow 收到事件，延迟到本轮结束后再检查
+                # dragging，避免普通点击时的轻微鼠标抖动解除吸附。
+                QTimer.singleShot(0, self._detach_if_dragging)
         elif event_type == QEvent.Type.MouseButtonRelease:
             # 目标窗口先完成自己的 release 逻辑，再判断是否靠近边缘。
             QTimer.singleShot(0, self.attach_to_nearest_edge)
         return super().eventFilter(watched, event)
+
+    def _detach_if_dragging(self) -> None:
+        if self.attached and bool(getattr(self.window, "dragging", False)):
+            self.detach(keep_position=True)
 
     def restore(self) -> None:
         """应用启动后恢复上次屏幕、边缘和纵向位置。"""
@@ -283,17 +289,27 @@ class EdgeDockController(QObject):
     ) -> None:
         if self._animation is not None:
             self._animation.stop()
+            self._animation.deleteLater()
+            self._animation = None
         if duration_ms <= 0:
             self.window.move(target)
             if finished is not None:
                 finished()
             return
+
         animation = QPropertyAnimation(self.window, b"pos", self)
         animation.setDuration(max(1, int(duration_ms)))
         animation.setStartValue(self.window.pos())
         animation.setEndValue(target)
         animation.setEasingCurve(QEasingCurve.Type.OutCubic)
-        if finished is not None:
-            animation.finished.connect(finished)
+
+        def on_finished() -> None:
+            if self._animation is animation:
+                self._animation = None
+            animation.deleteLater()
+            if finished is not None:
+                finished()
+
+        animation.finished.connect(on_finished)
         self._animation = animation
         animation.start()
