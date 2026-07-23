@@ -4,6 +4,7 @@
 职责范围：
 - 按四列两行拆分站立、挥手、跑动、自拍、开心、坐下、睡眠和惊讶姿态；
 - 将姿态统一到 560×500 透明画布，并保持站姿高度与脚底锚点一致；
+- 为横向较长的四足角色计算整组共用安全高度，避免宽步幅导致逐帧缩放跳变；
 - 通过轻微位移和缩放建立可运行的待机、走动、坐下、睡眠、拖拽和自拍序列；
 - 将结果写入 Git 忽略的 user_assets/pet，不覆盖公开演示素材。
 - 只有首张标准角色形象得到用户确认后才允许批量生成动作；走路生成后仍需单独预览确认。
@@ -118,12 +119,30 @@ def find_transparent_row_split(sheet: Image.Image) -> int:
         )
         for y in range(start, end)
     }
+    transparent_rows = [y for y in range(start, end) if counts[y] == 0]
+    transparent_spans: list[tuple[int, int]] = []
+    if transparent_rows:
+        span_start = previous = transparent_rows[0]
+        for y in transparent_rows[1:]:
+            if y > previous + 1:
+                transparent_spans.append((span_start, previous + 1))
+                span_start = y
+            previous = y
+        transparent_spans.append((span_start, previous + 1))
+
+    if transparent_spans:
+        sheet_center = sheet.height / 2
+        _left, split = max(
+            transparent_spans,
+            key=lambda span: (
+                span[1] - span[0],
+                -abs((span[0] + span[1]) / 2 - sheet_center),
+            ),
+        )
+        return split
+
     minimum_y = min(counts, key=counts.get)
-    low_pixel_threshold = max(8, sheet.width // 100)
-    split = minimum_y
-    while split + 1 < end and counts[split + 1] <= low_pixel_threshold:
-        split += 1
-    return split + 1
+    return minimum_y + 1
 
 
 def split_pose_sheet(sheet: Image.Image) -> dict[str, Image.Image]:
@@ -191,6 +210,22 @@ def normalize_pose(
     y = CANVAS_SIZE[1] - PADDING - bottom_offset - resized.height
     canvas.alpha_composite(resized, (x, y))
     return canvas
+
+
+def shared_fitting_height(
+    images: list[Image.Image],
+    requested_height: int,
+) -> int:
+    """为一组横向姿态求共同安全高度，确保所有帧使用同一可见高度。"""
+
+    max_width = CANVAS_SIZE[0] - PADDING * 2
+    widest_ratio = 0.0
+    for image in images:
+        left, top, right, bottom = alpha_bbox(image)
+        widest_ratio = max(widest_ratio, (right - left) / max(1, bottom - top))
+    if widest_ratio <= 0:
+        return requested_height
+    return max(1, min(requested_height, int(max_width / widest_ratio)))
 
 
 def save_frames(
@@ -270,6 +305,7 @@ def prepare_user_pet(
         walk_sheet = source.convert("RGBA")
     poses = split_pose_sheet(sheet)
     walk_frames = split_walk_sheet(walk_sheet)
+    walk_target_height = shared_fitting_height(walk_frames, STANDING_HEIGHT)
 
     animations: dict[str, list[str]] = {}
     animations["idle"] = save_frames(
@@ -279,7 +315,7 @@ def prepare_user_pet(
         repeated_pose(poses["idle"], STANDING_HEIGHT, [(0, 0), (0, 1), (1, 2), (0, 2), (-1, 1), (0, 0)]),
     )
     normalized_walk_frames = [
-        normalize_pose(frame, STANDING_HEIGHT, bottom_offset=offset)
+        normalize_pose(frame, walk_target_height, bottom_offset=offset)
         for frame, offset in zip(
             walk_frames,
             (0, 0, 2, 5, 0, 0, 2, 5),
@@ -371,6 +407,7 @@ def prepare_user_pet(
         ],
         "canvas_size": list(CANVAS_SIZE),
         "target_standing_height": STANDING_HEIGHT,
+        "walk_target_height": walk_target_height,
         "walk_phases": list(WALK_PHASES),
         "walk_motion_factors": list(WALK_MOTION_FACTORS),
         "animations": animations,
