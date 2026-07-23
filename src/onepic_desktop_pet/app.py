@@ -1,22 +1,13 @@
 """
-本模块管理桌面宠物应用生命周期、系统托盘菜单和退出时的位置保存。
+本模块管理桌面宠物应用生命周期、系统托盘菜单和设备级状态保存。
 
 职责范围：
 - 创建或复用 QApplication；
 - 在创建应用前启用适合不同显示器缩放比例的高 DPI 舍入策略；
-- 创建 PetWindow 和 QSystemTrayIcon；
-- 连接显示、隐藏、暂停跑动、互动和退出动作；
-- 退出前将窗口位置和用户选择的尺寸写入设置文件；
+- 创建 PetWindow、边缘吸附控制器和 QSystemTrayIcon；
+- 连接显示、隐藏、暂停跑动、互动、边缘吸附和退出动作；
+- 退出前保存完整可见位置、显示尺寸和边缘吸附状态；
 - 为自动验证提供定时退出的 smoke-test 参数。
-
-Agent 快速定位：
-- 生命周期封装位于 DesktopPetApplication；
-- 托盘菜单构建位于 _create_tray()；
-- 持久化与退出位于 quit()；
-- 外部调用入口位于 run()。
-
-输入为可选的无界面冒烟测试时长，输出为 Qt 事件循环退出码。
-副作用包括创建桌面窗口、托盘图标和用户设置文件；不修改项目默认配置或原始素材。
 """
 
 from __future__ import annotations
@@ -28,12 +19,14 @@ from PySide6.QtGui import QAction, QGuiApplication, QIcon
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from .config import PetSettings, load_settings, save_settings
+from .edge_dock import EdgeDockController
+from .edge_geometry import EdgeSide
 from .resources import resource_path
 from .window import PetWindow
 
 
 class DesktopPetApplication:
-    """封装窗口、托盘与持久化状态的桌面宠物应用。"""
+    """封装窗口、托盘、边缘模式与持久化状态的桌面宠物应用。"""
 
     def __init__(self, settings: PetSettings | None = None) -> None:
         if QApplication.instance() is None:
@@ -45,6 +38,7 @@ class DesktopPetApplication:
         self.qt_app.setQuitOnLastWindowClosed(False)
         self.settings = settings or load_settings()
         self.window = PetWindow(self.settings)
+        self.edge_dock = EdgeDockController(self.window, self.settings)
         self.window.quit_requested.connect(self.quit)
         self.tray = self._create_tray()
 
@@ -74,6 +68,27 @@ class DesktopPetApplication:
         )
         menu.addAction(pause_action)
 
+        edge_menu = menu.addMenu("边缘吸附")
+        attach_left = QAction("吸附到左侧", edge_menu)
+        attach_left.triggered.connect(
+            lambda _checked=False: self.edge_dock.attach(EdgeSide.LEFT)
+        )
+        edge_menu.addAction(attach_left)
+
+        attach_right = QAction("吸附到右侧", edge_menu)
+        attach_right.triggered.connect(
+            lambda _checked=False: self.edge_dock.attach(EdgeSide.RIGHT)
+        )
+        edge_menu.addAction(attach_right)
+
+        reveal_action = QAction("暂时展开", edge_menu)
+        reveal_action.triggered.connect(self.edge_dock.reveal_from_edge)
+        edge_menu.addAction(reveal_action)
+
+        detach_action = QAction("解除吸附", edge_menu)
+        detach_action.triggered.connect(self.edge_dock.detach)
+        edge_menu.addAction(detach_action)
+
         hide_action = QAction("隐藏宠物", menu)
         hide_action.triggered.connect(self.window.hide)
         menu.addAction(hide_action)
@@ -89,7 +104,7 @@ class DesktopPetApplication:
         return tray
 
     def _tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
-        """单击或双击托盘图标时显示宠物。"""
+        """单击或双击托盘图标时显示并展开宠物。"""
 
         if reason in (
             QSystemTrayIcon.ActivationReason.Trigger,
@@ -98,9 +113,11 @@ class DesktopPetApplication:
             self.show_window()
 
     def show_window(self) -> None:
-        """显示宠物并将其提升到前台。"""
+        """显示宠物；已吸附时先从边缘展开。"""
 
         self.window.show()
+        if self.edge_dock.attached:
+            self.edge_dock.reveal_from_edge()
         self.window.raise_()
         self.window.activateWindow()
 
@@ -109,6 +126,7 @@ class DesktopPetApplication:
 
         self.window.place_at_start()
         self.show_window()
+        QTimer.singleShot(0, self.edge_dock.restore)
         if QSystemTrayIcon.isSystemTrayAvailable():
             self.tray.show()
         if smoke_test_ms is not None:
@@ -116,10 +134,11 @@ class DesktopPetApplication:
         return self.qt_app.exec()
 
     def quit(self) -> None:
-        """保存窗口位置、隐藏托盘并退出应用。"""
+        """保存窗口及边缘状态、隐藏托盘并退出应用。"""
 
-        self.settings.start_x = self.window.x()
-        self.settings.start_y = self.window.y()
+        position = self.edge_dock.persistence_position()
+        self.settings.start_x = position.x()
+        self.settings.start_y = position.y()
         try:
             save_settings(self.settings)
         finally:

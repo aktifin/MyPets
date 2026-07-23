@@ -24,6 +24,8 @@ def test_load_settings_merges_position_and_user_selected_size(tmp_path) -> None:
                 "movement_step": 0,
                 "start_x": 25,
                 "start_y": 40,
+                "edge_side": "right",
+                "edge_offset_ratio": 0.7,
                 "unknown": 1,
             }
         ),
@@ -36,6 +38,8 @@ def test_load_settings_merges_position_and_user_selected_size(tmp_path) -> None:
     assert settings.movement_step == 3
     assert settings.start_x == 25
     assert settings.start_y == 40
+    assert settings.edge_side == "right"
+    assert settings.edge_offset_ratio == 0.7
     assert not hasattr(settings, "unknown")
 
 
@@ -63,6 +67,32 @@ def test_animation_timing_is_limited_to_safe_ranges(tmp_path) -> None:
     assert settings.turn_pause_ms == 1200
 
 
+def test_edge_settings_are_limited_to_safe_ranges(tmp_path) -> None:
+    default_path = tmp_path / "default.json"
+    default_path.write_text(
+        json.dumps(
+            {
+                "edge_snap_distance": 999,
+                "edge_hide_delay_ms": 1,
+                "edge_animation_ms": -5,
+                "edge_visible_ratio": 0.99,
+                "edge_side": "bottom",
+                "edge_offset_ratio": 2,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(default_path, tmp_path / "missing.json")
+
+    assert settings.edge_snap_distance == 120
+    assert settings.edge_hide_delay_ms == 100
+    assert settings.edge_animation_ms == 0
+    assert settings.edge_visible_ratio == 0.80
+    assert settings.edge_side is None
+    assert settings.edge_offset_ratio == 1.0
+
+
 def test_default_inactivity_uses_five_and_ten_minutes() -> None:
     """默认无互动阈值应为五分钟坐下、十分钟睡觉。"""
 
@@ -73,11 +103,31 @@ def test_default_inactivity_uses_five_and_ten_minutes() -> None:
 
 def test_save_settings_writes_json(tmp_path) -> None:
     path = tmp_path / "nested" / "settings.json"
-    saved = save_settings(PetSettings(start_x=12, start_y=34), path)
+    saved = save_settings(
+        PetSettings(
+            start_x=12,
+            start_y=34,
+            edge_side="left",
+            edge_screen_name="DISPLAY1",
+            edge_offset_ratio=0.25,
+        ),
+        path,
+    )
 
     data = json.loads(saved.read_text(encoding="utf-8"))
     assert data["start_x"] == 12
     assert data["start_y"] == 34
     assert data["display_height"] == 220
-    assert set(data) == {"display_height", "start_x", "start_y"}
+    assert data["edge_side"] == "left"
+    assert data["edge_screen_name"] == "DISPLAY1"
+    assert data["edge_offset_ratio"] == 0.25
+    assert set(data) == {
+        "display_height",
+        "start_x",
+        "start_y",
+        "edge_dock_enabled",
+        "edge_side",
+        "edge_screen_name",
+        "edge_offset_ratio",
+    }
     assert not path.with_suffix(".json.tmp").exists()

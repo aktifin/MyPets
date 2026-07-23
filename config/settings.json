@@ -10,5 +10,10 @@
   "action_max_ms": 7000,
   "inactive_sit_ms": 300000,
   "inactive_sleep_ms": 600000,
-  "always_on_top": true
+  "always_on_top": true,
+  "edge_dock_enabled": true,
+  "edge_snap_distance": 36,
+  "edge_hide_delay_ms": 1400,
+  "edge_animation_ms": 220,
+  "edge_visible_ratio": 0.28
 }

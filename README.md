@@ -1,8 +1,8 @@
-# 一图桌宠（OnePic Desktop Pet）
+# 一图桌宠（OnePic Desktop Pet / MyPets）
 
-上传一张角色图片，让 Agent 帮助生成、配置并优化一个可以在 Windows 桌面上跑动、休息、互动和自拍的桌面宠物。
+上传一张角色图片，生成、配置并优化一个可以在 Windows 桌面上跑动、休息、互动和自拍的桌面宠物。
 
-当前 `v0.1.0` 是从已经可运行的 Python + PySide6 桌宠整理出的开源候选版本。仓库暂时保留一套演示角色动作，后续将继续完善“一张图到完整动作”的 Agent 自动执行流程。
+当前 `v0.1.0` 是从已经可运行的 Python + PySide6 桌宠整理出的开源版本。项目正在按 MyPets 云养宠架构渐进演进，但未完成的云端、小程序和社交能力不会在 README 中标记为已实现。
 
 ## 当前功能
 
@@ -12,11 +12,25 @@
 - 跑动结束后随机站立、坐下或自拍；
 - 默认 5 分钟无互动后坐下、10 分钟后入睡；
 - 右键尺寸调整、暂停跑动、隐藏和退出；
+- 支持左右屏幕边缘吸附、延迟半隐藏、鼠标移入展开和跨屏比例恢复；
 - 用户可在本地放入自己的自拍成片，不提交到 Git；
 - 原图登记后自动作为自拍成片，保持原始像素尺寸；
 - 标准角色形象和走路 GIF 必须分别得到用户确认；
 - 表情符号由程序独立绘制，换角色后仍可显示闪光、爱心、惊叹号、疑问号、怒气、Zzz 和汗滴；
+- 宠物 Manifest 2.0 校验工具；
 - PyInstaller Windows 打包脚本。
+
+## 云养宠演进基线
+
+仓库已经加入第一批架构基础：
+
+- 多宠物、成长、串门、折叠消息、提醒和云事件的纯领域模型；
+- 视觉身份、能力声明、动作降级、边缘探头和素材版本的 Manifest 规范；
+- 不侵入 `PetWindow` 主动画逻辑的边缘吸附控制器；
+- 管理员和素材制作者可执行的 Manifest 校验命令；
+- 明确 AI 仅用于文字与语音聊天，不包含智能体、工具调用和电脑自动操作。
+
+完整边界与实施顺序见 [云养宠架构基线](docs/云养宠架构基线.md)。
 
 ## 最快体验
 
@@ -40,7 +54,7 @@
 
 该命令会在 `user_assets/source/` 保留原始文件副本，并生成同分辨率的 `user_assets/selfie.png`。原图、自拍图和流程状态全部被 Git 忽略。
 
-接下来先选择生成风格：`preserve_original`（保留原画风，默认）、`light_chibi`（轻度 Q 版）或 `full_chibi`（完整 Q 版）。Agent 只能先生成一张标准角色形象，登记人物特色并交给用户确认：
+接下来先选择生成风格：`preserve_original`（保留原画风，默认）、`light_chibi`（轻度 Q 版）或 `full_chibi`（完整 Q 版）。生成流程只能先产生一张标准角色形象，登记人物特色并交给用户确认：
 
 ```powershell
 .\.venv\Scripts\python.exe .\tools\onepic_workflow.py character-candidate `
@@ -70,6 +84,22 @@
 ```powershell
 .\.venv\Scripts\python.exe .\tools\render_emotion_preview.py
 ```
+
+## 宠物 Manifest 校验
+
+修改官方或私有宠物素材后，运行：
+
+```powershell
+.\.venv\Scripts\python.exe .\tools\validate_pet_manifest.py
+```
+
+也可以指定其他 Manifest：
+
+```powershell
+.\.venv\Scripts\python.exe .\tools\validate_pet_manifest.py .\user_assets\pet\manifest.json
+```
+
+校验会覆盖基础动作、走路位移曲线、动作降级、边缘形象参数、路径越界和素材缺失。
 
 ## 自定义自拍照片
 
@@ -104,10 +134,11 @@ dist/OnePicDesktopPet/OnePicDesktopPet.exe
 
 ## 一图制作流程
 
-Agent 应先检查环境，再建立项目、处理原图、生成动作、检查多头多腿和裁切问题、接入行为状态机、运行测试，最后在用户验收后打包。详细流程见：
+制作流程应先检查环境，再建立项目、处理原图、生成动作、检查多头多腿和裁切问题、接入行为状态机、运行测试，最后在用户验收后打包。详细流程见：
 
 - [Agent 执行入口](agent-guide/AGENT_GUIDE.md)
 - [一图桌宠执行说明书](agent-guide/一图桌宠执行说明书.md)
+- [云养宠架构基线](docs/云养宠架构基线.md)
 - [素材规范](docs/素材规范.md)
 - [角色与走路验收清单](docs/角色与走路验收清单.md)
 - [隐私说明](docs/隐私说明.md)
@@ -115,7 +146,7 @@ Agent 应先检查环境，再建立项目、处理原图、生成动作、检�
 
 ## 当前公开状态
 
-源码已发布到 [Taylor154/OnePic-Desktop-Pet](https://github.com/Taylor154/OnePic-Desktop-Pet)，GitHub Actions 测试已经通过。[v0.1.0 Release](https://github.com/Taylor154/OnePic-Desktop-Pet/releases/tag/v0.1.0) 已提供 Windows ZIP，并已完成公开下载、SHA-256 核对、解压和独立启动验证。
+当前开发仓库为 `aktifin/MyPets`，默认分支为 `main`。公开发布包仍以仓库 Release 页面和发布清单中的验证结果为准。
 
 ## 授权
 

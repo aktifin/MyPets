@@ -1,4 +1,8 @@
 {
+  "schema_version": "2.0",
+  "template_code": "official.onepic.demo",
+  "identity_version": "1.0.0",
+  "asset_version": "1.0.0",
   "sources": [
     "assets/generated/pet-sprites-alpha.png",
     "assets/generated/idle-cycle-v3-alpha.png",
@@ -14,6 +18,49 @@
     500
   ],
   "target_standing_height": 450,
+  "capabilities": {
+    "growth": true,
+    "folded_messages": true,
+    "reminders": true,
+    "visiting": true,
+    "gathering": true,
+    "edge_peek": true,
+    "ai_chat": true,
+    "voice_chat": true
+  },
+  "appearance": {
+    "edge_peek": {
+      "left_visible_ratio": 0.28,
+      "right_visible_ratio": 0.30,
+      "anchor": "face"
+    },
+    "visual_bounds": {
+      "left": 0.12,
+      "top": 0.05,
+      "right": 0.90,
+      "bottom": 0.97
+    }
+  },
+  "fallback_actions": {
+    "eat": "happy",
+    "play": "happy",
+    "read_message": "curious",
+    "reminder": "wave",
+    "visit": "wave",
+    "group_wave": "wave",
+    "play_together": "happy",
+    "photo_pose": "selfie"
+  },
+  "walk_motion_factors": [
+    0.45,
+    0.7,
+    1.2,
+    1.65,
+    0.45,
+    0.7,
+    1.2,
+    1.65
+  ],
   "animations": {
     "wave": [
       "interact/wave_01.png"
