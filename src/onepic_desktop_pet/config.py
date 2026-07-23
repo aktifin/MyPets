@@ -1,20 +1,13 @@
 """
-本模块负责桌面宠物默认配置、用户配置、尺寸和窗口位置状态的加载与保存。
+本模块负责桌面宠物默认配置、用户配置、尺寸、窗口位置和边缘吸附状态的加载与保存。
 
 职责范围：
 - 从项目内只读 JSON 读取默认功能设置；
-- 从当前用户本地应用数据目录读取上次窗口位置和用户选择的显示尺寸；
-- 校验窗口、移动、动画和转身节奏的数值范围并忽略未知字段；
-- 仅在用户配置目录保存窗口位置和显示尺寸，其他体验参数始终采用项目默认值。
+- 从当前用户本地应用数据目录读取上次窗口位置、显示尺寸和边缘吸附偏好；
+- 校验窗口、移动、动画、休息与边缘模式参数并忽略未知字段；
+- 仅在用户配置目录保存用户和设备相关状态，不覆盖项目默认配置。
 
-Agent 快速定位：
-- 配置数据结构位于 PetSettings；
-- 合并和校验逻辑位于 load_settings()；
-- 持久化入口位于 save_settings()；
-- 不应把机器相关的绝对路径写入项目默认配置。
-
-输入为 JSON 文件，输出为 PetSettings 实例。保存操作会创建用户配置目录并原子写入
-`start_x`、`start_y` 与 `display_height`，不会覆盖项目默认配置，也不访问网络。
+输入为 JSON 文件，输出为 PetSettings 实例。保存操作使用临时文件原子替换。
 """
 
 from __future__ import annotations
@@ -30,7 +23,7 @@ from .resources import resource_path
 
 @dataclass
 class PetSettings:
-    """保存桌面宠物可配置参数和上次窗口位置。"""
+    """保存桌面宠物功能参数和设备级窗口状态。"""
 
     display_height: int = 220
     movement_interval_ms: int = 16
@@ -46,6 +39,16 @@ class PetSettings:
     always_on_top: bool = True
     start_x: int | None = None
     start_y: int | None = None
+
+    # PC 设备级边缘吸附配置。左右边缘先行，底部任务栏暂不参与吸附。
+    edge_dock_enabled: bool = True
+    edge_snap_distance: int = 36
+    edge_hide_delay_ms: int = 1400
+    edge_animation_ms: int = 220
+    edge_visible_ratio: float = 0.28
+    edge_side: str | None = None
+    edge_screen_name: str | None = None
+    edge_offset_ratio: float | None = None
 
 
 def user_settings_path() -> Path:
@@ -99,7 +102,45 @@ def _validated(data: dict[str, Any]) -> PetSettings:
         settings.inactive_sit_ms + 5000,
         int(settings.inactive_sleep_ms),
     )
+
+    settings.edge_dock_enabled = bool(settings.edge_dock_enabled)
+    settings.edge_snap_distance = min(
+        120,
+        max(8, int(settings.edge_snap_distance)),
+    )
+    settings.edge_hide_delay_ms = min(
+        10000,
+        max(100, int(settings.edge_hide_delay_ms)),
+    )
+    settings.edge_animation_ms = min(
+        2000,
+        max(0, int(settings.edge_animation_ms)),
+    )
+    settings.edge_visible_ratio = min(
+        0.80,
+        max(0.10, float(settings.edge_visible_ratio)),
+    )
+    if settings.edge_side not in {None, "left", "right"}:
+        settings.edge_side = None
+    if settings.edge_screen_name is not None:
+        settings.edge_screen_name = str(settings.edge_screen_name).strip() or None
+    if settings.edge_offset_ratio is not None:
+        settings.edge_offset_ratio = min(
+            1.0,
+            max(0.0, float(settings.edge_offset_ratio)),
+        )
     return settings
+
+
+_PERSISTED_FIELDS = {
+    "display_height",
+    "start_x",
+    "start_y",
+    "edge_dock_enabled",
+    "edge_side",
+    "edge_screen_name",
+    "edge_offset_ratio",
+}
 
 
 def load_settings(
@@ -119,14 +160,14 @@ def load_settings(
         {
             key: value
             for key, value in override.items()
-            if key in {"display_height", "start_x", "start_y"}
+            if key in _PERSISTED_FIELDS
         }
     )
     return _validated(base)
 
 
 def save_settings(settings: PetSettings, path: Path | None = None) -> Path:
-    """将设置原子写入用户目录并返回最终路径。"""
+    """将设备级设置原子写入用户目录并返回最终路径。"""
 
     target = path or user_settings_path()
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -135,6 +176,10 @@ def save_settings(settings: PetSettings, path: Path | None = None) -> Path:
         "display_height": settings.display_height,
         "start_x": settings.start_x,
         "start_y": settings.start_y,
+        "edge_dock_enabled": settings.edge_dock_enabled,
+        "edge_side": settings.edge_side,
+        "edge_screen_name": settings.edge_screen_name,
+        "edge_offset_ratio": settings.edge_offset_ratio,
     }
     temporary.write_text(
         json.dumps(state, ensure_ascii=False, indent=2) + "\n",
