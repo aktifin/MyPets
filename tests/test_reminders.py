@@ -13,7 +13,7 @@ from onepic_desktop_pet.domain import (
     ReminderOccurrenceState,
 )
 from onepic_desktop_pet.local_store import LocalStateStore
-from onepic_desktop_pet.reminder_cache import ReminderCache
+from onepic_desktop_pet.reminder_cache import ReminderCache, ReminderCommand
 from onepic_desktop_pet.reminder_card import ReminderCard
 from onepic_desktop_pet.reminder_cloud import ReminderCloudController
 from onepic_desktop_pet.reminder_scheduler import ReminderScheduler
@@ -45,6 +45,10 @@ class FakeTimer:
 
 
 class FakeApi(QObject):
+    pass
+
+
+class FakeTransport(QObject):
     operation_succeeded = Signal(str, object)
     operation_failed = Signal(str, int, str)
 
@@ -52,21 +56,15 @@ class FakeApi(QObject):
         super().__init__()
         self.calls: list[tuple] = []
 
-    def _require_device_token(self) -> str:
-        return "device-token"
+    def refresh(self) -> None:
+        self.calls.append(("reminders",))
 
-    def _request(self, operation: str, method: str, path: str, **kwargs) -> None:
-        self.calls.append((operation, method, path, kwargs))
-
-    def _json_request(
-        self,
-        operation: str,
-        method: str,
-        path: str,
-        payload: dict,
-        **kwargs,
-    ) -> None:
-        self.calls.append((operation, method, path, payload, kwargs))
+    def submit(self, command: ReminderCommand) -> None:
+        operation = (
+            f"reminder_command:{command.command_id}:"
+            f"{command.action}:{command.occurrence_id}"
+        )
+        self.calls.append((operation, command))
 
 
 class FakeSession(QObject):
@@ -215,12 +213,18 @@ def test_cloud_controller_queues_and_confirms_offline_capable_actions(tmp_path: 
     cache.put(_occurrence("one", now, state=ReminderOccurrenceState.DELIVERED))
     api = FakeApi()
     session = FakeSession()
-    controller = ReminderCloudController(api, session, cache)
+    transport = FakeTransport()
+    controller = ReminderCloudController(
+        api,
+        session,
+        cache,
+        transport=transport,
+    )
 
     assert controller.complete("one") is True
     assert cache.get("one").state is ReminderOccurrenceState.COMPLETED
     assert len(cache.pending_commands("account-1")) == 1
-    operation = api.calls[-1][0]
+    operation = transport.calls[-1][0]
     assert operation.startswith("reminder_command:")
 
     confirmed = _occurrence(
@@ -228,7 +232,7 @@ def test_cloud_controller_queues_and_confirms_offline_capable_actions(tmp_path: 
         now,
         state=ReminderOccurrenceState.COMPLETED,
     )
-    api.operation_succeeded.emit(
+    transport.operation_succeeded.emit(
         operation,
         {
             "action": "completed",
@@ -248,7 +252,9 @@ def test_reminder_card_merges_queue_and_emits_actions() -> None:
     completed: list[str] = []
     snoozed: list[tuple[str, int]] = []
     card.complete_requested.connect(completed.append)
-    card.snooze_requested.connect(lambda occurrence_id, minutes: snoozed.append((occurrence_id, minutes)))
+    card.snooze_requested.connect(
+        lambda occurrence_id, minutes: snoozed.append((occurrence_id, minutes))
+    )
 
     card.show_occurrences([_occurrence("one", now), _occurrence("two", now)])
     assert card.current_occurrence_id == "one"
