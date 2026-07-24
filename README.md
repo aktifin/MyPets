@@ -19,6 +19,8 @@
 - 使用 Qt 原生网络异步执行完整快照与增量同步；
 - Windows 设备密钥保存到 Credential Manager，密码和访问令牌不落盘；
 - 按 `template_id / identity_version / asset_version` 选择和热切换宠物形象；
+- 管理员可创建模板版本、上传 ZIP 素材、双人审核并发布不可变形象包；
+- PC 缺少精确云端形象时自动查询目录、校验哈希并安装到版本缓存；
 - 同时支持逐帧图片包与固定网格精灵表；
 - 内置公开演示宠物与榫榫精灵表宠物；
 - 用户可在本地放入自己的自拍成片，不提交到 Git；
@@ -31,7 +33,7 @@
 
 ## 云养宠演进基线
 
-仓库已经加入第五批架构基础：
+仓库已经加入第六批架构基础：
 
 - 多宠物、成长、串门、折叠消息、提醒和云事件的纯领域模型；
 - SQLite 本地缓存、设备当前宠物、提醒实例、离线 outbox 和同步游标；
@@ -41,6 +43,8 @@
 - Windows Credential Manager 设备密钥存储；
 - 自动完整同步、增量轮询和托盘宠物切换；
 - 形象版本目录、精灵表切帧、动作降级、缓存安装和原子热切换；
+- 管理员模板、版本、素材审核、审计日志和不可变发布 API；
+- 开发环境对象存储、公开素材目录和 PC 自动下载；
 - 视觉身份、能力声明、边缘探头和素材版本的 Manifest 规范；
 - 不侵入 `PetWindow` 主动画逻辑的边缘吸附控制器；
 - 管理员和素材制作者可执行的统一 Manifest 校验命令；
@@ -53,8 +57,9 @@
 - [后端同步 API](docs/后端同步API.md)
 - [PC 桌面云端连接](docs/桌面云端连接.md)
 - [宠物形象运行时](docs/宠物形象运行时.md)
+- [管理员宠物发布链路](docs/管理员宠物发布链路.md)
 
-当前 SQLite 只属于客户端缓存层。云端 CDN 自动下载、管理员发布 API、成长阶段换装、小程序、实时串门、多宠聚会和 AI 聊天服务尚未实现。
+当前 SQLite 只属于客户端缓存层。生产对象存储/CDN、发布签名、灰度与回滚、成长阶段换装、小程序、实时串门、多宠聚会和 AI 聊天服务尚未实现。
 
 ## 最快体验
 
@@ -78,6 +83,8 @@
 cd backend
 python -m pip install -e ".[dev]"
 $env:MYPETS_JWT_SECRET = "替换为至少24字符的随机密钥"
+$env:MYPETS_ADMIN_USERNAMES = "pet_editor,pet_reviewer"
+$env:MYPETS_ASSET_STORAGE_DIR = ".\mypets-assets"
 python -m uvicorn mypets_backend.main:app --reload
 ```
 
@@ -203,6 +210,7 @@ dist/OnePicDesktopPet/OnePicDesktopPet.exe
 - [后端同步 API](docs/后端同步API.md)
 - [PC 桌面云端连接](docs/桌面云端连接.md)
 - [宠物形象运行时](docs/宠物形象运行时.md)
+- [管理员宠物发布链路](docs/管理员宠物发布链路.md)
 - [素材规范](docs/素材规范.md)
 - [角色与走路验收清单](docs/角色与走路验收清单.md)
 - [隐私说明](docs/隐私说明.md)
