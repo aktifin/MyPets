@@ -1,4 +1,4 @@
-"""Desktop application lifecycle, tray UI, local cache, cloud sync, pet care, and assets."""
+"""Desktop application lifecycle, cloud sync, pet care, messaging, and assets."""
 
 from __future__ import annotations
 
@@ -24,6 +24,7 @@ from .edge_dock import EdgeDockController
 from .edge_geometry import EdgeSide
 from .local_store import LocalStateStore
 from .login_dialog import CloudLoginDialog
+from .message_drawer import MessageDrawer
 from .pet_assets import PetAssetCatalog
 from .pet_care_panel import PetCarePanel
 from .pet_registry import LOCAL_ACCOUNT_ID, PetRegistry
@@ -31,7 +32,7 @@ from .resources import resource_path
 
 
 class DesktopPetApplication:
-    """Own the Qt app, desktop window, cache, cloud session, care panel, and assets."""
+    """Own the Qt app, desktop window, caches, cloud session, and user panels."""
 
     def __init__(
         self,
@@ -68,6 +69,7 @@ class DesktopPetApplication:
         )
         self.edge_dock = EdgeDockController(self.window, self.settings)
         self.window.quit_requested.connect(self.quit)
+        self.window.message_badge_clicked.connect(self.open_message_drawer)
 
         self.credential_store = credential_store or default_credential_store()
         self.cloud_api = cloud_api or CloudApiClient(self.settings.cloud_base_url)
@@ -83,6 +85,9 @@ class DesktopPetApplication:
         self.cloud_session.pets_changed.connect(self._pets_changed)
         self.cloud_session.pet_care_succeeded.connect(self._pet_care_succeeded)
         self.cloud_session.pet_care_failed.connect(self._pet_care_failed)
+        self.cloud_session.messages_changed.connect(self._messages_changed)
+        self.cloud_session.message_status.connect(self._message_status)
+        self.cloud_session.message_failed.connect(self._message_failed)
         self.cloud_api.operation_succeeded.connect(self._cloud_operation_succeeded)
         self.asset_downloader = asset_downloader or AssetPackageDownloadController(
             self.settings.cloud_base_url,
@@ -93,11 +98,13 @@ class DesktopPetApplication:
         self.asset_downloader.status_message.connect(self._asset_download_status)
         self._login_dialog: CloudLoginDialog | None = None
         self._care_panel: PetCarePanel | None = None
+        self._message_drawer: MessageDrawer | None = None
         self._quitting = False
         self._asset_status = ""
 
         self.tray = self._create_tray()
         self._refresh_active_pet_ui()
+        self._messages_changed()
 
     def _register_bundled_pets(self) -> None:
         """Expose bundled runtime packages as local pet instances without changing current choice."""
@@ -148,6 +155,10 @@ class DesktopPetApplication:
         care_action = QAction("宠物状态与照料…", menu)
         care_action.triggered.connect(self.open_pet_care_panel)
         menu.addAction(care_action)
+
+        self.message_action = QAction("💬 消息", menu)
+        self.message_action.triggered.connect(self.open_message_drawer)
+        menu.addAction(self.message_action)
 
         pause_action = QAction("暂停/恢复跑动", menu)
         pause_action.triggered.connect(
@@ -274,6 +285,80 @@ class DesktopPetApplication:
         self._care_panel.raise_()
         self._care_panel.activateWindow()
 
+    def open_message_drawer(self) -> None:
+        """Open messages only after explicit user action; incoming messages never call this."""
+
+        if self._message_drawer is None:
+            self._message_drawer = MessageDrawer(self.cloud_session.message_cache)
+            self._message_drawer.refresh_requested.connect(
+                self.cloud_session.refresh_conversations
+            )
+            self._message_drawer.create_conversation_requested.connect(
+                self.cloud_session.create_conversation
+            )
+            self._message_drawer.conversation_selected.connect(
+                self.cloud_session.fetch_messages
+            )
+            self._message_drawer.send_requested.connect(self._send_message)
+            self._message_drawer.read_requested.connect(
+                self.cloud_session.mark_message_read
+            )
+        identity = self.cloud_session.identity
+        self._message_drawer.set_account(
+            identity.account_id if identity else None,
+            identity.display_name if identity else "",
+        )
+        self._message_drawer.show()
+        self._message_drawer.raise_()
+        self._message_drawer.activateWindow()
+        if identity is not None:
+            self.cloud_session.refresh_conversations()
+
+    def _send_message(self, conversation_id: str, content: str) -> None:
+        identity = self.cloud_session.identity
+        sender_pet_id: str | None = None
+        if (
+            identity is not None
+            and self.active_pet.identity.primary_owner_account_id != LOCAL_ACCOUNT_ID
+        ):
+            sender_pet_id = self.active_pet.identity.pet_id
+        self.cloud_session.send_message(
+            conversation_id,
+            content,
+            sender_pet_id=sender_pet_id,
+        )
+
+    def _messages_changed(self) -> None:
+        identity = self.cloud_session.identity
+        unread = (
+            self.cloud_session.message_cache.unread_count(identity.account_id)
+            if identity is not None
+            else 0
+        )
+        self.window.set_message_badge(unread)
+        self.message_action.setText(f"💬 消息 ({unread})" if unread else "💬 消息")
+        if self._message_drawer is not None:
+            self._message_drawer.set_account(
+                identity.account_id if identity else None,
+                identity.display_name if identity else "",
+            )
+            if self._message_drawer.isVisible():
+                self._message_drawer.refresh_from_cache()
+
+    def _message_status(self, message: str) -> None:
+        if self._message_drawer is None:
+            return
+        self._message_drawer.set_status(
+            message,
+            clear_message_input=message == "消息已发送",
+            clear_recipient_input=message == "会话已创建",
+        )
+
+    def _message_failed(self, message: str) -> None:
+        if self._message_drawer is not None:
+            self._message_drawer.set_status(message, error=True)
+        self.tray.setToolTip(f"{self.active_pet.identity.name} · {message}")
+
     def _request_pet_care(self, action: str) -> None:
         if self._care_panel is not None:
             self._care_panel.set_busy(True, f"正在提交{self._care_action_label(action)}…")
@@ -397,6 +482,7 @@ class DesktopPetApplication:
             "error": "云端连接异常",
         }
         self.cloud_status_action.setText(labels.get(state, state))
+        self._messages_changed()
 
     def _cloud_status_message(self, message: str) -> None:
         if message:
@@ -521,6 +607,8 @@ class DesktopPetApplication:
                 self.tray.hide()
                 if self._care_panel is not None:
                     self._care_panel.close()
+                if self._message_drawer is not None:
+                    self._message_drawer.close()
                 self.window.close()
                 self.qt_app.quit()
 

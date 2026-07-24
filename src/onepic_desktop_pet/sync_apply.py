@@ -14,7 +14,9 @@ from typing import Any, Mapping
 from .domain import (
     AccountPetRelation,
     CloudEvent,
+    FoldedNotification,
     GrowthStage,
+    NotificationKind,
     PetIdentity,
     PetProfile,
     PetRole,
@@ -22,6 +24,8 @@ from .domain import (
     PresenceStatus,
 )
 from .local_store import LocalStateStore
+from .message_cache import MessageCache
+from .messaging import parse_conversation, parse_message, parse_receipt
 
 SYNC_SCHEMA_VERSION = "1.0"
 
@@ -249,7 +253,12 @@ def apply_events(
         if event.sequence_number <= previous:
             continue
         previous = event.sequence_number
-        if _apply_event(store, event, device_id=device_id):
+        if _apply_event(
+            store,
+            event,
+            account_id=account_id,
+            device_id=device_id,
+        ):
             applied += 1
         else:
             ignored += 1
@@ -266,7 +275,13 @@ def apply_events(
     )
 
 
-def _apply_event(store: LocalStateStore, event: CloudEvent, *, device_id: str) -> bool:
+def _apply_event(
+    store: LocalStateStore,
+    event: CloudEvent,
+    *,
+    account_id: str,
+    device_id: str,
+) -> bool:
     if event.event_type in {
         "pet_created",
         "pet_updated",
@@ -294,5 +309,61 @@ def _apply_event(store: LocalStateStore, event: CloudEvent, *, device_id: str) -
         if pet_id is not None:
             pet_id = _string(pet_id, "pet_id")
         store.set_active_pet_id(pet_id)
+        return True
+    if event.event_type == "conversation_updated":
+        cache = MessageCache(store)
+        cache.upsert_conversation(
+            parse_conversation(event.payload.get("conversation"), account_id=account_id)
+        )
+        return True
+    if event.event_type == "message_received":
+        cache = MessageCache(store)
+        conversation = parse_conversation(
+            event.payload.get("conversation"), account_id=account_id
+        )
+        message = parse_message(event.payload.get("message"), account_id=account_id)
+        receipt = parse_receipt(event.payload.get("receipt"))
+        if message.conversation_id != conversation.conversation_id:
+            raise ValueError("消息不属于同步会话")
+        cache.upsert_conversation(conversation)
+        cache.upsert_message(
+            message,
+            is_read=message.outgoing or receipt.state == "read",
+        )
+        cache.upsert_receipt(account_id, receipt)
+        if not message.outgoing and receipt.account_id == account_id and receipt.state != "read":
+            store.put_notification(
+                FoldedNotification(
+                    notification_id=f"message:{message.message_id}",
+                    account_id=account_id,
+                    kind=NotificationKind.MESSAGE,
+                    title=message.sender_display_name,
+                    body=message.content[:160],
+                    created_at=message.created_at,
+                    pet_id=message.sender_pet_id,
+                    source_id=message.conversation_id,
+                )
+            )
+        return True
+    if event.event_type == "message_read":
+        cache = MessageCache(store)
+        conversation = parse_conversation(
+            event.payload.get("conversation"), account_id=account_id
+        )
+        receipt = parse_receipt(event.payload.get("receipt"))
+        through_sequence = _integer(
+            event.payload.get("through_sequence"), "through_sequence", minimum=1
+        )
+        reader_account_id = _string(
+            event.payload.get("reader_account_id"), "reader_account_id"
+        )
+        cache.upsert_conversation(conversation)
+        cache.upsert_receipt(account_id, receipt)
+        if reader_account_id == account_id:
+            cache.mark_read_through(
+                account_id,
+                conversation.conversation_id,
+                through_sequence,
+            )
         return True
     return False

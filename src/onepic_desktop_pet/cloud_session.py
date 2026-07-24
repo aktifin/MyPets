@@ -1,4 +1,4 @@
-"""Desktop cloud authentication, device binding, pet care, and synchronization orchestration."""
+"""Desktop cloud authentication, pet care, messaging, and sync orchestration."""
 
 from __future__ import annotations
 
@@ -15,6 +15,8 @@ from .cloud_types import CloudIdentity, DeviceCredentials, normalize_base_url
 from .config import PetSettings, save_settings
 from .credential_store import CredentialStore
 from .local_store import LocalStateStore
+from .message_cache import MessageCache
+from .messaging import parse_conversation, parse_message, parse_receipt
 from .pet_registry import PetRegistry
 from .sync_apply import (
     apply_bootstrap,
@@ -36,7 +38,7 @@ class CloudConnectionState(str, Enum):
 
 
 class CloudSessionController(QObject):
-    """Coordinate account login, device credentials, care actions, and cache synchronization."""
+    """Coordinate one authenticated device session and its rebuildable local caches."""
 
     state_changed = Signal(str)
     status_message = Signal(str)
@@ -45,6 +47,9 @@ class CloudSessionController(QObject):
     pets_changed = Signal()
     pet_care_succeeded = Signal(str, object)
     pet_care_failed = Signal(str, str)
+    messages_changed = Signal()
+    message_status = Signal(str)
+    message_failed = Signal(str)
 
     def __init__(
         self,
@@ -60,6 +65,7 @@ class CloudSessionController(QObject):
         super().__init__(parent)
         self.api = api
         self.store = store
+        self.message_cache = MessageCache(store)
         self.registry = registry
         self.credential_store = credential_store
         self.settings = settings
@@ -143,7 +149,7 @@ class CloudSessionController(QObject):
         cursor = self.store.get_cursor(
             stream_name(self.identity.account_id, self.identity.device_id)
         )
-        self._set_state(CloudConnectionState.SYNCING, "正在同步宠物状态")
+        self._set_state(CloudConnectionState.SYNCING, "正在同步宠物和消息状态")
         self.api.fetch_events(cursor)
 
     def switch_active_pet(self, pet_id: str) -> None:
@@ -155,8 +161,6 @@ class CloudSessionController(QObject):
         self.status_message.emit("当前处于离线模式，切换仅保存在本机")
 
     def care_for_pet(self, pet_id: str, action: str) -> None:
-        """Submit one care action; visible success is emitted only after server confirmation."""
-
         normalized_action = action.strip().lower()
         if not self.connected or self.identity is None:
             self.pet_care_failed.emit(normalized_action, "云端未连接，无法更新宠物状态")
@@ -171,6 +175,61 @@ class CloudSessionController(QObject):
         except (RuntimeError, ValueError) as exc:
             self.pet_care_failed.emit(normalized_action, str(exc))
 
+    def refresh_conversations(self) -> None:
+        if not self.connected:
+            self.message_failed.emit("云端未连接，无法刷新消息")
+            return
+        try:
+            self.api.list_conversations()
+        except (RuntimeError, ValueError) as exc:
+            self.message_failed.emit(str(exc))
+
+    def create_conversation(self, recipient_username: str) -> None:
+        if not self.connected:
+            self.message_failed.emit("云端未连接，无法创建会话")
+            return
+        try:
+            self.api.create_conversation(recipient_username)
+        except (RuntimeError, ValueError) as exc:
+            self.message_failed.emit(str(exc))
+
+    def fetch_messages(self, conversation_id: str) -> None:
+        if not self.connected:
+            self.message_failed.emit("云端未连接，无法获取消息")
+            return
+        try:
+            self.api.fetch_messages(conversation_id)
+        except (RuntimeError, ValueError) as exc:
+            self.message_failed.emit(str(exc))
+
+    def send_message(
+        self,
+        conversation_id: str,
+        content: str,
+        *,
+        sender_pet_id: str | None = None,
+    ) -> None:
+        if not self.connected:
+            self.message_failed.emit("云端未连接，无法发送消息")
+            return
+        try:
+            self.api.send_message(
+                conversation_id,
+                content,
+                sender_pet_id=sender_pet_id,
+            )
+        except (RuntimeError, ValueError) as exc:
+            self.message_failed.emit(str(exc))
+
+    def mark_message_read(self, message_id: str) -> None:
+        if not self.connected:
+            self.message_failed.emit("云端未连接，无法同步已读状态")
+            return
+        try:
+            self.api.mark_message_read(message_id)
+        except (RuntimeError, ValueError) as exc:
+            self.message_failed.emit(str(exc))
+
     def sign_out(self, *, clear_cache: bool = False) -> None:
         base_url = self.settings.cloud_base_url
         self.stop()
@@ -182,8 +241,9 @@ class CloudSessionController(QObject):
         self.identity = None
         self.settings.cloud_sync_enabled = False
         save_settings(self.settings)
+        self.messages_changed.emit()
         if clear_cache:
-            self.status_message.emit("当前版本不会自动删除本地宠物缓存")
+            self.status_message.emit("当前版本不会自动删除本地宠物和消息缓存")
         self._set_state(CloudConnectionState.OFFLINE, "已退出云端账户")
 
     def stop(self) -> None:
@@ -203,8 +263,19 @@ class CloudSessionController(QObject):
         )
 
     def _on_success(self, operation: str, payload: object) -> None:
-        data = self._payload(payload)
         try:
+            if operation == "conversations":
+                if self.identity is None or not isinstance(payload, list):
+                    raise ValueError("会话列表响应无效")
+                for item in payload:
+                    self.message_cache.upsert_conversation(
+                        parse_conversation(item, account_id=self.identity.account_id)
+                    )
+                self.messages_changed.emit()
+                self.message_status.emit("消息列表已刷新")
+                return
+
+            data = self._payload(payload)
             if operation in {"login", "register"}:
                 token = self._required_string(data, "access_token")
                 account = self._mapping(data.get("account"), "account")
@@ -265,6 +336,7 @@ class CloudSessionController(QObject):
                 self._set_state(CloudConnectionState.CONNECTED, "云端同步已连接")
                 self.pets_changed.emit()
                 self.login_succeeded.emit(self.identity.display_name)
+                self.api.list_conversations()
                 return
 
             if operation == "events":
@@ -277,6 +349,7 @@ class CloudSessionController(QObject):
                     device_id=self.identity.device_id,
                 )
                 self.pets_changed.emit()
+                self.messages_changed.emit()
                 if bool(data.get("has_more")):
                     cursor = self.store.get_cursor(
                         stream_name(self.identity.account_id, self.identity.device_id)
@@ -311,9 +384,65 @@ class CloudSessionController(QObject):
                 self._set_state(CloudConnectionState.CONNECTED, "照料结果已同步")
                 return
 
+            if operation == "conversation_create":
+                if self.identity is None:
+                    raise ValueError("当前账户身份不存在")
+                conversation = parse_conversation(data, account_id=self.identity.account_id)
+                self.message_cache.upsert_conversation(conversation)
+                self.messages_changed.emit()
+                self.message_status.emit("会话已创建")
+                self.api.fetch_messages(conversation.conversation_id)
+                return
+
+            if operation.startswith("messages:"):
+                if self.identity is None:
+                    raise ValueError("当前账户身份不存在")
+                conversation_id = operation.split(":", 1)[1]
+                items = data.get("items")
+                if not isinstance(items, list):
+                    raise ValueError("消息历史必须是数组")
+                for item in items:
+                    message = parse_message(item, account_id=self.identity.account_id)
+                    if message.conversation_id != conversation_id:
+                        raise ValueError("消息历史包含其他会话")
+                    self.message_cache.upsert_message(message)
+                self.messages_changed.emit()
+                return
+
+            if operation.startswith("message_send:") or operation.startswith("message_read:"):
+                if self.identity is None:
+                    raise ValueError("当前账户身份不存在")
+                conversation = parse_conversation(
+                    data.get("conversation"), account_id=self.identity.account_id
+                )
+                message = parse_message(data.get("message"), account_id=self.identity.account_id)
+                receipt = parse_receipt(data.get("receipt"))
+                self.message_cache.upsert_conversation(conversation)
+                self.message_cache.upsert_message(
+                    message,
+                    is_read=message.outgoing or receipt.state == "read",
+                )
+                self.message_cache.upsert_receipt(self.identity.account_id, receipt)
+                if operation.startswith("message_read:"):
+                    self.message_cache.mark_read_through(
+                        self.identity.account_id,
+                        conversation.conversation_id,
+                        message.sequence_number,
+                    )
+                    self.message_status.emit("已读状态已同步")
+                else:
+                    self.message_status.emit("消息已发送")
+                self.messages_changed.emit()
+                return
+
             if operation == "heartbeat":
                 return
         except (KeyError, RuntimeError, OSError, ValueError) as exc:
+            message_operation = self._is_message_operation(operation)
+            if message_operation:
+                self.message_failed.emit(f"消息响应无效：{exc}")
+                self.status_message.emit(f"消息响应无效：{exc}")
+                return
             self._set_state(CloudConnectionState.ERROR, f"云端响应无效：{exc}")
             if operation.startswith("pet_care:"):
                 action = operation.split(":", 2)[1]
@@ -323,7 +452,8 @@ class CloudSessionController(QObject):
 
     def _on_failure(self, operation: str, status: int, detail: str) -> None:
         care_operation = operation.startswith("pet_care:")
-        protected_operation = care_operation or operation in {
+        message_operation = self._is_message_operation(operation)
+        protected_operation = care_operation or message_operation or operation in {
             "bootstrap",
             "events",
             "active_pet",
@@ -335,6 +465,8 @@ class CloudSessionController(QObject):
                     operation.split(":", 2)[1],
                     "设备会话已过期，正在刷新，请稍后重试",
                 )
+            if message_operation:
+                self.message_failed.emit("设备会话已过期，正在刷新，请稍后重试")
             if not self._refresh_attempted and self._credentials is not None:
                 self._refresh_attempted = True
                 self.api.set_device_token(None)
@@ -355,11 +487,22 @@ class CloudSessionController(QObject):
             if status not in {0, 401, 503}:
                 self.status_message.emit(detail)
                 return
+        if message_operation:
+            self.message_failed.emit(detail)
+            if status not in {0, 401, 503}:
+                self.status_message.emit(detail)
+            return
         if operation in {"login", "register", "bind_device", "device_token"}:
             self.login_failed.emit(detail)
         self._set_state(
             CloudConnectionState.OFFLINE if status in {0, 401, 503} else CloudConnectionState.ERROR,
             detail,
+        )
+
+    @staticmethod
+    def _is_message_operation(operation: str) -> bool:
+        return operation in {"conversations", "conversation_create"} or operation.startswith(
+            ("messages:", "message_send:", "message_read:")
         )
 
     def _set_state(self, state: CloudConnectionState, message: str) -> None:

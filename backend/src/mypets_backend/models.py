@@ -112,6 +112,78 @@ class AccountPetRelation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
+class Conversation(Base):
+    __tablename__ = "conversations"
+    __table_args__ = (
+        UniqueConstraint("direct_key", name="uq_conversation_direct_key"),
+        Index("ix_conversations_updated", "updated_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), default="direct", nullable=False)
+    direct_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    title: Mapped[str] = mapped_column(String(160), default="", nullable=False)
+    created_by_account_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class ConversationMember(Base):
+    __tablename__ = "conversation_members"
+    __table_args__ = (Index("ix_conversation_members_account", "account_id", "conversation_id"),)
+
+    conversation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("conversations.id", ondelete="CASCADE"), primary_key=True
+    )
+    account_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("accounts.id", ondelete="CASCADE"), primary_key=True
+    )
+    last_read_sequence: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class Message(Base):
+    __tablename__ = "messages"
+    __table_args__ = (
+        Index("ix_messages_conversation_sequence", "conversation_id", "sequence"),
+        Index("ix_messages_sender_created", "sender_account_id", "created_at"),
+    )
+
+    sequence: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[str] = mapped_column(String(36), unique=True, nullable=False)
+    conversation_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False
+    )
+    sender_account_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=False
+    )
+    sender_pet_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("pets.id", ondelete="SET NULL"), nullable=True
+    )
+    message_type: Mapped[str] = mapped_column(String(32), default="text", nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class MessageReceipt(Base):
+    __tablename__ = "message_receipts"
+    __table_args__ = (Index("ix_message_receipts_account_state", "account_id", "state"),)
+
+    message_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("messages.id", ondelete="CASCADE"), primary_key=True
+    )
+    account_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("accounts.id", ondelete="CASCADE"), primary_key=True
+    )
+    state: Mapped[str] = mapped_column(String(32), default="delivered", nullable=False)
+    delivered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class SyncEvent(Base):
     __tablename__ = "sync_events"
     __table_args__ = (

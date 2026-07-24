@@ -1,10 +1,11 @@
-"""Asset-aware PetWindow that atomically hot-swaps validated frame or spritesheet packages."""
+"""Asset-aware PetWindow with validated assets and a folded message indicator."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QPoint
+from PySide6.QtCore import QPoint, Signal
+from PySide6.QtWidgets import QToolButton
 
 from .behavior import PetState
 from .config import PetSettings
@@ -13,7 +14,9 @@ from .window import PetWindow
 
 
 class DynamicPetWindow(PetWindow):
-    """Preserve the existing behavior state machine while allowing runtime asset replacement."""
+    """Preserve the behavior state machine while allowing runtime asset replacement."""
+
+    message_badge_clicked = Signal()
 
     def __init__(
         self,
@@ -24,6 +27,23 @@ class DynamicPetWindow(PetWindow):
         self._loaded_asset_manifest_path: Path | None = None
         self._loaded_asset_bundle: PetAssetBundle | None = None
         super().__init__(settings)
+        self.message_badge = QToolButton(self)
+        self.message_badge.setObjectName("messageBadge")
+        self.message_badge.setAutoRaise(False)
+        self.message_badge.setCursor(self.cursor())
+        self.message_badge.setToolTip("打开折叠消息")
+        self.message_badge.setStyleSheet(
+            "QToolButton#messageBadge {"
+            "background: rgba(255,255,255,235);"
+            "border: 1px solid rgba(30,41,59,90);"
+            "border-radius: 12px; padding: 2px 7px;"
+            "font-weight: 600; color: #1e293b;"
+            "}"
+            "QToolButton#messageBadge:hover { background: white; }"
+        )
+        self.message_badge.clicked.connect(self.message_badge_clicked)
+        self.message_badge.hide()
+        self._position_message_badge()
 
     @property
     def loaded_asset_manifest_path(self) -> Path | None:
@@ -39,6 +59,31 @@ class DynamicPetWindow(PetWindow):
         self._loaded_asset_manifest_path = bundle.manifest.path
         self._walk_motion_factors = bundle.manifest.walk_motion_factors
         return dict(bundle.pixmaps)
+
+    def set_message_badge(self, unread_count: int) -> None:
+        count = max(0, int(unread_count))
+        if count <= 0:
+            self.message_badge.hide()
+            return
+        label = "99+" if count > 99 else str(count)
+        self.message_badge.setText(f"💬 {label}")
+        self.message_badge.adjustSize()
+        self._position_message_badge()
+        self.message_badge.show()
+        self.message_badge.raise_()
+
+    def _position_message_badge(self) -> None:
+        if not hasattr(self, "message_badge"):
+            return
+        margin = 4
+        self.message_badge.move(
+            max(margin, self.width() - self.message_badge.sizeHint().width() - margin),
+            margin,
+        )
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._position_message_badge()
 
     def show_care_feedback(self, action: str) -> None:
         """Map confirmed server care actions onto existing local animations."""
@@ -106,6 +151,7 @@ class DynamicPetWindow(PetWindow):
         width = round(self.settings.display_height * source.width() / source.height())
         self.setFixedSize(width + 12, self.settings.display_height + 14)
         self.label.setGeometry(6, 0, width, self.settings.display_height + 8)
+        self._position_message_badge()
         self.move(self._constrained_position(old_position))
         self.set_state(PetState.IDLE)
         self._schedule(self.behavior.initial_idle())
