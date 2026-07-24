@@ -36,9 +36,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.asset_object_store = FileObjectStore(resolved.asset_storage_path)
     app.add_middleware(AdminPermissionMiddleware)
     app.include_router(router)
+    # Static governance paths such as /pet-template-versions/compare must be
+    # registered before admin_router's dynamic /{version_id} route.
+    app.include_router(admin_governance_router)
     app.include_router(admin_router)
     app.include_router(admin_console_api_router)
-    app.include_router(admin_governance_router)
     app.include_router(catalog_router)
     app.include_router(governance_catalog_router)
     app.include_router(admin_web_router)
