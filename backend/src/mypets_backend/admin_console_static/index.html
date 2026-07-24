@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MyPets 宠物内容管理台</title>
+  <link rel="stylesheet" href="/admin/styles.css">
+</head>
+<body>
+  <div id="loginView" class="login-shell">
+    <form id="loginForm" class="login-card">
+      <div class="brand-mark">MP</div>
+      <p class="eyebrow">MYPETS CONTENT OPERATIONS</p>
+      <h1>宠物内容管理台</h1>
+      <p class="muted">使用配置在服务端管理员白名单中的账户登录。令牌只保存在当前浏览器会话。</p>
+      <label>用户名<input id="username" name="username" autocomplete="username" required></label>
+      <label>密码<input id="password" name="password" type="password" autocomplete="current-password" minlength="12" required></label>
+      <button class="primary" type="submit">登录管理台</button>
+      <p id="loginError" class="error" role="alert"></p>
+    </form>
+  </div>
+
+  <div id="appView" class="app-shell hidden">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark small">MP</span><div><strong>MyPets</strong><small>内容管理</small></div></div>
+      <nav id="navigation">
+        <button data-view="dashboard" class="active">总览</button>
+        <button data-view="templates">宠物模板</button>
+        <button data-view="reviews">审核中心</button>
+        <button data-view="releases">发布历史</button>
+        <button data-view="audit">审计日志</button>
+      </nav>
+      <div class="sidebar-footer">
+        <span id="accountName"></span>
+        <button id="logoutButton" class="ghost">退出登录</button>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div><p class="eyebrow">ADMIN CONSOLE</p><h2 id="viewTitle">总览</h2></div>
+        <div id="globalStatus" class="status-line" aria-live="polite"></div>
+      </header>
+
+      <section id="dashboardView" class="view-panel">
+        <div id="summaryCards" class="summary-grid"></div>
+        <div class="panel-grid">
+          <article class="panel"><div class="panel-heading"><h3>待审核版本</h3><button data-jump="reviews" class="link-button">进入审核中心</button></div><div id="dashboardReviews"></div></article>
+          <article class="panel"><div class="panel-heading"><h3>最近发布</h3><button data-jump="releases" class="link-button">查看全部</button></div><div id="dashboardReleases"></div></article>
+        </div>
+      </section>
+
+      <section id="templatesView" class="view-panel hidden">
+        <div class="split-layout">
+          <aside class="panel list-panel">
+            <div class="panel-heading"><h3>模板</h3><button id="newTemplateButton" class="primary compact">新建</button></div>
+            <input id="templateSearch" class="search" placeholder="搜索名称、编码或物种">
+            <div id="templateList" class="item-list"></div>
+          </aside>
+          <div class="workspace">
+            <article id="templateEmpty" class="empty-state">选择一个模板查看版本，或创建新的标准宠物模板。</article>
+            <div id="templateWorkspace" class="hidden">
+              <article class="panel hero-panel"><div><p id="templateCode" class="eyebrow"></p><h3 id="templateName"></h3><p id="templateDescription" class="muted"></p></div><span id="templateStatus" class="badge"></span></article>
+              <article class="panel">
+                <div class="panel-heading"><h3>模板版本</h3><button id="newVersionButton" class="primary compact">创建版本</button></div>
+                <div id="versionList" class="version-grid"></div>
+              </article>
+              <article id="versionDetail" class="panel hidden">
+                <div class="panel-heading"><div><p id="versionIdentity" class="eyebrow"></p><h3 id="versionTitle"></h3></div><span id="versionStatus" class="badge"></span></div>
+                <div class="detail-grid"><div><span>包大小</span><strong id="packageSize">—</strong></div><div><span>SHA-256</span><code id="packageHash">—</code></div><div><span>审核意见</span><strong id="reviewComment">—</strong></div></div>
+                <div id="versionActions" class="button-row"></div>
+                <div id="uploadArea" class="upload-area">
+                  <input id="packageFile" type="file" accept=".zip,application/zip">
+                  <button id="uploadButton" class="secondary">上传并校验 ZIP</button>
+                  <div class="progress-track"><span id="uploadProgress"></span></div>
+                </div>
+                <div id="previewArea" class="preview-layout hidden">
+                  <div class="preview-stage"><img id="previewImage" alt="宠物素材预览"><div class="preview-controls"><select id="previewAction"></select><input id="previewFrame" type="number" min="0" value="0"><button id="refreshPreview" class="secondary compact">刷新帧</button></div></div>
+                  <div><h4>动作能力矩阵</h4><div id="actionMatrix" class="matrix"></div></div>
+                </div>
+              </article>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="reviewsView" class="view-panel hidden"><article class="panel"><div class="panel-heading"><h3>待审核版本</h3><button id="refreshReviews" class="secondary compact">刷新</button></div><div id="reviewList" class="review-list"></div></article></section>
+      <section id="releasesView" class="view-panel hidden"><article class="panel"><div class="panel-heading"><h3>不可变发布记录</h3><button id="refreshReleases" class="secondary compact">刷新</button></div><div id="releaseList" class="table-wrap"></div></article></section>
+      <section id="auditView" class="view-panel hidden"><article class="panel"><div class="panel-heading"><h3>管理员操作审计</h3><button id="refreshAudit" class="secondary compact">刷新</button></div><div id="auditList" class="table-wrap"></div></article></section>
+    </main>
+  </div>
+
+  <dialog id="templateDialog"><form id="templateForm" method="dialog"><h3>创建宠物模板</h3><label>模板编码<input name="template_code" placeholder="official.cat.white" pattern="[A-Za-z0-9_.-]+" required></label><label>显示名称<input name="display_name" required></label><label>物种<input name="species" required></label><label>说明<textarea name="description" rows="4"></textarea></label><div class="dialog-actions"><button value="cancel" class="ghost">取消</button><button id="createTemplateSubmit" value="default" class="primary">创建</button></div></form></dialog>
+  <dialog id="versionDialog"><form id="versionForm" method="dialog"><h3>创建模板版本</h3><label>模板版本<input name="template_version" value="1.0.0" required></label><label>视觉身份版本<input name="identity_version" value="1.0.0" required></label><label>素材版本<input name="asset_version" value="1.0.0" required></label><div class="dialog-actions"><button value="cancel" class="ghost">取消</button><button id="createVersionSubmit" value="default" class="primary">创建</button></div></form></dialog>
+  <dialog id="reviewDialog"><form id="reviewForm" method="dialog"><h3 id="reviewDialogTitle">审核版本</h3><input id="reviewVersionId" type="hidden"><input id="reviewDecision" type="hidden"><label>审核意见<textarea id="reviewDecisionComment" rows="5" maxlength="2000"></textarea></label><div class="dialog-actions"><button value="cancel" class="ghost">取消</button><button id="reviewSubmit" value="default" class="primary">确认</button></div></form></dialog>
+
+  <script src="/admin/app.js" defer></script>
+</body>
+</html>

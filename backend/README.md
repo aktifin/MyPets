@@ -1,8 +1,9 @@
 # MyPets Backend
 
-This directory contains the first runnable FastAPI modular-monolith slice for MyPets.
+This directory contains the runnable FastAPI modular monolith for MyPets.
 It owns account authentication, persistent device credentials, server-authoritative pet
-snapshots, account-pet relations, append-only semantic synchronization events, and administrator-reviewed pet asset publishing.
+snapshots, account-pet relations, append-only semantic synchronization events,
+administrator-reviewed pet asset publishing, and the administrator web console.
 
 The desktop SQLite database remains a rebuildable offline cache. It must not be treated as
 the authority for pet growth, ownership, presence, or cross-device read state.
@@ -13,11 +14,20 @@ the authority for pet growth, ownership, presence, or cross-device read state.
 cd backend
 python -m pip install -e ".[dev]"
 $env:MYPETS_JWT_SECRET = "replace-with-at-least-24-random-characters"
+$env:MYPETS_ADMIN_USERNAMES = "pet_editor,pet_reviewer"
 python -m uvicorn mypets_backend.main:app --reload
 ```
 
+Open the administrator console at:
+
+```text
+http://127.0.0.1:8000/admin
+```
+
 The default database is SQLite for development. Production deployment must set
-`MYPETS_DATABASE_URL` to PostgreSQL, set a unique `MYPETS_JWT_SECRET`, configure `MYPETS_ADMIN_USERNAMES`, and replace the development filesystem object store with managed object storage.
+`MYPETS_DATABASE_URL` to PostgreSQL, set a unique `MYPETS_JWT_SECRET`, configure
+`MYPETS_ADMIN_USERNAMES`, and replace the development filesystem object store with
+managed object storage.
 
 ## Authentication model
 
@@ -29,7 +39,6 @@ The default database is SQLite for development. Production deployment must set
 
 Raw passwords and raw device secrets are never stored in the database.
 
-
 ## Administrator pet publishing
 
 Configure at least two administrator usernames for editor/reviewer separation:
@@ -39,4 +48,15 @@ $env:MYPETS_ADMIN_USERNAMES = "pet_editor,pet_reviewer"
 $env:MYPETS_ASSET_STORAGE_DIR = "D:\MyPetsData\assets"
 ```
 
-The publishing API validates ZIP path safety, required actions, fallback cycles, image decoding, spritesheet dimensions, optional per-file hashes, and package limits. Approved releases are immutable and exposed through the public pet asset catalog. See `../docs/管理员宠物发布链路.md`.
+The publishing API validates ZIP path safety, required actions, fallback cycles, image
+decoding, spritesheet dimensions, optional per-file hashes, and package limits. Approved
+releases are immutable and exposed through the public pet asset catalog.
+
+The web console provides template creation, version management, upload progress, protected
+visual preview, action matrices, review decisions, release history, and audit-log queries.
+Browser tokens are session-only and preview images require Bearer authentication.
+
+See:
+
+- `../docs/管理员宠物发布链路.md`
+- `../docs/管理员Web管理台.md`
