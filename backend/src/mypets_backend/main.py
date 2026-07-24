@@ -18,6 +18,7 @@ from .admin_web import admin_web_router
 from .api import router
 from .config import Settings
 from .database import Base, create_database_engine, create_session_factory
+from .messaging_api import messaging_router
 from .models import Account
 from .object_store import FileObjectStore
 from .pet_care_api import pet_care_router
@@ -61,7 +62,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title="MyPets API",
         version="0.2.0-alpha",
         description=(
-            "Server-authoritative account, device, pet care, lazy settlement, synchronization, pet asset publishing, administrator governance, and console API."
+            "Server-authoritative account, device, pet care, lazy settlement, "
+            "messaging, synchronization, pet asset publishing, administrator "
+            "governance, and console API."
         ),
     )
     app.state.settings = resolved
@@ -72,6 +75,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(PetSettlementMiddleware)
     app.include_router(router)
     app.include_router(pet_care_router)
+    app.include_router(messaging_router)
     # Static governance paths such as /pet-template-versions/compare must be
     # registered before admin_router's dynamic /{version_id} route.
     app.include_router(admin_governance_router)
