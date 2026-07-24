@@ -21,10 +21,10 @@ jobs:
           cache: pip
       - name: Install
         run: python -m pip install -q --upgrade pip && python -m pip install -q -e ".[dev]"
-      - name: Targeted tests
+      - name: Full tests until first failure
         shell: pwsh
         run: |
-          python -m pytest -vv -x tests/test_messaging.py tests/test_cloud_session.py 2>&1 | Tee-Object -FilePath messaging-test.log
+          python -m pytest -vv -x 2>&1 | Tee-Object -FilePath messaging-test.log
           exit $LASTEXITCODE
       - name: Upload diagnostics
         if: always()
