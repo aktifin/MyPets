@@ -24,7 +24,13 @@ jobs:
             .github/admin-publishing-bundle.part00 \
             .github/admin-publishing-bundle.part01 \
             .github/admin-publishing-bundle.part02 \
-            .github/admin-publishing-bundle.part03 \
+            .github/admin-publishing-bundle.part03a \
+            .github/admin-publishing-bundle.part03b \
+            .github/admin-publishing-bundle.part03c30 \
+            .github/admin-publishing-bundle.part03c31 \
+            .github/admin-publishing-bundle.part03c32 \
+            .github/admin-publishing-bundle.part03c33 \
+            .github/admin-publishing-bundle.part03c34 \
             .github/admin-publishing-bundle.part04 \
             .github/admin-publishing-bundle.part05a \
             .github/admin-publishing-bundle.part05b0 \
