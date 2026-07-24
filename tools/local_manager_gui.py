@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import os
 import sys
+
+os.environ["QT_LOGGING_RULES"] = "qt.qpa.fonts.warning=false"
+
 import webbrowser
 from pathlib import Path
 
@@ -107,12 +110,13 @@ class LocalManagerWindow(QMainWindow):
         # 3. 门禁与确认工具卡片
         workflow_card = self._create_card(
             title="3. 制作流程与人工确认门禁",
-            desc="标准角色确认窗口与走路 GIF 动态人工门禁。",
+            desc="标准角色确认窗口与八相位走路 GIF 动态人工门禁。",
             btn_start_text="打开标准角色确认窗口",
             btn_stop_text=None,
             on_start=self._approve_character,
             on_stop=None,
             extra_buttons=[
+                ("登记演示角色候选", self._init_demo_candidate),
                 ("查看流程状态", self._check_workflow_status),
             ],
             key="workflow",
@@ -224,6 +228,9 @@ class LocalManagerWindow(QMainWindow):
     def _apply_stylesheet(self) -> None:
         self.setStyleSheet(
             """
+            QWidget {
+                font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+            }
             QMainWindow {
                 background-color: #0f172a;
             }
@@ -334,10 +341,10 @@ class LocalManagerWindow(QMainWindow):
         process.setProcessEnvironment(qenv)
 
         process.readyReadStandardOutput.connect(
-            lambda: self._handle_output(key, process.readAllStandardOutput().data().decode("utf-8", errors="ignore"))
+            lambda: self._handle_output(key, self._decode_bytes(process.readAllStandardOutput().data()))
         )
         process.readyReadStandardError.connect(
-            lambda: self._handle_output(key, process.readAllStandardError().data().decode("utf-8", errors="ignore"))
+            lambda: self._handle_output(key, self._decode_bytes(process.readAllStandardError().data()))
         )
         process.finished.connect(lambda exit_code, status: self._handle_finished(key, exit_code))
 
@@ -351,6 +358,18 @@ class LocalManagerWindow(QMainWindow):
 
         self._log(f"[{key}] 已启动: {program} {' '.join(args)}")
 
+    @staticmethod
+    def _decode_bytes(data: bytes) -> str:
+        if not data:
+            return ""
+        try:
+            return data.decode("utf-8")
+        except UnicodeDecodeError:
+            try:
+                return data.decode("gbk")
+            except UnicodeDecodeError:
+                return data.decode("utf-8", errors="replace")
+
     def _stop_process(self, key: str) -> None:
         if key in self.processes:
             proc = self.processes[key]
@@ -361,11 +380,14 @@ class LocalManagerWindow(QMainWindow):
 
     def _handle_output(self, key: str, text: str) -> None:
         for line in text.splitlines():
-            if line.strip():
-                self._log(f"[{key}] {line.strip()}")
+            line_str = line.strip()
+            if line_str:
+                self._log(f"[{key}] {line_str}")
 
     def _handle_finished(self, key: str, exit_code: int) -> None:
         self._log(f"[{key}] 进程退出 (代码: {exit_code})")
+        if key == "workflow" and exit_code == 2:
+            self._log("💡【流程指引】暂无等待确认的标准角色候选图。请点击下方卡片中的【登记演示角色候选】按钮，登记成功后再点击【打开标准角色确认窗口】进行预览！")
         lbl = getattr(self, f"lbl_status_{key}", None)
         if lbl:
             lbl.setText("状态: 离线")
@@ -392,6 +414,34 @@ class LocalManagerWindow(QMainWindow):
             program=str(PYTHON_EXE),
             args=["main.py"],
             cwd=PROJECT_ROOT,
+        )
+
+    def _init_demo_candidate(self) -> None:
+        demo_img = "assets/pet/idle/idle_01.png"
+        self._log("[workflow] 正在初始化演示测试原图与标准角色候选...")
+        self._start_process(
+            key="workflow",
+            program=str(PYTHON_EXE),
+            args=["tools/onepic_workflow.py", "init", "--source", demo_img],
+            cwd=PROJECT_ROOT,
+        )
+        QTimer.singleShot(
+            1500,
+            lambda: self._start_process(
+                key="workflow",
+                program=str(PYTHON_EXE),
+                args=[
+                    "tools/onepic_workflow.py",
+                    "character-candidate",
+                    "--image",
+                    demo_img,
+                    "--style",
+                    "original_preserved",
+                    "--feature",
+                    "演示角色",
+                ],
+                cwd=PROJECT_ROOT,
+            ),
         )
 
     def _approve_character(self) -> None:
@@ -435,6 +485,9 @@ class LocalManagerWindow(QMainWindow):
 
 def main() -> None:
     app = QApplication(sys.argv)
+    default_font = QFont("Microsoft YaHei", 9)
+    default_font.setStyleHint(QFont.StyleHint.SansSerif)
+    app.setFont(default_font)
     window = LocalManagerWindow()
     window.show()
     sys.exit(app.exec())

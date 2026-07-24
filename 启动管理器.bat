@@ -1,4 +1,5 @@
 @echo off
+set QT_LOGGING_RULES=qt.qpa.fonts.warning=false
 cd /d "%~dp0"
 
 if not exist ".venv\Scripts\python.exe" (

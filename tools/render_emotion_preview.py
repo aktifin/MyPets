@@ -28,7 +28,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["ONEPIC_USE_DEMO_ASSETS"] = "1"
 
 from PySide6.QtCore import QRect
-from PySide6.QtGui import QColor, QPainter, QPixmap
+from PySide6.QtGui import QColor, QFont, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication
 
 from onepic_desktop_pet.behavior import PetState
@@ -53,6 +53,9 @@ def render_preview(output: Path) -> Path:
     """渲染八种互动状态并保存两行四列的联系表。"""
 
     app = QApplication.instance() or QApplication([])
+    default_font = QFont("Microsoft YaHei", 9)
+    default_font.setStyleHint(QFont.StyleHint.SansSerif)
+    app.setFont(default_font)
     window = PetWindow(PetSettings(display_height=220))
     cell_width, cell_height = 270, 250
     canvas = QPixmap(cell_width * 4, cell_height * 2)

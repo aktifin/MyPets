@@ -30,7 +30,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
+
+os.environ["QT_LOGGING_RULES"] = "qt.qpa.fonts.warning=false"
 from pathlib import Path
 from typing import Any
 
@@ -231,7 +234,7 @@ def review_character_candidate() -> int:
         raise WorkflowError(f"标准角色候选图不存在：{candidate_path}")
 
     from PySide6.QtCore import Qt
-    from PySide6.QtGui import QPixmap
+    from PySide6.QtGui import QFont, QPixmap
     from PySide6.QtWidgets import (
         QApplication,
         QDialog,
@@ -242,7 +245,12 @@ def review_character_candidate() -> int:
     )
 
     app = QApplication.instance() or QApplication([])
+    default_font = QFont("Microsoft YaHei", 9)
+    default_font.setStyleHint(QFont.StyleHint.SansSerif)
+    app.setFont(default_font)
+
     dialog = QDialog()
+    dialog.setStyleSheet('QWidget { font-family: "Microsoft YaHei", "Segoe UI", sans-serif; }')
     dialog.setWindowTitle("确认标准角色 · OnePic Desktop Pet")
     dialog.setMinimumWidth(520)
     layout = QVBoxLayout(dialog)

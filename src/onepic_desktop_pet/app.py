@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import os
 import sys
+
+os.environ["QT_LOGGING_RULES"] = "qt.qpa.fonts.warning=false"
+
 from datetime import datetime
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction, QActionGroup, QGuiApplication, QIcon
+from PySide6.QtGui import QAction, QActionGroup, QFont, QGuiApplication, QIcon
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from .asset_download import AssetPackageDownloadController
@@ -43,6 +47,9 @@ class DesktopPetApplication:
                 Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
             )
         self.qt_app = QApplication.instance() or QApplication(sys.argv)
+        default_font = QFont("Microsoft YaHei", 9)
+        default_font.setStyleHint(QFont.StyleHint.SansSerif)
+        self.qt_app.setFont(default_font)
         self.qt_app.setApplicationName("OnePic Desktop Pet")
         self.qt_app.setQuitOnLastWindowClosed(False)
         self.settings = settings or load_settings()
