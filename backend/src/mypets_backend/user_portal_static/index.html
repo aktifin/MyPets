@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MyPets 用户中心</title>
+  <link rel="stylesheet" href="/portal/styles.css">
+  <script src="/portal/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">MYPETS WEB</p>
+      <h1>用户中心</h1>
+    </div>
+    <div class="session-box">
+      <span id="session-label">尚未登录</span>
+      <button id="logout-button" class="secondary" type="button" hidden>退出登录</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="auth-view" class="auth-layout">
+      <article class="hero-card">
+        <p class="eyebrow">同一账户，多端同步</p>
+        <h2>维护账户、宠物和好友关系</h2>
+        <p>Web 门户只提供用户可维护字段。成长数值、资源版本、所有权和照料贡献仍由服务端业务规则控制。</p>
+        <ul>
+          <li>账户注册、登录、显示名和密码维护</li>
+          <li>创建宠物、选择 Web 当前宠物、配置名称与性格</li>
+          <li>宠物可见性、远程照料和共同照料邀请</li>
+          <li>好友申请、好友列表、屏蔽与解除屏蔽</li>
+        </ul>
+      </article>
+
+      <article class="panel auth-panel">
+        <div class="tab-row" role="tablist" aria-label="登录方式">
+          <button id="show-login" class="tab active" type="button">登录</button>
+          <button id="show-register" class="tab" type="button">注册</button>
+        </div>
+
+        <form id="login-form">
+          <label>用户名<input id="login-username" autocomplete="username" required minlength="3" maxlength="64"></label>
+          <label>密码<input id="login-password" type="password" autocomplete="current-password" required maxlength="128"></label>
+          <button type="submit">登录</button>
+        </form>
+
+        <form id="register-form" hidden>
+          <label>用户名<input id="register-username" autocomplete="username" required minlength="3" maxlength="64" pattern="[A-Za-z0-9_.-]+"></label>
+          <label>显示名称<input id="register-display-name" autocomplete="nickname" required maxlength="80"></label>
+          <label>密码<input id="register-password" type="password" autocomplete="new-password" required minlength="12" maxlength="128"></label>
+          <button type="submit">创建账户</button>
+        </form>
+        <p id="auth-status" class="status" aria-live="polite"></p>
+      </article>
+    </section>
+
+    <section id="app-view" hidden>
+      <nav class="main-tabs" aria-label="用户中心功能">
+        <button class="main-tab active" data-section="account-section" type="button">账户</button>
+        <button class="main-tab" data-section="pets-section" type="button">宠物</button>
+        <button class="main-tab" data-section="friends-section" type="button">好友与共同照料</button>
+      </nav>
+
+      <p id="global-status" class="status global-status" aria-live="polite"></p>
+
+      <section id="account-section" class="workspace">
+        <article class="panel">
+          <div class="section-heading">
+            <div><p class="eyebrow">PROFILE</p><h2>账户资料</h2></div>
+            <span id="account-username" class="badge"></span>
+          </div>
+          <form id="profile-form" class="compact-form">
+            <label>显示名称<input id="profile-display-name" required maxlength="80"></label>
+            <button type="submit">保存资料</button>
+          </form>
+        </article>
+
+        <article class="panel">
+          <div class="section-heading"><div><p class="eyebrow">SECURITY</p><h2>修改密码</h2></div></div>
+          <form id="password-form" class="compact-form">
+            <label>当前密码<input id="current-password" type="password" autocomplete="current-password" required maxlength="128"></label>
+            <label>新密码<input id="new-password" type="password" autocomplete="new-password" required minlength="12" maxlength="128"></label>
+            <button type="submit">更新密码</button>
+          </form>
+          <p class="hint">修改密码不会把访问令牌或密码写入浏览器持久化存储。</p>
+        </article>
+      </section>
+
+      <section id="pets-section" class="workspace" hidden>
+        <article class="panel">
+          <div class="section-heading"><div><p class="eyebrow">CREATE</p><h2>创建宠物</h2></div></div>
+          <form id="create-pet-form" class="grid-form">
+            <label>宠物名称<input id="new-pet-name" required maxlength="80"></label>
+            <label>模板 ID<input id="new-pet-template" value="official.cat.white" required maxlength="160"></label>
+            <label>模板版本<input id="new-pet-template-version" value="1.0.0" required maxlength="32"></label>
+            <label>形象版本<input id="new-pet-identity-version" value="1.0.0" required maxlength="32"></label>
+            <label>资源版本<input id="new-pet-asset-version" value="1.0.0" required maxlength="32"></label>
+            <button type="submit">创建宠物</button>
+          </form>
+          <p class="hint">当前为临时入口，只允许创建服务端支持的模板标识；无效模板仍由资源目录与客户端兼容形象处理。</p>
+        </article>
+
+        <div class="two-column">
+          <article class="panel">
+            <div class="section-heading"><div><p class="eyebrow">SELECT</p><h2>我的宠物</h2></div><button id="refresh-pets" class="secondary" type="button">刷新</button></div>
+            <div id="pet-list" class="card-list"></div>
+          </article>
+
+          <article class="panel">
+            <div class="section-heading"><div><p class="eyebrow">CONFIG</p><h2>当前宠物配置</h2></div><span id="selected-pet-role" class="badge"></span></div>
+            <div id="no-selected-pet" class="empty-state">请选择一只宠物。</div>
+            <div id="selected-pet-config" hidden>
+              <form id="pet-config-form" class="compact-form">
+                <label>名称<input id="pet-config-name" required maxlength="80"></label>
+                <label>性格<select id="pet-config-personality"></select></label>
+                <button id="save-pet-config" type="submit">保存宠物配置</button>
+              </form>
+              <form id="privacy-form" class="compact-form separated">
+                <label>可见范围
+                  <select id="pet-visibility">
+                    <option value="private">仅自己</option>
+                    <option value="caregivers">共同照料者</option>
+                    <option value="friends">好友</option>
+                    <option value="public">公开</option>
+                  </select>
+                </label>
+                <label class="check-label"><input id="allow-remote-care" type="checkbox">允许 caregiver 远程照料</label>
+                <button id="save-privacy" type="submit">保存隐私设置</button>
+              </form>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="friends-section" class="workspace" hidden>
+        <div class="two-column">
+          <article class="panel">
+            <div class="section-heading"><div><p class="eyebrow">FRIENDS</p><h2>添加与维护好友</h2></div><button id="refresh-social" class="secondary" type="button">刷新</button></div>
+            <form id="friend-request-form" class="inline-form">
+              <label>精确用户名<input id="friend-username" required minlength="3" maxlength="64"></label>
+              <button type="submit">发送申请</button>
+            </form>
+            <h3>好友列表</h3>
+            <div id="friend-list" class="card-list"></div>
+          </article>
+
+          <article class="panel">
+            <div class="section-heading"><div><p class="eyebrow">REQUESTS</p><h2>好友申请</h2></div></div>
+            <h3>收到的申请</h3>
+            <div id="incoming-requests" class="card-list"></div>
+            <h3>发出的申请</h3>
+            <div id="outgoing-requests" class="card-list"></div>
+          </article>
+        </div>
+
+        <div class="two-column">
+          <article class="panel">
+            <div class="section-heading"><div><p class="eyebrow">SHARED CARE</p><h2>共同照料邀请</h2></div></div>
+            <form id="caregiver-invite-form" class="grid-form">
+              <label>当前宠物<input id="invite-pet-name" disabled></label>
+              <label>好友用户名<input id="invite-username" required minlength="3" maxlength="64"></label>
+              <label>角色<select id="invite-role"><option value="caregiver">caregiver</option><option value="viewer">viewer</option></select></label>
+              <button id="send-caregiver-invite" type="submit">发送邀请</button>
+            </form>
+            <h3>收到的邀请</h3>
+            <div id="incoming-invitations" class="card-list"></div>
+            <h3>发出的邀请</h3>
+            <div id="outgoing-invitations" class="card-list"></div>
+          </article>
+
+          <article class="panel">
+            <div class="section-heading"><div><p class="eyebrow">BLOCKS</p><h2>屏蔽列表</h2></div></div>
+            <div id="block-list" class="card-list"></div>
+          </article>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <footer>MyPets Web 用户门户 · 服务端权威状态 · 不包含 AI Agent 或工具执行</footer>
+</body>
+</html>

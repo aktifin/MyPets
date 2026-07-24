@@ -1,4 +1,4 @@
-"""MyPets 模块化单体与 Web 管理端 FastAPI 应用工厂。"""
+"""MyPets 模块化单体、用户门户与 Web 管理端 FastAPI 应用工厂。"""
 
 from __future__ import annotations
 
@@ -28,6 +28,8 @@ from .reminder_snapshot_api import reminder_snapshot_router
 from .security import hash_password, normalize_username
 from .settlement_middleware import PetSettlementMiddleware
 from .social_api import social_router
+from .user_portal_api import user_portal_api_router
+from .user_portal_web import user_portal_web_router
 
 
 def _seed_default_admins(session_factory: sessionmaker, admin_usernames: tuple[str, ...]) -> None:
@@ -66,7 +68,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title="MyPets API",
         version="0.2.0-alpha",
         description=(
-            "Server-authoritative account, device, pet care, friendship, shared care, "
+            "Server-authoritative accounts, user Web portal, pets, friendship, shared care, "
             "lazy settlement, messaging, reminders, external reminder providers, "
             "synchronization, pet asset publishing, administrator governance, and console API."
         ),
@@ -78,6 +80,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(AdminPermissionMiddleware)
     app.add_middleware(PetSettlementMiddleware)
     app.include_router(router)
+    app.include_router(user_portal_api_router)
     app.include_router(pet_care_router)
     app.include_router(social_router)
     app.include_router(messaging_router)
@@ -91,11 +94,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_console_api_router)
     app.include_router(catalog_router)
     app.include_router(governance_catalog_router)
+    app.include_router(user_portal_web_router)
     app.include_router(admin_web_router)
 
     @app.get("/")
     def index() -> RedirectResponse:
-        return RedirectResponse(url="/admin")
+        return RedirectResponse(url="/portal")
 
     @app.get("/health")
     def health() -> dict[str, str]:
