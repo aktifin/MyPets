@@ -267,7 +267,13 @@ def apply_events(
 
 
 def _apply_event(store: LocalStateStore, event: CloudEvent, *, device_id: str) -> bool:
-    if event.event_type in {"pet_created", "pet_updated"}:
+    if event.event_type in {
+        "pet_created",
+        "pet_updated",
+        "growth_level_up",
+        "bond_level_up",
+        "growth_stage_changed",
+    }:
         pet = parse_pet(event.payload.get("pet"))
         store.upsert_pet(pet)
         relation_data = event.payload.get("relation")

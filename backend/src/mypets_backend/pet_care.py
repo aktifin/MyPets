@@ -1,6 +1,6 @@
 """Deterministic server-authoritative pet care rules.
 
-This module contains no HTTP or Qt dependencies.  It mutates a Pet and the actor's
+This module contains no HTTP or Qt dependencies. It mutates a Pet and the actor's
 AccountPetRelation inside the caller's database transaction, then returns an explicit
 summary suitable for API responses, synchronization events, and tests.
 """
@@ -67,9 +67,24 @@ CARE_RULES: dict[CareAction, CareRule] = {
 class CareMutation:
     action: CareAction
     deltas: dict[str, int]
-    growth_level_changed: bool
-    bond_level_changed: bool
-    growth_stage_changed: bool
+    previous_growth_level: int
+    growth_level: int
+    previous_bond_level: int
+    bond_level: int
+    previous_growth_stage: str
+    growth_stage: str
+
+    @property
+    def growth_level_changed(self) -> bool:
+        return self.growth_level != self.previous_growth_level
+
+    @property
+    def bond_level_changed(self) -> bool:
+        return self.bond_level != self.previous_bond_level
+
+    @property
+    def growth_stage_changed(self) -> bool:
+        return self.growth_stage != self.previous_growth_stage
 
 
 def _clamp_stat(value: int) -> int:
@@ -89,12 +104,7 @@ def apply_care_action(
     relation: AccountPetRelation,
     action: CareAction,
 ) -> CareMutation:
-    """Apply one care action and return the effective, post-clamp deltas.
-
-    Growth and bond levels are derived from cumulative experience so retries and future
-    migrations cannot increment levels twice.  The first functional slice uses three
-    stages; the domain enum remains forward-compatible with juvenile and bond stages.
-    """
+    """Apply one care action and return the effective, post-clamp mutation."""
 
     rule = CARE_RULES[action]
     effective: dict[str, int] = {}
@@ -131,7 +141,10 @@ def apply_care_action(
     return CareMutation(
         action=action,
         deltas=effective,
-        growth_level_changed=pet.growth_level != old_growth_level,
-        bond_level_changed=pet.bond_level != old_bond_level,
-        growth_stage_changed=pet.growth_stage != old_stage,
+        previous_growth_level=old_growth_level,
+        growth_level=int(pet.growth_level),
+        previous_bond_level=old_bond_level,
+        bond_level=int(pet.bond_level),
+        previous_growth_stage=old_stage,
+        growth_stage=str(pet.growth_stage),
     )
