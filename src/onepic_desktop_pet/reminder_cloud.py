@@ -199,7 +199,7 @@ class ReminderCloudController(QObject):
                 payload.get("occurrence"),
                 account_id=command.account_id,
             )
-            self.cache.put(occurrence)
+            self.cache.put(occurrence, authoritative=True)
             if command.action in {"completed", "snoozed", "dismissed"}:
                 self.cache.archive_notification(
                     command.account_id,
