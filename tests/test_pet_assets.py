@@ -9,16 +9,11 @@ os.environ.setdefault("ONEPIC_USE_DEMO_ASSETS", "1")
 
 import pytest
 from PIL import Image
-from PySide6.QtWidgets import QApplication
 
-from onepic_desktop_pet.behavior import PetState
-from onepic_desktop_pet.config import PetSettings
 from onepic_desktop_pet.domain import PetIdentity, PetProfile
-from onepic_desktop_pet.dynamic_window import DynamicPetWindow
 from onepic_desktop_pet.pet_assets import (
     PetAssetCatalog,
     PetAssetIdentity,
-    load_pet_asset_bundle,
     load_pet_asset_manifest,
 )
 from onepic_desktop_pet.resources import resource_path
@@ -121,6 +116,11 @@ def test_catalog_installs_and_prefers_exact_cached_package(tmp_path) -> None:
 
 
 def test_bundled_sun_sun_spritesheet_loads_every_runtime_state() -> None:
+    from PySide6.QtWidgets import QApplication
+
+    from onepic_desktop_pet.behavior import PetState
+    from onepic_desktop_pet.pet_assets import load_pet_asset_bundle
+
     app = QApplication.instance() or QApplication([])
     manifest_path = resource_path("outputs/sun-sun/manifest.json")
     bundle = load_pet_asset_bundle(manifest_path)
@@ -135,6 +135,12 @@ def test_bundled_sun_sun_spritesheet_loads_every_runtime_state() -> None:
 
 
 def test_dynamic_window_hot_switches_after_full_package_validation() -> None:
+    from PySide6.QtWidgets import QApplication
+
+    from onepic_desktop_pet.behavior import PetState
+    from onepic_desktop_pet.config import PetSettings
+    from onepic_desktop_pet.dynamic_window import DynamicPetWindow
+
     app = QApplication.instance() or QApplication([])
     demo = resource_path("assets/pet/manifest.json")
     sun_sun = resource_path("outputs/sun-sun/manifest.json")
