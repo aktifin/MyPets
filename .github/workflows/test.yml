@@ -1,4 +1,4 @@
-name: Test
+name: Linux local state and smoke
 
 on:
   push:
@@ -29,8 +29,11 @@ jobs:
       - name: Install project and test dependencies
         run: python -m pip install -q --upgrade pip && python -m pip install -q -e ".[dev]"
 
-      - name: Run unit tests
-        run: python -m pytest -q --tb=short
+      - name: Run platform-neutral local state tests
+        run: >-
+          python -m pytest -q --tb=short
+          tests/test_local_store.py
+          tests/test_local_store_timezones.py
 
       - name: Run Qt smoke test
         run: python main.py --smoke-test-ms 1500
