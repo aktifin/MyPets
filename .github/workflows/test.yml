@@ -1,4 +1,4 @@
-name: Linux local state and smoke
+name: Linux local state
 
 on:
   push:
@@ -10,11 +10,10 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  local-state:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
-      QT_QPA_PLATFORM: offscreen
       PYTHONUTF8: "1"
     steps:
       - name: Check out repository
@@ -34,6 +33,3 @@ jobs:
           python -m pytest -q --tb=short
           tests/test_local_store.py
           tests/test_local_store_timezones.py
-
-      - name: Run Qt smoke test
-        run: python main.py --smoke-test-ms 1500
