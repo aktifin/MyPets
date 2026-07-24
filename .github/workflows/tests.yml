@@ -4,18 +4,25 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   windows-tests:
     runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        run: python -m pip install -q --upgrade pip && python -m pip install -q -e ".[dev]"
       - name: Test
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: python -m pytest
-
+        run: python -m pytest -q --tb=short
+      - name: Qt smoke test
+        run: python main.py --smoke-test-ms 1500
