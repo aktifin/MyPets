@@ -19,7 +19,7 @@ from .edge_dock import EdgeDockController
 from .edge_geometry import EdgeSide
 from .local_store import LocalStateStore
 from .login_dialog import CloudLoginDialog
-from .pet_assets import PetAssetCatalog, PetAssetSelection
+from .pet_assets import PetAssetCatalog
 from .pet_registry import LOCAL_ACCOUNT_ID, PetRegistry
 from .resources import resource_path
 
@@ -208,13 +208,24 @@ class DesktopPetApplication:
             action.setCheckable(True)
             action.setChecked(pet_id == active_id)
             action.triggered.connect(
-                lambda _checked=False, pet_id=pet_id: self.cloud_session.switch_active_pet(
-                    pet_id
-                )
+                lambda _checked=False, pet_id=pet_id: self._switch_pet(pet_id)
             )
             group.addAction(action)
             self.pet_menu.addAction(action)
         self._pet_action_group = group
+
+    def _switch_pet(self, pet_id: str) -> None:
+        """Keep bundled/local pets local even when a cloud account is connected."""
+
+        pet = self.local_store.get_pet(pet_id)
+        if pet is None:
+            return
+        if pet.identity.primary_owner_account_id == LOCAL_ACCOUNT_ID:
+            self.pet_registry.switch_active_pet(pet_id)
+            self._pets_changed()
+            self.cloud_session.status_message.emit("已切换本地宠物")
+            return
+        self.cloud_session.switch_active_pet(pet_id)
 
     def open_cloud_login(self) -> None:
         if self._login_dialog is None:
