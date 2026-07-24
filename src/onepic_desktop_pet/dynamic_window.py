@@ -86,3 +86,17 @@ class DynamicPetWindow(PetWindow):
         self.move(self._constrained_position(old_position))
         self.set_state(PetState.IDLE)
         self._schedule(self.behavior.initial_idle())
+
+    def show_care_feedback(self, action: str) -> None:
+        """Play a semantic animation only after the cloud confirms a care action."""
+
+        mapping = {
+            "feed": PetState.HAPPY,
+            "play": PetState.WAVE,
+            "clean": PetState.HAPPY,
+            "pet": PetState.SHY,
+            "rest": PetState.SLEEPY,
+        }
+        state = mapping.get(action.strip().lower(), PetState.HAPPY)
+        self._record_user_interaction()
+        self._show_emotion(state, 1800)
