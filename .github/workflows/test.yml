@@ -1,4 +1,4 @@
-name: Linux local state
+name: Linux local state and backend
 
 on:
   push:
@@ -24,6 +24,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install project and test dependencies
         run: python -m pip install -q --upgrade pip && python -m pip install -q -e ".[dev]"
@@ -33,3 +34,32 @@ jobs:
           python -m pytest -q --tb=short
           tests/test_local_store.py
           tests/test_local_store_timezones.py
+          tests/test_sync_apply.py
+
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install backend and test dependencies
+        run: python -m pip install -q --upgrade pip && python -m pip install -q -e ".[dev]"
+
+      - name: Run backend tests
+        run: python -m pytest -q --tb=short
+
+      - name: Compile backend package
+        run: python -m compileall -q src
