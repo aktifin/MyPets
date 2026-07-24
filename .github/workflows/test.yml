@@ -43,6 +43,7 @@ jobs:
           tests/test_cloud_types.py
           tests/test_cloud_session.py
           tests/test_reminders.py
+          tests/test_reminder_management.py
           tests/test_pet_assets.py
           tests/test_asset_download.py
 

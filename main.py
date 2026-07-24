@@ -3,7 +3,7 @@
 
 职责范围：
 - 解析可选的 `--smoke-test-ms` 自动退出参数；
-- 调用 reminder_app.run() 启动包含提醒闭环的 Qt 应用；
+- 调用 reminder_management_app.run() 启动包含提醒管理与 MyReminder 同步的 Qt 应用；
 - 不包含窗口、行为或配置业务逻辑。
 
 使用示例：
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import argparse
 
-from onepic_desktop_pet.reminder_app import run
+from onepic_desktop_pet.reminder_management_app import run
 
 
 def parse_args() -> argparse.Namespace:
