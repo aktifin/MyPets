@@ -1,4 +1,4 @@
-"""管理员与素材制作者使用的宠物 Manifest 校验命令。"""
+"""Administrator CLI for validating frame and spritesheet pet runtime manifests."""
 
 from __future__ import annotations
 
@@ -11,52 +11,42 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from onepic_desktop_pet.appearance import (  # noqa: E402
-    load_pet_manifest,
-    validate_manifest_assets,
-)
+from onepic_desktop_pet.pet_assets import load_pet_asset_manifest  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="校验宠物视觉身份、动作降级和跨端素材 Manifest。",
+        description="校验宠物身份版本、动作降级、精灵表坐标、路径和素材完整性。",
     )
     parser.add_argument(
         "manifest",
         nargs="?",
         type=Path,
         default=ROOT / "assets" / "pet" / "manifest.json",
-        help="需要校验的 manifest.json 路径",
+        help="需要校验的运行时 manifest.json 路径",
     )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    path = args.manifest.resolve()
+    path = build_parser().parse_args(argv).manifest.resolve()
     try:
-        manifest = load_pet_manifest(path)
-    except ValueError as exc:
+        manifest = load_pet_asset_manifest(path)
+    except (FileNotFoundError, ValueError) as exc:
         print(f"[FAIL] {exc}", file=sys.stderr)
-        return 2
-
-    problems = validate_manifest_assets(path, manifest)
-    print(f"Manifest: {path}")
-    print(f"Schema: {manifest.schema_version}")
-    print(f"Template: {manifest.template_code or '(legacy)'}")
-    print(f"Identity: {manifest.identity_version}")
-    print(f"Assets: {manifest.asset_version}")
-    print(f"Actions: {len(manifest.animations)}")
-    enabled_capabilities = sorted(
-        name for name, enabled in manifest.capabilities.items() if enabled
-    )
-    print("Capabilities: " + (", ".join(enabled_capabilities) or "(none)"))
-
-    if problems:
-        for problem in problems:
-            print(f"[FAIL] {problem}", file=sys.stderr)
         return 1
-    print("[OK] Manifest 结构和素材路径均通过校验")
+
+    renderer = "spritesheet" if manifest.spritesheet is not None else "frames"
+    print(f"Manifest: {manifest.path}")
+    print(f"Template: {manifest.identity.template_id}")
+    print(f"Identity: {manifest.identity.identity_version}")
+    print(f"Assets: {manifest.identity.asset_version}")
+    print(f"Renderer: {renderer}")
+    print(f"Runtime actions: {len(manifest.animations)}")
+    print(f"Referenced files: {len(manifest.referenced_paths())}")
+    if manifest.local_pet is not None:
+        print(f"Bundled pet: {manifest.local_pet.name} ({manifest.local_pet.pet_id})")
+    print("[OK] Manifest、动作降级、路径和素材均通过校验")
     return 0
 
 
