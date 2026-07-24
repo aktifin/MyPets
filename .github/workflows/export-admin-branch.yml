@@ -27,7 +27,10 @@ jobs:
             .github/admin-publishing-bundle.part03 \
             .github/admin-publishing-bundle.part04 \
             .github/admin-publishing-bundle.part05a \
-            .github/admin-publishing-bundle.part05b \
+            .github/admin-publishing-bundle.part05b0 \
+            .github/admin-publishing-bundle.part05b1 \
+            .github/admin-publishing-bundle.part05b2 \
+            .github/admin-publishing-bundle.part05b3 \
             > /tmp/admin-publishing.b64
           base64 --decode /tmp/admin-publishing.b64 > /tmp/admin-publishing.tar.gz
           gzip -t /tmp/admin-publishing.tar.gz
