@@ -131,3 +131,111 @@ class SyncEvent(Base):
     idempotency_key: Mapped[str] = mapped_column(String(160), nullable=False)
     payload_json: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class PetTemplate(Base):
+    __tablename__ = "pet_templates"
+    __table_args__ = (Index("ix_pet_templates_status", "status", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    template_code: Mapped[str] = mapped_column(String(160), unique=True, nullable=False)
+    display_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    species: Mapped[str] = mapped_column(String(80), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
+    created_by_account_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class PetTemplateVersion(Base):
+    __tablename__ = "pet_template_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "template_id",
+            "template_version",
+            "identity_version",
+            "asset_version",
+            name="uq_pet_template_version_identity",
+        ),
+        Index("ix_pet_template_versions_template_status", "template_id", "status"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    template_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("pet_templates.id", ondelete="CASCADE"), nullable=False
+    )
+    template_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    identity_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    asset_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
+    manifest_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    package_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    package_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    staging_object_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_by_account_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=False
+    )
+    reviewed_by_account_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=True
+    )
+    review_comment: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class PetAssetRelease(Base):
+    __tablename__ = "pet_asset_releases"
+    __table_args__ = (
+        UniqueConstraint("template_version_id", name="uq_asset_release_template_version"),
+        Index(
+            "ix_asset_releases_lookup",
+            "template_code",
+            "identity_version",
+            "asset_version",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    template_version_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("pet_template_versions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    template_code: Mapped[str] = mapped_column(String(160), nullable=False)
+    template_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    identity_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    asset_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    object_key: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    package_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    package_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    manifest_json: Mapped[str] = mapped_column(Text, nullable=False)
+    published_by_account_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class AdminAuditLog(Base):
+    __tablename__ = "admin_audit_logs"
+    __table_args__ = (
+        Index("ix_admin_audit_resource", "resource_type", "resource_id", "created_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    admin_account_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=False
+    )
+    action: Mapped[str] = mapped_column(String(80), nullable=False)
+    resource_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    resource_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    details_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

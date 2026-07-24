@@ -18,6 +18,8 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
         environment="test",
         access_token_minutes=30,
         device_token_hours=12,
+        admin_usernames=("admin_creator", "admin_reviewer"),
+        asset_storage_dir=str(tmp_path / "assets"),
     )
     app = create_app(settings)
     with TestClient(app) as test_client:
@@ -63,3 +65,22 @@ def bind_device(
     assert exchanged.status_code == 200, exchanged.text
     headers = {"Authorization": f"Bearer {exchanged.json()['access_token']}"}
     return binding["device"], headers, binding["device_secret"]
+
+
+def register_account(
+    client: TestClient,
+    username: str,
+    *,
+    display_name: str | None = None,
+    password: str = "a-strong-test-password",
+) -> dict[str, str]:
+    response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": username,
+            "display_name": display_name or username,
+            "password": password,
+        },
+    )
+    assert response.status_code == 201, response.text
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}

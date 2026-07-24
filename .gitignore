@@ -27,3 +27,7 @@ user_assets/*
 *.db
 *.log
 *.tmp
+
+# 后端开发环境对象存储
+mypets-assets/
+backend/mypets-assets/
