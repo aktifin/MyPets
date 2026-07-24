@@ -31,7 +31,7 @@ jobs:
       - name: Install project and test dependencies
         run: python -m pip install -q --upgrade pip && python -m pip install -q -e ".[dev]"
 
-      - name: Run platform-neutral cache, cloud, and Manifest tests
+      - name: Run cache and cloud contract tests
         run: >-
           python -m pytest -q --tb=short
           tests/test_local_store.py
@@ -39,7 +39,15 @@ jobs:
           tests/test_sync_apply.py
           tests/test_cloud_types.py
           tests/test_cloud_session.py
+
+      - name: Validate Manifest path safety
+        run: >-
+          python -m pytest -q --tb=short
           tests/test_pet_assets.py::test_manifest_rejects_parent_directory_escape
+
+      - name: Validate versioned asset cache installation
+        run: >-
+          python -m pytest -q --tb=short
           tests/test_pet_assets.py::test_catalog_installs_and_prefers_exact_cached_package
 
       - name: Compile desktop package
