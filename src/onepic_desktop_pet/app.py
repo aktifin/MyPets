@@ -4,6 +4,7 @@
 职责范围：
 - 创建或复用 QApplication；
 - 在创建应用前启用适合不同显示器缩放比例的高 DPI 舍入策略；
+- 打开 SQLite 本地状态仓库并建立兼容现有单机素材的默认宠物资料；
 - 创建 PetWindow、边缘吸附控制器和 QSystemTrayIcon；
 - 连接显示、隐藏、暂停跑动、互动、边缘吸附和退出动作；
 - 退出前保存完整可见位置、显示尺寸和边缘吸附状态；
@@ -21,14 +22,20 @@ from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 from .config import PetSettings, load_settings, save_settings
 from .edge_dock import EdgeDockController
 from .edge_geometry import EdgeSide
+from .local_store import LocalStateStore
+from .pet_registry import PetRegistry
 from .resources import resource_path
 from .window import PetWindow
 
 
 class DesktopPetApplication:
-    """封装窗口、托盘、边缘模式与持久化状态的桌面宠物应用。"""
+    """封装窗口、托盘、边缘模式和本地宠物状态。"""
 
-    def __init__(self, settings: PetSettings | None = None) -> None:
+    def __init__(
+        self,
+        settings: PetSettings | None = None,
+        local_store: LocalStateStore | None = None,
+    ) -> None:
         if QApplication.instance() is None:
             QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
                 Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
@@ -37,7 +44,15 @@ class DesktopPetApplication:
         self.qt_app.setApplicationName("OnePic Desktop Pet")
         self.qt_app.setQuitOnLastWindowClosed(False)
         self.settings = settings or load_settings()
+
+        # 目前窗口仍加载现有单套素材；注册表先稳定宠物身份、状态和设备选择，
+        # 后续素材解析器再按 active_pet 的模板和版本切换资源包。
+        self.local_store = local_store or LocalStateStore.open_default()
+        self.pet_registry = PetRegistry(self.local_store)
+        self.active_pet = self.pet_registry.bootstrap_local_pet()
+
         self.window = PetWindow(self.settings)
+        self.window.setWindowTitle(f"{self.active_pet.identity.name} · MyPets")
         self.edge_dock = EdgeDockController(self.window, self.settings)
         self.window.quit_requested.connect(self.quit)
         self.tray = self._create_tray()
@@ -47,7 +62,7 @@ class DesktopPetApplication:
 
         icon = QIcon(str(resource_path("assets/icons/pet.png")))
         tray = QSystemTrayIcon(icon, self.qt_app)
-        tray.setToolTip("OnePic Desktop Pet")
+        tray.setToolTip(f"{self.active_pet.identity.name} · MyPets")
         menu = QMenu()
 
         show_action = QAction("显示宠物", menu)
@@ -134,7 +149,7 @@ class DesktopPetApplication:
         return self.qt_app.exec()
 
     def quit(self) -> None:
-        """保存窗口及边缘状态、隐藏托盘并退出应用。"""
+        """保存窗口及边缘状态，关闭本地仓库并退出应用。"""
 
         position = self.edge_dock.persistence_position()
         self.settings.start_x = position.x()
@@ -142,9 +157,12 @@ class DesktopPetApplication:
         try:
             save_settings(self.settings)
         finally:
-            self.tray.hide()
-            self.window.close()
-            self.qt_app.quit()
+            try:
+                self.local_store.close()
+            finally:
+                self.tray.hide()
+                self.window.close()
+                self.qt_app.quit()
 
 
 def run(smoke_test_ms: int | None = None) -> int:
