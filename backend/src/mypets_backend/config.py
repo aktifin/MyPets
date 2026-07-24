@@ -40,6 +40,12 @@ class Settings:
     max_asset_uncompressed_bytes: int = 128 * 1024 * 1024
     max_asset_files: int = 512
 
+    myreminder_base_url: str = ""
+    myreminder_integration_secret: str = field(default="", repr=False)
+    myreminder_timeout_seconds: float = 5.0
+    myreminder_lookback_days: int = 1
+    myreminder_horizon_days: int = 14
+
     def __post_init__(self) -> None:
         legacy = _csv_values(",".join(self.admin_usernames))
         object.__setattr__(self, "admin_legacy_usernames", legacy)
@@ -53,6 +59,8 @@ class Settings:
         )
         merged = tuple(sorted({name.lower() for values in role_values for name in values}))
         object.__setattr__(self, "admin_usernames", merged)
+        object.__setattr__(self, "myreminder_base_url", self.myreminder_base_url.strip().rstrip("/"))
+        object.__setattr__(self, "myreminder_integration_secret", self.myreminder_integration_secret.strip())
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -97,6 +105,19 @@ class Settings:
                 )
             ),
             max_asset_files=int(os.getenv("MYPETS_MAX_ASSET_FILES", cls.max_asset_files)),
+            myreminder_base_url=os.getenv("MYPETS_MYREMINDER_BASE_URL", ""),
+            myreminder_integration_secret=os.getenv(
+                "MYPETS_MYREMINDER_INTEGRATION_SECRET", ""
+            ),
+            myreminder_timeout_seconds=float(
+                os.getenv("MYPETS_MYREMINDER_TIMEOUT_SECONDS", cls.myreminder_timeout_seconds)
+            ),
+            myreminder_lookback_days=int(
+                os.getenv("MYPETS_MYREMINDER_LOOKBACK_DAYS", cls.myreminder_lookback_days)
+            ),
+            myreminder_horizon_days=int(
+                os.getenv("MYPETS_MYREMINDER_HORIZON_DAYS", cls.myreminder_horizon_days)
+            ),
         )
         settings.validate()
         return settings
@@ -104,6 +125,10 @@ class Settings:
     @property
     def asset_storage_path(self) -> Path:
         return Path(self.asset_storage_dir).expanduser().resolve()
+
+    @property
+    def myreminder_configured(self) -> bool:
+        return bool(self.myreminder_base_url and self.myreminder_integration_secret)
 
     def roles_for_username(self, username: str) -> tuple[str, ...]:
         normalized = username.strip().lower()
@@ -139,3 +164,13 @@ class Settings:
             raise ValueError("素材包解压大小上限不能小于压缩大小上限")
         if not 1 <= self.max_asset_files <= 10000:
             raise ValueError("素材包文件数量上限必须位于 1 到 10000")
+        if bool(self.myreminder_base_url) != bool(self.myreminder_integration_secret):
+            raise ValueError("MyReminder 服务地址和集成密钥必须同时配置")
+        if self.myreminder_integration_secret and len(self.myreminder_integration_secret) < 24:
+            raise ValueError("MYPETS_MYREMINDER_INTEGRATION_SECRET 至少需要 24 个字符")
+        if not 0.5 <= self.myreminder_timeout_seconds <= 30:
+            raise ValueError("MyReminder 请求超时必须位于 0.5 到 30 秒")
+        if not 0 <= self.myreminder_lookback_days <= 30:
+            raise ValueError("MyReminder 回溯天数必须位于 0 到 30")
+        if not 1 <= self.myreminder_horizon_days <= 90:
+            raise ValueError("MyReminder 展开天数必须位于 1 到 90")
