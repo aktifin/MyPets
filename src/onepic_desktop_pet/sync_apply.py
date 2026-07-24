@@ -222,7 +222,6 @@ def apply_bootstrap(store: LocalStateStore, payload: Mapping[str, Any]) -> SyncA
         store.upsert_relation(relation)
     store.set_active_pet_id(active_pet_id)
     store.set_cursor(stream_name(account_id, device_id), cursor)
-    MessageCache(store)
     return SyncApplyResult(
         account_id=account_id,
         device_id=device_id,
