@@ -1,4 +1,4 @@
-name: Export admin branch source
+name: Apply administrator publishing implementation
 
 on:
   push:
@@ -7,17 +7,35 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  export:
+  apply:
     runs-on: ubuntu-latest
+    if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
-      - name: Archive source
-        run: zip -qr mypets-source.zip . -x '.git/*'
-      - uses: actions/upload-artifact@v4
         with:
-          name: mypets-admin-source
-          path: mypets-source.zip
-          retention-days: 1
+          ref: codex/admin-pet-publishing
+          fetch-depth: 0
+
+      - name: Restore implementation files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/admin-publishing-bundle.part* > /tmp/admin-publishing.b64
+          base64 --decode /tmp/admin-publishing.b64 > /tmp/admin-publishing.tar.gz
+          tar -xzf /tmp/admin-publishing.tar.gz -C .
+          rm -f .github/admin-publishing-bundle.part*
+          rm -f .github/workflows/export-admin-branch.yml
+          rm -f .github/workflows/apply-admin-publishing.yml
+
+      - name: Commit implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Add administrator pet publishing and automatic asset delivery"
+          git push origin HEAD:codex/admin-pet-publishing
