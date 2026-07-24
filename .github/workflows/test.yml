@@ -1,4 +1,4 @@
-name: Linux local state and backend
+name: Linux local state, desktop cloud, and backend
 
 on:
   push:
@@ -29,12 +29,17 @@ jobs:
       - name: Install project and test dependencies
         run: python -m pip install -q --upgrade pip && python -m pip install -q -e ".[dev]"
 
-      - name: Run platform-neutral local state tests
+      - name: Run platform-neutral cache and cloud session tests
         run: >-
           python -m pytest -q --tb=short
           tests/test_local_store.py
           tests/test_local_store_timezones.py
           tests/test_sync_apply.py
+          tests/test_cloud_types.py
+          tests/test_cloud_session.py
+
+      - name: Compile desktop package
+        run: python -m compileall -q src
 
   backend:
     runs-on: ubuntu-latest
