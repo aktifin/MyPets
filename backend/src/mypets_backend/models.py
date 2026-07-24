@@ -1,4 +1,4 @@
-"""Server-authoritative SQLAlchemy models for the first cloud synchronization slice."""
+"""Server-authoritative SQLAlchemy models for MyPets cloud synchronization."""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
+    select,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -222,6 +224,74 @@ class PetAssetRelease(Base):
         String(36), ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class PetAssetDeployment(Base):
+    """Mutable channel pointer to an immutable pet asset release."""
+
+    __tablename__ = "pet_asset_deployments"
+    __table_args__ = (
+        Index("ix_pet_asset_deployments_release", "active_release_id"),
+    )
+
+    template_code: Mapped[str] = mapped_column(String(160), primary_key=True)
+    channel: Mapped[str] = mapped_column(String(32), primary_key=True, default="stable")
+    active_release_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("pet_asset_releases.id", ondelete="RESTRICT"), nullable=False
+    )
+    previous_release_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("pet_asset_releases.id", ondelete="RESTRICT"), nullable=True
+    )
+    updated_by_account_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=False
+    )
+    reason: Mapped[str] = mapped_column(Text, default="publish", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+@event.listens_for(PetAssetRelease, "after_insert")
+def _activate_new_release(_mapper, connection, target: PetAssetRelease) -> None:
+    """Move the stable channel to each newly published immutable release."""
+
+    table = PetAssetDeployment.__table__
+    current = connection.execute(
+        select(table.c.active_release_id).where(
+            table.c.template_code == target.template_code,
+            table.c.channel == "stable",
+        )
+    ).scalar_one_or_none()
+    now = utc_now()
+    if current is None:
+        connection.execute(
+            table.insert().values(
+                template_code=target.template_code,
+                channel="stable",
+                active_release_id=target.id,
+                previous_release_id=None,
+                updated_by_account_id=target.published_by_account_id,
+                reason="publish",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        return
+    connection.execute(
+        table.update()
+        .where(
+            table.c.template_code == target.template_code,
+            table.c.channel == "stable",
+        )
+        .values(
+            active_release_id=target.id,
+            previous_release_id=current,
+            updated_by_account_id=target.published_by_account_id,
+            reason="publish",
+            updated_at=now,
+        )
+    )
 
 
 class AdminAuditLog(Base):
