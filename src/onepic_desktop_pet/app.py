@@ -83,6 +83,7 @@ class DesktopPetApplication:
         self.cloud_session.pets_changed.connect(self._pets_changed)
         self.cloud_session.pet_care_succeeded.connect(self._pet_care_succeeded)
         self.cloud_session.pet_care_failed.connect(self._pet_care_failed)
+        self.cloud_api.operation_succeeded.connect(self._cloud_operation_succeeded)
         self.asset_downloader = asset_downloader or AssetPackageDownloadController(
             self.settings.cloud_base_url,
             self.asset_catalog,
@@ -312,6 +313,75 @@ class DesktopPetApplication:
         if self._care_panel is not None:
             self._care_panel.show_result(f"{label}失败：{message}", error=True)
         self.tray.setToolTip(f"{self.active_pet.identity.name} · {message}")
+
+    def _cloud_operation_succeeded(self, operation: str, payload: object) -> None:
+        """Present confirmed growth events after CloudSession has applied them to SQLite."""
+
+        if operation != "events" or not isinstance(payload, dict):
+            return
+        values = payload.get("events")
+        if not isinstance(values, list):
+            return
+        priorities = {
+            "bond_level_up": 1,
+            "growth_level_up": 2,
+            "growth_stage_changed": 3,
+        }
+        selected: tuple[int, str, str, str] | None = None
+        active_id = self.active_pet.identity.pet_id
+        for item in values:
+            if not isinstance(item, dict):
+                continue
+            event_type = item.get("event_type")
+            if event_type not in priorities:
+                continue
+            event_payload = item.get("payload")
+            if not isinstance(event_payload, dict):
+                continue
+            pet_id = event_payload.get("pet_id")
+            if pet_id != active_id:
+                continue
+            transition = event_payload.get("transition")
+            if not isinstance(transition, dict):
+                continue
+            candidate = (
+                priorities[event_type],
+                str(event_type),
+                str(transition.get("previous_value", "")),
+                str(transition.get("current_value", "")),
+            )
+            if selected is None or candidate[0] > selected[0]:
+                selected = candidate
+        if selected is not None:
+            _, event_type, previous_value, current_value = selected
+            self._present_growth_event(event_type, previous_value, current_value)
+
+    def _present_growth_event(
+        self,
+        event_type: str,
+        previous_value: str,
+        current_value: str,
+    ) -> None:
+        active = self.pet_registry.active_pet()
+        if active is not None:
+            self.active_pet = active
+        self._refresh_active_pet_ui()
+        self.window.trigger_growth_feedback(event_type)
+        if event_type == "growth_stage_changed":
+            message = f"成长阶段：{previous_value} → {current_value}"
+        elif event_type == "growth_level_up":
+            message = f"成长等级提升：{previous_value} → {current_value}"
+        else:
+            message = f"羁绊等级提升：{previous_value} → {current_value}"
+        if self._care_panel is not None:
+            self._care_panel.set_pet(self.active_pet)
+            self._care_panel.show_result(message)
+        self.tray.showMessage(
+            self.active_pet.identity.name,
+            message,
+            QSystemTrayIcon.MessageIcon.Information,
+            2600,
+        )
 
     def _cloud_state_changed(self, state: str) -> None:
         self.asset_downloader.set_base_url(self.cloud_api.base_url)
