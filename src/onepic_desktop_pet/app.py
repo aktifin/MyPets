@@ -1,4 +1,4 @@
-"""Desktop application lifecycle, tray UI, local cache, cloud sync, and pet assets."""
+"""Desktop application lifecycle, tray UI, local cache, cloud sync, pet care, and assets."""
 
 from __future__ import annotations
 
@@ -21,12 +21,13 @@ from .edge_geometry import EdgeSide
 from .local_store import LocalStateStore
 from .login_dialog import CloudLoginDialog
 from .pet_assets import PetAssetCatalog
+from .pet_care_panel import PetCarePanel
 from .pet_registry import LOCAL_ACCOUNT_ID, PetRegistry
 from .resources import resource_path
 
 
 class DesktopPetApplication:
-    """Own the Qt app, desktop window, cache, cloud session, and versioned asset catalog."""
+    """Own the Qt app, desktop window, cache, cloud session, care panel, and assets."""
 
     def __init__(
         self,
@@ -73,6 +74,8 @@ class DesktopPetApplication:
         self.cloud_session.state_changed.connect(self._cloud_state_changed)
         self.cloud_session.status_message.connect(self._cloud_status_message)
         self.cloud_session.pets_changed.connect(self._pets_changed)
+        self.cloud_session.pet_care_succeeded.connect(self._pet_care_succeeded)
+        self.cloud_session.pet_care_failed.connect(self._pet_care_failed)
         self.asset_downloader = asset_downloader or AssetPackageDownloadController(
             self.settings.cloud_base_url,
             self.asset_catalog,
@@ -81,6 +84,7 @@ class DesktopPetApplication:
         self.asset_downloader.download_failed.connect(self._asset_download_failed)
         self.asset_downloader.status_message.connect(self._asset_download_status)
         self._login_dialog: CloudLoginDialog | None = None
+        self._care_panel: PetCarePanel | None = None
         self._quitting = False
         self._asset_status = ""
 
@@ -132,6 +136,10 @@ class DesktopPetApplication:
         selfie_action = QAction("自拍一下", menu)
         selfie_action.triggered.connect(self.window.trigger_selfie)
         menu.addAction(selfie_action)
+
+        care_action = QAction("宠物状态与照料…", menu)
+        care_action.triggered.connect(self.open_pet_care_panel)
+        menu.addAction(care_action)
 
         pause_action = QAction("暂停/恢复跑动", menu)
         pause_action.triggered.connect(
@@ -249,6 +257,55 @@ class DesktopPetApplication:
             self._login_dialog.deleteLater()
             self._login_dialog = None
 
+    def open_pet_care_panel(self) -> None:
+        if self._care_panel is None:
+            self._care_panel = PetCarePanel()
+            self._care_panel.action_requested.connect(self._request_pet_care)
+        self._care_panel.set_pet(self.active_pet)
+        self._care_panel.show()
+        self._care_panel.raise_()
+        self._care_panel.activateWindow()
+
+    def _request_pet_care(self, action: str) -> None:
+        if self._care_panel is not None:
+            self._care_panel.set_busy(True, f"正在提交{self._care_action_label(action)}…")
+        if self.active_pet.identity.primary_owner_account_id == LOCAL_ACCOUNT_ID:
+            self._pet_care_failed(action, "本地演示宠物不写入云端状态")
+            return
+        self.cloud_session.care_for_pet(self.active_pet.identity.pet_id, action)
+
+    @staticmethod
+    def _care_action_label(action: str) -> str:
+        return {
+            "feed": "投喂",
+            "play": "玩耍",
+            "clean": "清洁",
+            "pet": "摸摸",
+            "rest": "休息",
+        }.get(action, "照料")
+
+    def _pet_care_succeeded(self, action: str, _payload: object) -> None:
+        active = self.pet_registry.active_pet()
+        if active is not None:
+            self.active_pet = active
+        self.window.show_care_feedback(action)
+        label = self._care_action_label(action)
+        if self._care_panel is not None:
+            self._care_panel.set_pet(self.active_pet)
+            self._care_panel.show_result(f"{label}完成，宠物状态已同步。")
+        self.tray.showMessage(
+            self.active_pet.identity.name,
+            f"{label}完成",
+            QSystemTrayIcon.MessageIcon.Information,
+            1800,
+        )
+
+    def _pet_care_failed(self, action: str, message: str) -> None:
+        label = self._care_action_label(action)
+        if self._care_panel is not None:
+            self._care_panel.show_result(f"{label}失败：{message}", error=True)
+        self.tray.setToolTip(f"{self.active_pet.identity.name} · {message}")
+
     def _cloud_state_changed(self, state: str) -> None:
         self.asset_downloader.set_base_url(self.cloud_api.base_url)
         if state == "connected":
@@ -278,6 +335,8 @@ class DesktopPetApplication:
         if active is not None:
             self.active_pet = active
             self._refresh_active_pet_ui()
+        if self._care_panel is not None:
+            self._care_panel.set_pet(self.active_pet)
         self._rebuild_pet_menu()
 
     def _refresh_active_pet_ui(self) -> None:
@@ -301,6 +360,8 @@ class DesktopPetApplication:
         self.window.setWindowTitle(title)
         tooltip = f"{title} · {self._asset_status}" if self._asset_status else title
         self.tray.setToolTip(tooltip)
+        if self._care_panel is not None:
+            self._care_panel.set_pet(self.active_pet)
 
     def _request_active_pet_assets(self) -> bool:
         if (
@@ -381,6 +442,8 @@ class DesktopPetApplication:
                 self.local_store.close()
             finally:
                 self.tray.hide()
+                if self._care_panel is not None:
+                    self._care_panel.close()
                 self.window.close()
                 self.qt_app.quit()
 
