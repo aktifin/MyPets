@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from hashlib import sha256
+
 from fastapi.testclient import TestClient
 
 
@@ -17,9 +19,10 @@ def _register(client: TestClient, username: str) -> dict[str, str]:
 
 
 def _create_pet(client: TestClient, auth: dict[str, str], name: str = "小云") -> dict:
+    key = sha256(name.encode("utf-8")).hexdigest()[:20]
     response = client.post(
         "/api/v1/pets",
-        headers={**auth, "Idempotency-Key": f"create-pet-{name}"},
+        headers={**auth, "Idempotency-Key": f"create-pet-{key}"},
         json={
             "name": name,
             "template_id": "official.cat.white",
