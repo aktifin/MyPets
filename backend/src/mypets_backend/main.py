@@ -27,6 +27,7 @@ from .reminder_integration_api import reminder_integration_router
 from .reminder_snapshot_api import reminder_snapshot_router
 from .security import hash_password, normalize_username
 from .settlement_middleware import PetSettlementMiddleware
+from .social_api import social_router
 
 
 def _seed_default_admins(session_factory: sessionmaker, admin_usernames: tuple[str, ...]) -> None:
@@ -65,9 +66,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title="MyPets API",
         version="0.2.0-alpha",
         description=(
-            "Server-authoritative account, device, pet care, lazy settlement, "
-            "messaging, reminders, external reminder providers, synchronization, "
-            "pet asset publishing, administrator governance, and console API."
+            "Server-authoritative account, device, pet care, friendship, shared care, "
+            "lazy settlement, messaging, reminders, external reminder providers, "
+            "synchronization, pet asset publishing, administrator governance, and console API."
         ),
     )
     app.state.settings = resolved
@@ -78,6 +79,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(PetSettlementMiddleware)
     app.include_router(router)
     app.include_router(pet_care_router)
+    app.include_router(social_router)
     app.include_router(messaging_router)
     app.include_router(reminder_router)
     app.include_router(reminder_snapshot_router)
