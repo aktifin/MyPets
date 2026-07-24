@@ -1,0 +1,46 @@
+name: Patch remote care policy
+
+on:
+  push:
+    branches: [codex/friends-shared-care]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/friends-shared-care
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply focused policy patch
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('backend/src/mypets_backend/pet_care_api.py')
+          text = path.read_text(encoding='utf-8')
+          if 'from .social_models import PetPrivacy' not in text:
+              text = text.replace(
+                  'from .services import (\n',
+                  'from .social_models import PetPrivacy\nfrom .services import (\n',
+              )
+          marker = '    if pet is None:\n        raise HTTPException(status_code=404, detail="宠物不存在")\n    if pet.presence not in {"home", "resting"}:\n'
+          replacement = '''    if pet is None:\n        raise HTTPException(status_code=404, detail="宠物不存在")\n    if relation.role == "caregiver":\n        privacy = session.get(PetPrivacy, pet.id)\n        if privacy is None or not privacy.allow_remote_care:\n            raise HTTPException(status_code=403, detail="主人尚未开启远程照料")\n    if pet.presence not in {"home", "resting"}:\n'''
+          if '主人尚未开启远程照料' not in text:
+              if marker not in text:
+                  raise SystemExit('target block not found')
+              text = text.replace(marker, replacement, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Commit patch
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add backend/src/mypets_backend/pet_care_api.py
+          git commit -m "Enforce remote care privacy policy"
+          git push origin HEAD:codex/friends-shared-care
