@@ -2,7 +2,50 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from conftest import bind_device, register_account
+
+def _register_account(
+    client: TestClient,
+    username: str,
+    *,
+    display_name: str | None = None,
+    password: str = "a-strong-test-password",
+) -> dict[str, str]:
+    response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": username,
+            "display_name": display_name or username,
+            "password": password,
+        },
+    )
+    assert response.status_code == 201, response.text
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
+def _bind_device(
+    client: TestClient,
+    account_auth: dict[str, str],
+    *,
+    public_id: str,
+    name: str,
+) -> tuple[dict, dict[str, str], str]:
+    bound = client.post(
+        "/api/v1/devices/bind",
+        headers=account_auth,
+        json={"public_id": public_id, "name": name, "platform": "windows"},
+    )
+    assert bound.status_code == 201, bound.text
+    binding = bound.json()
+    exchanged = client.post(
+        "/api/v1/auth/device-token",
+        json={
+            "device_id": binding["device"]["id"],
+            "device_secret": binding["device_secret"],
+        },
+    )
+    assert exchanged.status_code == 200, exchanged.text
+    headers = {"Authorization": f"Bearer {exchanged.json()['access_token']}"}
+    return binding["device"], headers, binding["device_secret"]
 
 
 def _create_pet(
@@ -49,7 +92,7 @@ def test_user_portal_static_assets_are_same_origin_and_not_cached(client: TestCl
 
 
 def test_account_profile_and_password_maintenance(client: TestClient) -> None:
-    auth = register_account(
+    auth = _register_account(
         client,
         "portal_owner",
         display_name="旧名称",
@@ -102,11 +145,11 @@ def test_account_profile_and_password_maintenance(client: TestClient) -> None:
 
 
 def test_pet_selection_configuration_and_friend_maintenance(client: TestClient) -> None:
-    owner = register_account(client, "web_pet_owner", display_name="Web 主人")
-    friend = register_account(client, "web_friend", display_name="Web 好友")
+    owner = _register_account(client, "web_pet_owner", display_name="Web 主人")
+    friend = _register_account(client, "web_friend", display_name="Web 好友")
     first = _create_pet(client, owner, name="小一", key="portal-create-pet-0001")
     second = _create_pet(client, owner, name="小二", key="portal-create-pet-0002")
-    _, device_auth, _ = bind_device(
+    _, device_auth, _ = _bind_device(
         client,
         owner,
         public_id="portal-device-0001",
