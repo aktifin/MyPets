@@ -76,8 +76,10 @@ jobs:
       - name: Run backend tests
         run: python -m pytest -q --tb=short
 
-      - name: Validate administrator console JavaScript
-        run: node --check src/mypets_backend/admin_console_static/app.js
+      - name: Validate Web console JavaScript
+        run: >-
+          node --check src/mypets_backend/admin_console_static/app.js
+          && node --check src/mypets_backend/user_portal_static/app.js
 
       - name: Compile backend package
         run: python -m compileall -q src
