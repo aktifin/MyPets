@@ -23,7 +23,7 @@ class ReminderDesktopPetApplication(DesktopPetApplication):
             self.cloud_api,
             self.cloud_session,
             self.reminder_cache,
-            self.qt_app,
+            parent=self.qt_app,
         )
         self.reminder_scheduler = ReminderScheduler(
             self.reminder_cache,
