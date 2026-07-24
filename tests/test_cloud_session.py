@@ -84,6 +84,9 @@ class FakeApi(QObject):
     def set_active_pet(self, device_id: str, pet_id: str | None) -> None:
         self.calls.append(("active_pet", device_id, pet_id))
 
+    def list_conversations(self) -> None:
+        self.calls.append(("conversations",))
+
 
 def _bootstrap_payload() -> dict:
     return {
@@ -218,6 +221,7 @@ def test_login_binds_device_then_persists_credentials_after_device_auth(
     api.operation_succeeded.emit("bootstrap", _bootstrap_payload())
     assert controller.state is CloudConnectionState.CONNECTED
     assert controller.registry.active_pet().identity.name == "小白"
+    assert api.calls[-1] == ("conversations",)
     controller.stop()
     store.close()
 
