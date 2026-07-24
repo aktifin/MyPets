@@ -3,6 +3,8 @@ name: Export admin branch source
 on:
   push:
     branches: [codex/admin-pet-publishing]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: read
