@@ -42,8 +42,18 @@ jobs:
 
       - name: Validate Manifest path safety
         run: >-
-          python -m pytest -q --tb=short
+          python -m pytest -vv --tb=long
           tests/test_pet_assets.py::test_manifest_rejects_parent_directory_escape
+          > path-safety-test.log 2>&1
+
+      - name: Upload path safety diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: path-safety-test-log
+          path: path-safety-test.log
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Validate versioned asset cache installation
         run: >-
