@@ -1,8 +1,6 @@
 name: Apply administrator publishing implementation
 
 on:
-  push:
-    branches: [codex/admin-pet-publishing]
   pull_request:
     branches: [main]
 
@@ -12,7 +10,6 @@ permissions:
 jobs:
   apply:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
         with:
