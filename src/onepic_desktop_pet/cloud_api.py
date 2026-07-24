@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any
 from urllib.parse import urlencode
 from uuid import uuid4
@@ -138,6 +139,36 @@ class CloudApiClient(QObject):
             headers={"Idempotency-Key": f"desktop-active-pet-{uuid4()}"},
         )
 
+    def care_for_pet(
+        self,
+        pet_id: str,
+        action: str,
+        *,
+        device_id: str,
+        client_time: datetime | None = None,
+        idempotency_key: str | None = None,
+    ) -> None:
+        """Submit one deterministic care action using the current device identity."""
+
+        normalized_action = action.strip().lower()
+        if normalized_action not in {"feed", "play", "clean", "pet", "rest"}:
+            raise ValueError("不支持的照料动作")
+        key = idempotency_key or f"desktop-care-{normalized_action}-{uuid4()}"
+        operation = f"pet_care:{normalized_action}:{pet_id}"
+        payload: dict[str, Any] = {"device_id": device_id}
+        if client_time is not None:
+            if client_time.tzinfo is None:
+                raise ValueError("client_time 必须包含时区")
+            payload["client_time"] = client_time.isoformat()
+        self._json_request(
+            operation,
+            "POST",
+            f"/api/v1/pets/{pet_id}/interactions/{normalized_action}",
+            payload,
+            token=self._require_device_token(),
+            headers={"Idempotency-Key": key},
+        )
+
     def _require_account_token(self) -> str:
         if not self._account_token:
             raise RuntimeError("尚未取得账户访问令牌")
@@ -189,7 +220,7 @@ class CloudApiClient(QObject):
             url.setQuery(url_query)
         request = QNetworkRequest(url)
         request.setRawHeader(b"Accept", b"application/json")
-        request.setRawHeader(b"User-Agent", b"MyPets-Desktop/0.1")
+        request.setRawHeader(b"User-Agent", b"MyPets-Desktop/0.2-alpha")
         if content_type:
             request.setHeader(QNetworkRequest.KnownHeaders.ContentTypeHeader, content_type)
         if token:

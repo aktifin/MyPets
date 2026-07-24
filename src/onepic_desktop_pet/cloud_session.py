@@ -1,9 +1,10 @@
-"""Desktop cloud authentication, device binding, and synchronization orchestration."""
+"""Desktop cloud authentication, device binding, pet care, and synchronization orchestration."""
 
 from __future__ import annotations
 
 import os
 import platform
+from datetime import datetime
 from enum import Enum
 from typing import Any, Mapping
 
@@ -15,7 +16,13 @@ from .config import PetSettings, save_settings
 from .credential_store import CredentialStore
 from .local_store import LocalStateStore
 from .pet_registry import PetRegistry
-from .sync_apply import apply_bootstrap, apply_events, stream_name
+from .sync_apply import (
+    apply_bootstrap,
+    apply_events,
+    parse_pet,
+    parse_relation,
+    stream_name,
+)
 
 
 class CloudConnectionState(str, Enum):
@@ -29,13 +36,15 @@ class CloudConnectionState(str, Enum):
 
 
 class CloudSessionController(QObject):
-    """Coordinate account login, device credentials, and local cache synchronization."""
+    """Coordinate account login, device credentials, care actions, and cache synchronization."""
 
     state_changed = Signal(str)
     status_message = Signal(str)
     login_succeeded = Signal(str)
     login_failed = Signal(str)
     pets_changed = Signal()
+    pet_care_succeeded = Signal(str, object)
+    pet_care_failed = Signal(str, str)
 
     def __init__(
         self,
@@ -144,6 +153,23 @@ class CloudSessionController(QObject):
         self.registry.switch_active_pet(pet_id)
         self.pets_changed.emit()
         self.status_message.emit("当前处于离线模式，切换仅保存在本机")
+
+    def care_for_pet(self, pet_id: str, action: str) -> None:
+        """Submit one care action; visible success is emitted only after server confirmation."""
+
+        normalized_action = action.strip().lower()
+        if not self.connected or self.identity is None:
+            self.pet_care_failed.emit(normalized_action, "云端未连接，无法更新宠物状态")
+            return
+        try:
+            self.api.care_for_pet(
+                pet_id,
+                normalized_action,
+                device_id=self.identity.device_id,
+                client_time=datetime.now().astimezone(),
+            )
+        except (RuntimeError, ValueError) as exc:
+            self.pet_care_failed.emit(normalized_action, str(exc))
 
     def sign_out(self, *, clear_cache: bool = False) -> None:
         base_url = self.settings.cloud_base_url
@@ -270,14 +296,45 @@ class CloudSessionController(QObject):
                 self._set_state(CloudConnectionState.CONNECTED, "已切换当前宠物")
                 return
 
+            if operation.startswith("pet_care:"):
+                parts = operation.split(":", 2)
+                action = parts[1] if len(parts) > 1 else "care"
+                pet = parse_pet(data.get("pet"))
+                relation = parse_relation(data.get("relation"))
+                if self.identity is None or relation.account_id != self.identity.account_id:
+                    raise ValueError("照料结果关系不属于当前账户")
+                self.store.upsert_pet(pet)
+                self.store.upsert_relation(relation)
+                self._refresh_attempted = False
+                self.pets_changed.emit()
+                self.pet_care_succeeded.emit(action, dict(data))
+                self._set_state(CloudConnectionState.CONNECTED, "照料结果已同步")
+                return
+
             if operation == "heartbeat":
                 return
         except (KeyError, RuntimeError, OSError, ValueError) as exc:
             self._set_state(CloudConnectionState.ERROR, f"云端响应无效：{exc}")
-            self.login_failed.emit(str(exc))
+            if operation.startswith("pet_care:"):
+                action = operation.split(":", 2)[1]
+                self.pet_care_failed.emit(action, str(exc))
+            else:
+                self.login_failed.emit(str(exc))
 
     def _on_failure(self, operation: str, status: int, detail: str) -> None:
-        if status == 401 and operation in {"bootstrap", "events", "active_pet", "heartbeat"}:
+        care_operation = operation.startswith("pet_care:")
+        protected_operation = care_operation or operation in {
+            "bootstrap",
+            "events",
+            "active_pet",
+            "heartbeat",
+        }
+        if status == 401 and protected_operation:
+            if care_operation:
+                self.pet_care_failed.emit(
+                    operation.split(":", 2)[1],
+                    "设备会话已过期，正在刷新，请稍后重试",
+                )
             if not self._refresh_attempted and self._credentials is not None:
                 self._refresh_attempted = True
                 self.api.set_device_token(None)
@@ -292,6 +349,12 @@ class CloudSessionController(QObject):
             self.settings.cloud_sync_enabled = False
             save_settings(self.settings)
             detail = "设备凭据已失效，请重新登录"
+        if care_operation:
+            action = operation.split(":", 2)[1]
+            self.pet_care_failed.emit(action, detail)
+            if status not in {0, 401, 503}:
+                self.status_message.emit(detail)
+                return
         if operation in {"login", "register", "bind_device", "device_token"}:
             self.login_failed.emit(detail)
         self._set_state(

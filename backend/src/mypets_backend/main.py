@@ -20,6 +20,7 @@ from .config import Settings
 from .database import Base, create_database_engine, create_session_factory
 from .models import Account
 from .object_store import FileObjectStore
+from .pet_care_api import pet_care_router
 from .security import hash_password, normalize_username
 
 
@@ -57,9 +58,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="MyPets API",
-        version="0.1.0",
+        version="0.2.0-alpha",
         description=(
-            "Server-authoritative account, device, pet, synchronization, pet asset publishing, administrator governance, and console API."
+            "Server-authoritative account, device, pet care, synchronization, pet asset publishing, administrator governance, and console API."
         ),
     )
     app.state.settings = resolved
@@ -68,6 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.asset_object_store = FileObjectStore(resolved.asset_storage_path)
     app.add_middleware(AdminPermissionMiddleware)
     app.include_router(router)
+    app.include_router(pet_care_router)
     # Static governance paths such as /pet-template-versions/compare must be
     # registered before admin_router's dynamic /{version_id} route.
     app.include_router(admin_governance_router)
