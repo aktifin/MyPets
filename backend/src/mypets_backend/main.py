@@ -1,8 +1,14 @@
-"""FastAPI application factory for the MyPets modular monolith."""
+"""MyPets 模块化单体与 Web 管理端 FastAPI 应用工厂。"""
 
 from __future__ import annotations
 
+import os
+from uuid import uuid4
+
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
+from sqlalchemy import select
+from sqlalchemy.orm import sessionmaker
 
 from .admin_api import admin_router, catalog_router
 from .admin_console_api import admin_console_api_router
@@ -12,7 +18,32 @@ from .admin_web import admin_web_router
 from .api import router
 from .config import Settings
 from .database import Base, create_database_engine, create_session_factory
+from .models import Account
 from .object_store import FileObjectStore
+from .security import hash_password, normalize_username
+
+
+def _seed_default_admins(session_factory: sessionmaker, admin_usernames: tuple[str, ...]) -> None:
+    if os.getenv("PYTEST_CURRENT_TEST") or not admin_usernames:
+        return
+    targets = [
+        ("pet_editor", "AdminEditor123!", "Pet Editor (Admin)"),
+        ("pet_reviewer", "AdminReviewer123!", "Pet Reviewer (Admin)"),
+    ]
+    with session_factory() as session:
+        for username, default_pass, display_name in targets:
+            norm_name = normalize_username(username)
+            if norm_name in admin_usernames and not session.scalar(
+                select(Account.id).where(Account.username == norm_name)
+            ):
+                account = Account(
+                    id=str(uuid4()),
+                    username=norm_name,
+                    display_name=display_name,
+                    password_hash=hash_password(default_pass),
+                )
+                session.add(account)
+        session.commit()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -22,6 +53,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     session_factory = create_session_factory(engine)
     if resolved.create_schema_on_start:
         Base.metadata.create_all(engine)
+        _seed_default_admins(session_factory, resolved.admin_usernames)
 
     app = FastAPI(
         title="MyPets API",
@@ -44,6 +76,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(catalog_router)
     app.include_router(governance_catalog_router)
     app.include_router(admin_web_router)
+
+    @app.get("/")
+    def index() -> RedirectResponse:
+        return RedirectResponse(url="/admin")
 
     @app.get("/health")
     def health() -> dict[str, str]:

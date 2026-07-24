@@ -1,4 +1,4 @@
-"""Environment-backed backend configuration without importing desktop settings."""
+"""与桌面端无关的独立环境后端配置模块。"""
 
 from __future__ import annotations
 
@@ -70,7 +70,9 @@ class Settings:
                 "MYPETS_CREATE_SCHEMA_ON_START", "1"
             ).lower()
             not in {"0", "false", "no"},
-            admin_usernames=_csv_values(os.getenv("MYPETS_ADMIN_USERNAMES", "")),
+            admin_usernames=_csv_values(
+                os.getenv("MYPETS_ADMIN_USERNAMES", "pet_editor,pet_reviewer")
+            ),
             admin_superadmin_usernames=_csv_values(
                 os.getenv("MYPETS_ADMIN_SUPERADMINS", "")
             ),
