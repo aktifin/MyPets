@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mypets-backend"
+version = "0.1.0"
+description = "MyPets modular-monolith API for accounts, devices, pets, and synchronization."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.128,<1",
+    "uvicorn>=0.40,<1",
+    "SQLAlchemy>=2.0,<2.2",
+    "pydantic>=2.12,<3",
+    "PyJWT>=2.10,<3",
+    "argon2-cffi>=25,<26",
+    "python-multipart>=0.0.20,<1",
+    "psycopg[binary]>=3.2,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx>=0.28,<1",
+    "pytest>=8,<10",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
