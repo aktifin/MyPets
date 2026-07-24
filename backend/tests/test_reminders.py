@@ -4,8 +4,51 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 
-from conftest import bind_device, register_account
 from mypets_backend.reminder_provider import ProviderOccurrence, ReminderProvider
+
+
+def _register_account(
+    client: TestClient,
+    username: str,
+    *,
+    display_name: str | None = None,
+) -> dict[str, str]:
+    response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": username,
+            "display_name": display_name or username,
+            "password": "a-strong-test-password",
+        },
+    )
+    assert response.status_code == 201, response.text
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
+def _bind_device(
+    client: TestClient,
+    account_auth: dict[str, str],
+    *,
+    public_id: str = "windows-reminder-device-0001",
+) -> tuple[dict, dict[str, str]]:
+    bound = client.post(
+        "/api/v1/devices/bind",
+        headers=account_auth,
+        json={"public_id": public_id, "name": "提醒测试电脑", "platform": "windows"},
+    )
+    assert bound.status_code == 201, bound.text
+    binding = bound.json()
+    exchanged = client.post(
+        "/api/v1/auth/device-token",
+        json={
+            "device_id": binding["device"]["id"],
+            "device_secret": binding["device_secret"],
+        },
+    )
+    assert exchanged.status_code == 200, exchanged.text
+    return binding["device"], {
+        "Authorization": f"Bearer {exchanged.json()['access_token']}"
+    }
 
 
 def _payload(*, version: int = 1, minutes: int = 30) -> dict:
@@ -52,7 +95,7 @@ def test_reminder_delivery_snooze_complete_and_sync_events(
     client: TestClient,
     account_auth: dict[str, str],
 ) -> None:
-    _device, device_auth, _secret = bind_device(client, account_auth)
+    _device, device_auth = _bind_device(client, account_auth)
     created = _create(client, account_auth)
     assert created.status_code == 201, created.text
     occurrence = created.json()
@@ -64,9 +107,10 @@ def test_reminder_delivery_snooze_complete_and_sync_events(
     assert replay.status_code == 201
     assert replay.json()["occurrence_id"] == occurrence_id
 
-    listed = client.get("/api/v1/reminders/occurrences", headers=device_auth)
-    assert listed.status_code == 200
-    assert [item["occurrence_id"] for item in listed.json()] == [occurrence_id]
+    snapshot = client.get("/api/v1/reminders/snapshot", headers=device_auth)
+    assert snapshot.status_code == 200
+    assert snapshot.json()["count"] == 1
+    assert snapshot.json()["items"][0]["occurrence_id"] == occurrence_id
 
     delivered = client.post(
         f"/api/v1/reminders/occurrences/{occurrence_id}/delivered",
@@ -119,7 +163,7 @@ def test_reminder_import_rejects_stale_or_terminal_revival(
     client: TestClient,
     account_auth: dict[str, str],
 ) -> None:
-    _device, device_auth, _secret = bind_device(client, account_auth)
+    _device, device_auth = _bind_device(client, account_auth)
     created = _create(client, account_auth)
     occurrence_id = created.json()["occurrence_id"]
 
@@ -132,6 +176,14 @@ def test_reminder_import_rejects_stale_or_terminal_revival(
         payload=inconsistent,
     )
     assert conflict.status_code == 409
+
+    stale = _create(
+        client,
+        account_auth,
+        key="reminder-create-stale",
+        payload=_payload(version=0),
+    )
+    assert stale.status_code == 422
 
     completed = client.post(
         f"/api/v1/reminders/occurrences/{occurrence_id}/complete",
@@ -161,8 +213,8 @@ def test_reminders_are_account_scoped_and_delivery_requires_device_token(
     )
     assert account_delivery.status_code == 403
 
-    other_auth = register_account(client, "other_reminder_owner")
-    other_device, other_device_auth, _secret = bind_device(
+    other_auth = _register_account(client, "other_reminder_owner")
+    other_device, other_device_auth = _bind_device(
         client,
         other_auth,
         public_id="other-reminder-device",
