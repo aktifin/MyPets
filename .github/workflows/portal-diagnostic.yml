@@ -1,0 +1,42 @@
+name: User portal diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  portal-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install backend
+        run: python -m pip install -q -e '.[dev]'
+      - name: Run portal tests
+        id: pytest
+        shell: bash
+        run: |
+          set +e
+          python -m pytest tests/test_user_portal.py -x -vv --tb=long > portal-pytest.log 2>&1
+          status=$?
+          tail -n 240 portal-pytest.log > portal-failure-tail.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Upload diagnostic tail
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-failure-tail
+          path: backend/portal-failure-tail.log
+          retention-days: 1
+      - name: Fail when pytest failed
+        if: steps.pytest.outputs.status != '0'
+        run: exit 1
