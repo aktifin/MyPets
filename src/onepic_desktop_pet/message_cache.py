@@ -58,13 +58,14 @@ class MessageCache:
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_cached_messages_sequence
                     ON cached_messages(account_id, conversation_id, sequence_number);
                 CREATE TABLE IF NOT EXISTS cached_message_receipts (
-                    account_id TEXT NOT NULL,
+                    local_account_id TEXT NOT NULL,
                     message_id TEXT NOT NULL,
+                    receipt_account_id TEXT NOT NULL,
                     state TEXT NOT NULL,
                     delivered_at TEXT NOT NULL,
                     read_at TEXT,
-                    PRIMARY KEY (account_id, message_id),
-                    FOREIGN KEY (account_id, message_id)
+                    PRIMARY KEY (local_account_id, message_id, receipt_account_id),
+                    FOREIGN KEY (local_account_id, message_id)
                         REFERENCES cached_messages(account_id, message_id)
                         ON DELETE CASCADE
                 );
@@ -241,12 +242,17 @@ class MessageCache:
         ).fetchone()
         return self._message(row) if row else None
 
-    def upsert_receipt(self, receipt: MessageReceiptRecord) -> None:
+    def upsert_receipt(
+        self,
+        local_account_id: str,
+        receipt: MessageReceiptRecord,
+    ) -> None:
         with self.store.transaction() as connection:
             connection.execute(
                 """
-                INSERT INTO cached_message_receipts VALUES (?,?,?,?,?)
-                ON CONFLICT(account_id, message_id) DO UPDATE SET
+                INSERT INTO cached_message_receipts VALUES (?,?,?,?,?,?)
+                ON CONFLICT(local_account_id, message_id, receipt_account_id)
+                DO UPDATE SET
                     state=CASE
                         WHEN cached_message_receipts.state='read' THEN 'read'
                         ELSE excluded.state
@@ -255,8 +261,9 @@ class MessageCache:
                     read_at=COALESCE(cached_message_receipts.read_at, excluded.read_at)
                 """,
                 (
-                    receipt.account_id,
+                    local_account_id,
                     receipt.message_id,
+                    receipt.account_id,
                     receipt.state,
                     _iso(receipt.delivered_at, "receipt.delivered_at"),
                     _iso(receipt.read_at, "receipt.read_at") if receipt.read_at else None,
