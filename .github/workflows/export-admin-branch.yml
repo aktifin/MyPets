@@ -19,28 +19,19 @@ jobs:
       - name: Restore implementation files
         shell: bash
         run: |
-          set +e
-          {
-            set -x
-            wc -c .github/admin-publishing-bundle.part*
-            cat .github/admin-publishing-bundle.part* > /tmp/admin-publishing.b64
-            base64 --decode /tmp/admin-publishing.b64 > /tmp/admin-publishing.tar.gz
-            sha256sum /tmp/admin-publishing.tar.gz
-            gzip -t /tmp/admin-publishing.tar.gz
-            tar -tzf /tmp/admin-publishing.tar.gz
-            tar -xzf /tmp/admin-publishing.tar.gz -C .
-          } > restore-admin-publishing.log 2>&1
-          status=$?
-          cat restore-admin-publishing.log
-          exit $status
-
-      - name: Upload restore diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: admin-publishing-restore-log
-          path: restore-admin-publishing.log
-          retention-days: 1
+          set -euo pipefail
+          cat \
+            .github/admin-publishing-bundle.part00 \
+            .github/admin-publishing-bundle.part01 \
+            .github/admin-publishing-bundle.part02 \
+            .github/admin-publishing-bundle.part03 \
+            .github/admin-publishing-bundle.part04 \
+            .github/admin-publishing-bundle.part05a \
+            .github/admin-publishing-bundle.part05b \
+            > /tmp/admin-publishing.b64
+          base64 --decode /tmp/admin-publishing.b64 > /tmp/admin-publishing.tar.gz
+          gzip -t /tmp/admin-publishing.tar.gz
+          tar -xzf /tmp/admin-publishing.tar.gz -C .
 
       - name: Commit implementation
         shell: bash
@@ -49,7 +40,6 @@ jobs:
           rm -f .github/admin-publishing-bundle.part*
           rm -f .github/workflows/export-admin-branch.yml
           rm -f .github/workflows/apply-admin-publishing.yml
-          rm -f restore-admin-publishing.log
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
