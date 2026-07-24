@@ -170,12 +170,9 @@ class MessageDrawer(QDialog):
         self.conversation_selected.emit(conversation_id)
         conversation = self.cache.get_conversation(self.account_id, conversation_id)
         latest = self.cache.latest_message(self.account_id, conversation_id)
-        if (
-            conversation is not None
-            and conversation.unread_count > 0
-            and latest is not None
-            and not latest.outgoing
-        ):
+        if conversation is not None and conversation.unread_count > 0 and latest is not None:
+            # Reading a conversation acknowledges every message through the latest sequence,
+            # even when the latest message was sent by the local account after older unread mail.
             self.read_requested.emit(latest.message_id)
 
     def _render_selected(self) -> None:
