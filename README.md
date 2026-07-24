@@ -2,7 +2,7 @@
 
 上传一张角色图片，生成、配置并优化一个可以在 Windows 桌面上跑动、休息、互动和自拍的桌面宠物。
 
-当前 `v0.1.0` 是从已经可运行的 Python + PySide6 桌宠整理出的开源版本。项目正在按 MyPets 云养宠架构渐进演进，但未完成的云端、小程序和社交能力不会在 README 中标记为已实现。
+当前 `v0.1.0` 是从已经可运行的 Python + PySide6 桌宠整理出的开源版本。项目正在按 MyPets 云养宠架构渐进演进，但未完成的小程序、社交和 AI 服务不会在 README 中标记为已实现。
 
 ## 当前功能
 
@@ -20,14 +20,18 @@
 - 标准角色形象和走路 GIF 必须分别得到用户确认；
 - 表情符号由程序独立绘制，换角色后仍可显示闪光、爱心、惊叹号、疑问号、怒气、Zzz 和汗滴；
 - 宠物 Manifest 2.0 校验工具；
+- 独立 FastAPI 后端包，支持账户、设备、宠物和语义增量同步；
 - PyInstaller Windows 打包脚本。
 
 ## 云养宠演进基线
 
-仓库已经加入第二批架构基础：
+仓库已经加入第三批架构基础：
 
 - 多宠物、成长、串门、折叠消息、提醒和云事件的纯领域模型；
 - SQLite 本地缓存、设备当前宠物、提醒实例、离线 outbox 和同步游标；
+- 可运行的账户注册、登录、设备绑定、设备撤销和设备令牌 API；
+- 服务端权威宠物资料、账户宠物关系、完整快照和增量事件 API；
+- 桌面端同步载荷校验与缓存应用器；
 - 视觉身份、能力声明、动作降级、边缘探头和素材版本的 Manifest 规范；
 - 不侵入 `PetWindow` 主动画逻辑的边缘吸附控制器；
 - 管理员和素材制作者可执行的 Manifest 校验命令；
@@ -37,8 +41,9 @@
 
 - [云养宠架构基线](docs/云养宠架构基线.md)
 - [PC 本地状态仓库](docs/本地状态仓库.md)
+- [后端同步 API](docs/后端同步API.md)
 
-当前 SQLite 只属于客户端缓存层。云端账户、服务端成长判定、小程序、实时串门、多宠聚会和 AI 聊天服务尚未实现。
+当前 SQLite 只属于客户端缓存层。桌面登录与设备绑定界面、Qt HTTP 传输、Windows Credential Manager、小程序、实时串门、多宠聚会和 AI 聊天服务尚未实现。
 
 ## 最快体验
 
@@ -51,6 +56,19 @@
 ```
 
 环境脚本只在项目内创建 `.venv` 并安装依赖，不会自动安装 Python、Git，不会修改系统环境变量，也不会申请管理员权限。缺少 Python 3.12 时会停止并给出提示。
+
+## 启动后端开发服务
+
+后端依赖与桌面依赖分离：
+
+```powershell
+cd backend
+python -m pip install -e ".[dev]"
+$env:MYPETS_JWT_SECRET = "替换为至少24字符的随机密钥"
+python -m uvicorn mypets_backend.main:app --reload
+```
+
+默认仅用于本地开发的数据库为 `backend/mypets-backend.sqlite3`。生产环境必须使用独立随机密钥、PostgreSQL、HTTPS、数据库迁移和访问限流；详见[后端同步 API](docs/后端同步API.md)。
 
 ## 从一张图片开始
 
@@ -123,12 +141,22 @@ user_assets/selfie.jpeg
 
 ## 测试与打包
 
+桌面端：
+
 ```powershell
 .\scripts\test.ps1
 .\scripts\build.ps1
 ```
 
-默认打包生成不含任何 `user_assets/` 的公开演示版本。只有角色和走路均确认后，才能显式构建个人版本：
+后端：
+
+```powershell
+cd backend
+python -m pip install -e ".[dev]"
+python -m pytest
+```
+
+默认打包生成不含任何 `user_assets/` 或后端运行数据库的公开演示版本。只有角色和走路均确认后，才能显式构建个人版本：
 
 ```powershell
 .\scripts\build.ps1 -IncludeUserAssets
@@ -148,6 +176,7 @@ dist/OnePicDesktopPet/OnePicDesktopPet.exe
 - [一图桌宠执行说明书](agent-guide/一图桌宠执行说明书.md)
 - [云养宠架构基线](docs/云养宠架构基线.md)
 - [PC 本地状态仓库](docs/本地状态仓库.md)
+- [后端同步 API](docs/后端同步API.md)
 - [素材规范](docs/素材规范.md)
 - [角色与走路验收清单](docs/角色与走路验收清单.md)
 - [隐私说明](docs/隐私说明.md)
