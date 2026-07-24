@@ -45,6 +45,7 @@ class CloudSessionController(QObject):
         credential_store: CredentialStore,
         settings: PetSettings,
         *,
+        poll_timer: QTimer | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -60,7 +61,7 @@ class CloudSessionController(QObject):
         self._pending_account_id = ""
         self._refresh_attempted = False
 
-        self._poll_timer = QTimer(self)
+        self._poll_timer = poll_timer or QTimer(self)
         self._poll_timer.setInterval(self.settings.cloud_sync_interval_ms)
         self._poll_timer.timeout.connect(self.sync_now)
         self.api.operation_succeeded.connect(self._on_success)
