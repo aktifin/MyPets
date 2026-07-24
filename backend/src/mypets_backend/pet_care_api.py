@@ -18,6 +18,7 @@ from .pet_care import CARE_RULES, CareAction, CareMutation, apply_care_action
 from .pet_state_service import settle_pet_and_publish
 from .schemas import PetView, RelationView
 from .security import Principal
+from .social_models import PetPrivacy
 from .services import (
     append_event,
     find_event_by_idempotency,
@@ -265,6 +266,10 @@ def care_for_pet(
     )
     if pet is None:
         raise HTTPException(status_code=404, detail="宠物不存在")
+    if relation.role == "caregiver":
+        privacy = session.get(PetPrivacy, pet.id)
+        if privacy is None or not privacy.allow_remote_care:
+            raise HTTPException(status_code=403, detail="主人尚未开启远程照料")
     if pet.presence not in {"home", "resting"}:
         raise HTTPException(status_code=409, detail="宠物外出期间不能执行该照料动作")
 
