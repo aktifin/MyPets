@@ -7,6 +7,7 @@ on:
 permissions:
   contents: write
 
+# Final trigger after all bundle segments were byte-verified.
 jobs:
   apply:
     runs-on: ubuntu-latest
