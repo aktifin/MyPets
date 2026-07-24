@@ -1,40 +1,35 @@
-"""
-本模块管理桌面宠物应用生命周期、系统托盘菜单和设备级状态保存。
-
-职责范围：
-- 创建或复用 QApplication；
-- 在创建应用前启用适合不同显示器缩放比例的高 DPI 舍入策略；
-- 打开 SQLite 本地状态仓库并建立兼容现有单机素材的默认宠物资料；
-- 创建 PetWindow、边缘吸附控制器和 QSystemTrayIcon；
-- 连接显示、隐藏、暂停跑动、互动、边缘吸附和退出动作；
-- 退出前保存完整可见位置、显示尺寸和边缘吸附状态；
-- 为自动验证提供定时退出的 smoke-test 参数。
-"""
+"""Desktop application lifecycle, tray UI, local cache, and optional cloud synchronization."""
 
 from __future__ import annotations
 
 import sys
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction, QGuiApplication, QIcon
+from PySide6.QtGui import QAction, QActionGroup, QGuiApplication, QIcon
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
+from .cloud_api import CloudApiClient
+from .cloud_session import CloudSessionController
 from .config import PetSettings, load_settings, save_settings
+from .credential_store import CredentialStore, default_credential_store
 from .edge_dock import EdgeDockController
 from .edge_geometry import EdgeSide
 from .local_store import LocalStateStore
+from .login_dialog import CloudLoginDialog
 from .pet_registry import PetRegistry
 from .resources import resource_path
 from .window import PetWindow
 
 
 class DesktopPetApplication:
-    """封装窗口、托盘、边缘模式和本地宠物状态。"""
+    """Own the Qt application, desktop pet window, cache, tray, and cloud session."""
 
     def __init__(
         self,
         settings: PetSettings | None = None,
         local_store: LocalStateStore | None = None,
+        credential_store: CredentialStore | None = None,
+        cloud_api: CloudApiClient | None = None,
     ) -> None:
         if QApplication.instance() is None:
             QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
@@ -45,24 +40,35 @@ class DesktopPetApplication:
         self.qt_app.setQuitOnLastWindowClosed(False)
         self.settings = settings or load_settings()
 
-        # 目前窗口仍加载现有单套素材；注册表先稳定宠物身份、状态和设备选择，
-        # 后续素材解析器再按 active_pet 的模板和版本切换资源包。
         self.local_store = local_store or LocalStateStore.open_default()
         self.pet_registry = PetRegistry(self.local_store)
         self.active_pet = self.pet_registry.bootstrap_local_pet()
 
         self.window = PetWindow(self.settings)
-        self.window.setWindowTitle(f"{self.active_pet.identity.name} · MyPets")
         self.edge_dock = EdgeDockController(self.window, self.settings)
         self.window.quit_requested.connect(self.quit)
+
+        self.credential_store = credential_store or default_credential_store()
+        self.cloud_api = cloud_api or CloudApiClient(self.settings.cloud_base_url)
+        self.cloud_session = CloudSessionController(
+            self.cloud_api,
+            self.local_store,
+            self.pet_registry,
+            self.credential_store,
+            self.settings,
+        )
+        self.cloud_session.state_changed.connect(self._cloud_state_changed)
+        self.cloud_session.status_message.connect(self._cloud_status_message)
+        self.cloud_session.pets_changed.connect(self._pets_changed)
+        self._login_dialog: CloudLoginDialog | None = None
+        self._quitting = False
+
         self.tray = self._create_tray()
+        self._refresh_active_pet_ui()
 
     def _create_tray(self) -> QSystemTrayIcon:
-        """创建系统托盘图标及其操作菜单。"""
-
         icon = QIcon(str(resource_path("assets/icons/pet.png")))
         tray = QSystemTrayIcon(icon, self.qt_app)
-        tray.setToolTip(f"{self.active_pet.identity.name} · MyPets")
         menu = QMenu()
 
         show_action = QAction("显示宠物", menu)
@@ -82,6 +88,9 @@ class DesktopPetApplication:
             lambda: self.window.set_paused(not self.window.paused)
         )
         menu.addAction(pause_action)
+
+        self.pet_menu = menu.addMenu("切换宠物")
+        self.pet_menu.aboutToShow.connect(self._rebuild_pet_menu)
 
         edge_menu = menu.addMenu("边缘吸附")
         attach_left = QAction("吸附到左侧", edge_menu)
@@ -104,6 +113,25 @@ class DesktopPetApplication:
         detach_action.triggered.connect(self.edge_dock.detach)
         edge_menu.addAction(detach_action)
 
+        cloud_menu = menu.addMenu("云端账户")
+        self.cloud_status_action = QAction("未连接", cloud_menu)
+        self.cloud_status_action.setEnabled(False)
+        cloud_menu.addAction(self.cloud_status_action)
+
+        login_action = QAction("登录或注册…", cloud_menu)
+        login_action.triggered.connect(self.open_cloud_login)
+        cloud_menu.addAction(login_action)
+
+        sync_action = QAction("立即同步", cloud_menu)
+        sync_action.triggered.connect(self.cloud_session.sync_now)
+        cloud_menu.addAction(sync_action)
+
+        sign_out_action = QAction("退出云端账户", cloud_menu)
+        sign_out_action.triggered.connect(
+            lambda _checked=False: self.cloud_session.sign_out()
+        )
+        cloud_menu.addAction(sign_out_action)
+
         hide_action = QAction("隐藏宠物", menu)
         hide_action.triggered.connect(self.window.hide)
         menu.addAction(hide_action)
@@ -118,9 +146,77 @@ class DesktopPetApplication:
         tray.activated.connect(self._tray_activated)
         return tray
 
-    def _tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
-        """单击或双击托盘图标时显示并展开宠物。"""
+    def _rebuild_pet_menu(self) -> None:
+        self.pet_menu.clear()
+        pets = self.pet_registry.list_pets()
+        active_id = self.local_store.get_active_pet_id()
+        if not pets:
+            empty = QAction("没有可用宠物", self.pet_menu)
+            empty.setEnabled(False)
+            self.pet_menu.addAction(empty)
+            return
+        group = QActionGroup(self.pet_menu)
+        group.setExclusive(True)
+        for pet in pets:
+            pet_id = pet.identity.pet_id
+            action = QAction(pet.identity.name, self.pet_menu)
+            action.setCheckable(True)
+            action.setChecked(pet_id == active_id)
+            action.triggered.connect(
+                lambda _checked=False, pet_id=pet_id: self.cloud_session.switch_active_pet(
+                    pet_id
+                )
+            )
+            group.addAction(action)
+            self.pet_menu.addAction(action)
+        self._pet_action_group = group
 
+    def open_cloud_login(self) -> None:
+        if self._login_dialog is None:
+            self._login_dialog = CloudLoginDialog(self.cloud_session)
+            self._login_dialog.finished.connect(self._clear_login_dialog)
+        self._login_dialog.show()
+        self._login_dialog.raise_()
+        self._login_dialog.activateWindow()
+
+    def _clear_login_dialog(self, _result: int) -> None:
+        if self._login_dialog is not None:
+            self._login_dialog.deleteLater()
+            self._login_dialog = None
+
+    def _cloud_state_changed(self, state: str) -> None:
+        labels = {
+            "disabled": "云端同步未启用",
+            "offline": "云端离线",
+            "authenticating": "正在认证",
+            "binding": "正在绑定设备",
+            "syncing": "正在同步",
+            "connected": "云端已连接",
+            "error": "云端连接异常",
+        }
+        self.cloud_status_action.setText(labels.get(state, state))
+
+    def _cloud_status_message(self, message: str) -> None:
+        if message:
+            self.tray.setToolTip(f"{self.active_pet.identity.name} · {message}")
+
+    def _pets_changed(self) -> None:
+        active = self.pet_registry.active_pet()
+        if active is None:
+            pets = self.pet_registry.list_pets()
+            if pets:
+                active = self.pet_registry.switch_active_pet(pets[0].identity.pet_id)
+        if active is not None:
+            self.active_pet = active
+            self._refresh_active_pet_ui()
+        self._rebuild_pet_menu()
+
+    def _refresh_active_pet_ui(self) -> None:
+        title = f"{self.active_pet.identity.name} · MyPets"
+        self.window.setWindowTitle(title)
+        self.tray.setToolTip(title)
+
+    def _tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         if reason in (
             QSystemTrayIcon.ActivationReason.Trigger,
             QSystemTrayIcon.ActivationReason.DoubleClick,
@@ -128,8 +224,6 @@ class DesktopPetApplication:
             self.show_window()
 
     def show_window(self) -> None:
-        """显示宠物；已吸附时先从边缘展开。"""
-
         self.window.show()
         if self.edge_dock.attached:
             self.edge_dock.reveal_from_edge()
@@ -137,11 +231,10 @@ class DesktopPetApplication:
         self.window.activateWindow()
 
     def start(self, smoke_test_ms: int | None = None) -> int:
-        """显示应用并进入事件循环；可选定时退出用于自动验证。"""
-
         self.window.place_at_start()
         self.show_window()
         QTimer.singleShot(0, self.edge_dock.restore)
+        QTimer.singleShot(0, self.cloud_session.start)
         if QSystemTrayIcon.isSystemTrayAvailable():
             self.tray.show()
         if smoke_test_ms is not None:
@@ -149,11 +242,13 @@ class DesktopPetApplication:
         return self.qt_app.exec()
 
     def quit(self) -> None:
-        """保存窗口及边缘状态，关闭本地仓库并退出应用。"""
-
+        if self._quitting:
+            return
+        self._quitting = True
         position = self.edge_dock.persistence_position()
         self.settings.start_x = position.x()
         self.settings.start_y = position.y()
+        self.cloud_session.stop()
         try:
             save_settings(self.settings)
         finally:
@@ -166,6 +261,4 @@ class DesktopPetApplication:
 
 
 def run(smoke_test_ms: int | None = None) -> int:
-    """创建并运行桌面宠物应用。"""
-
     return DesktopPetApplication().start(smoke_test_ms=smoke_test_ms)
