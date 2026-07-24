@@ -43,6 +43,7 @@ jobs:
           tests/test_cloud_types.py
           tests/test_cloud_session.py
           tests/test_pet_assets.py
+          tests/test_asset_download.py
 
       - name: Compile desktop package
         run: python -m compileall -q src

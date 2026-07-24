@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QGuiApplication, QIcon
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
+from .asset_download import AssetPackageDownloadController
 from .cloud_api import CloudApiClient
 from .cloud_session import CloudSessionController
 from .config import PetSettings, load_settings, save_settings
@@ -34,6 +35,7 @@ class DesktopPetApplication:
         credential_store: CredentialStore | None = None,
         cloud_api: CloudApiClient | None = None,
         asset_catalog: PetAssetCatalog | None = None,
+        asset_downloader: AssetPackageDownloadController | None = None,
     ) -> None:
         if QApplication.instance() is None:
             QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
@@ -71,6 +73,13 @@ class DesktopPetApplication:
         self.cloud_session.state_changed.connect(self._cloud_state_changed)
         self.cloud_session.status_message.connect(self._cloud_status_message)
         self.cloud_session.pets_changed.connect(self._pets_changed)
+        self.asset_downloader = asset_downloader or AssetPackageDownloadController(
+            self.settings.cloud_base_url,
+            self.asset_catalog,
+        )
+        self.asset_downloader.package_installed.connect(self._asset_package_installed)
+        self.asset_downloader.download_failed.connect(self._asset_download_failed)
+        self.asset_downloader.status_message.connect(self._asset_download_status)
         self._login_dialog: CloudLoginDialog | None = None
         self._quitting = False
         self._asset_status = ""
@@ -241,6 +250,9 @@ class DesktopPetApplication:
             self._login_dialog = None
 
     def _cloud_state_changed(self, state: str) -> None:
+        self.asset_downloader.set_base_url(self.cloud_api.base_url)
+        if state == "connected":
+            self._request_active_pet_assets()
         labels = {
             "disabled": "云端同步未启用",
             "offline": "云端离线",
@@ -281,11 +293,53 @@ class DesktopPetApplication:
                 if self.edge_dock.attached:
                     QTimer.singleShot(0, self.edge_dock.restore)
         if not selection.exact and not self._asset_status:
-            self._asset_status = "使用兼容形象"
+            if self._request_active_pet_assets():
+                self._asset_status = "正在下载形象"
+            else:
+                self._asset_status = "使用兼容形象"
         title = f"{self.active_pet.identity.name} · MyPets"
         self.window.setWindowTitle(title)
         tooltip = f"{title} · {self._asset_status}" if self._asset_status else title
         self.tray.setToolTip(tooltip)
+
+    def _request_active_pet_assets(self) -> bool:
+        if (
+            not self.settings.cloud_sync_enabled
+            or self.active_pet.identity.primary_owner_account_id == LOCAL_ACCOUNT_ID
+        ):
+            return False
+        try:
+            return self.asset_downloader.request_for(self.active_pet)
+        except (OSError, RuntimeError, ValueError) as exc:
+            self._asset_status = f"形象下载失败：{exc}"
+            return False
+
+    def _asset_package_installed(
+        self,
+        template_id: str,
+        identity_version: str,
+        asset_version: str,
+        _manifest_path: str,
+    ) -> None:
+        identity = self.active_pet.identity
+        if (
+            identity.template_id == template_id
+            and identity.identity_version == identity_version
+            and self.active_pet.asset_version == asset_version
+        ):
+            self._asset_status = "形象已更新"
+            self._refresh_active_pet_ui()
+        self._rebuild_pet_menu()
+
+    def _asset_download_failed(self, template_id: str, message: str) -> None:
+        if self.active_pet.identity.template_id == template_id:
+            self._asset_status = f"形象下载失败：{message}"
+            self.tray.setToolTip(f"{self.active_pet.identity.name} · {self._asset_status}")
+
+    def _asset_download_status(self, message: str) -> None:
+        if message:
+            self._asset_status = message
+            self.tray.setToolTip(f"{self.active_pet.identity.name} · {message}")
 
     def _tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         if reason in (

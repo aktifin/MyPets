@@ -2,7 +2,7 @@
 
 This directory contains the first runnable FastAPI modular-monolith slice for MyPets.
 It owns account authentication, persistent device credentials, server-authoritative pet
-snapshots, account-pet relations, and append-only semantic synchronization events.
+snapshots, account-pet relations, append-only semantic synchronization events, and administrator-reviewed pet asset publishing.
 
 The desktop SQLite database remains a rebuildable offline cache. It must not be treated as
 the authority for pet growth, ownership, presence, or cross-device read state.
@@ -17,7 +17,7 @@ python -m uvicorn mypets_backend.main:app --reload
 ```
 
 The default database is SQLite for development. Production deployment must set
-`MYPETS_DATABASE_URL` to PostgreSQL and set a unique `MYPETS_JWT_SECRET`.
+`MYPETS_DATABASE_URL` to PostgreSQL, set a unique `MYPETS_JWT_SECRET`, configure `MYPETS_ADMIN_USERNAMES`, and replace the development filesystem object store with managed object storage.
 
 ## Authentication model
 
@@ -28,3 +28,15 @@ The default database is SQLite for development. Production deployment must set
 5. Synchronization endpoints accept device access tokens only.
 
 Raw passwords and raw device secrets are never stored in the database.
+
+
+## Administrator pet publishing
+
+Configure at least two administrator usernames for editor/reviewer separation:
+
+```powershell
+$env:MYPETS_ADMIN_USERNAMES = "pet_editor,pet_reviewer"
+$env:MYPETS_ASSET_STORAGE_DIR = "D:\MyPetsData\assets"
+```
+
+The publishing API validates ZIP path safety, required actions, fallback cycles, image decoding, spritesheet dimensions, optional per-file hashes, and package limits. Approved releases are immutable and exposed through the public pet asset catalog. See `../docs/管理员宠物发布链路.md`.

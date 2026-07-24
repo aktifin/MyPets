@@ -155,3 +155,86 @@ class EventsResponse(BaseModel):
 class HeartbeatResponse(BaseModel):
     server_time: datetime
     cursor: int
+
+
+class PetTemplateCreateRequest(BaseModel):
+    template_code: str = Field(min_length=3, max_length=160, pattern=r"^[A-Za-z0-9_.-]+$")
+    display_name: str = Field(min_length=1, max_length=80)
+    species: str = Field(min_length=1, max_length=80)
+    description: str = Field(default="", max_length=4000)
+
+    @field_validator("template_code", "display_name", "species", "description")
+    @classmethod
+    def _strip_template_fields(cls, value: str) -> str:
+        return value.strip()
+
+
+class PetTemplateVersionCreateRequest(BaseModel):
+    template_version: str = Field(min_length=1, max_length=32)
+    identity_version: str = Field(min_length=1, max_length=32)
+    asset_version: str = Field(min_length=1, max_length=32)
+
+    @field_validator("template_version", "identity_version", "asset_version")
+    @classmethod
+    def _strip_versions(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("版本不能为空")
+        return value
+
+
+class ReviewDecisionRequest(BaseModel):
+    comment: str = Field(default="", max_length=2000)
+
+
+class PetTemplateView(BaseModel):
+    id: str
+    template_code: str
+    display_name: str
+    species: str
+    description: str
+    status: str
+    created_by_account_id: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class PetTemplateVersionView(BaseModel):
+    id: str
+    template_id: str
+    template_version: str
+    identity_version: str
+    asset_version: str
+    status: str
+    package_sha256: str | None
+    package_size: int | None
+    created_by_account_id: str
+    reviewed_by_account_id: str | None
+    review_comment: str
+    approved_at: datetime | None
+    published_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PetAssetReleaseView(BaseModel):
+    release_id: str
+    template_id: str
+    template_version: str
+    identity_version: str
+    asset_version: str
+    package_sha256: str
+    package_size: int
+    download_url: str
+    manifest: dict[str, Any]
+    published_at: datetime
+
+
+class AdminAuditLogView(BaseModel):
+    id: str
+    admin_account_id: str
+    action: str
+    resource_type: str
+    resource_id: str
+    details: dict[str, Any]
+    created_at: datetime
