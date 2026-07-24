@@ -6,6 +6,8 @@ from fastapi import FastAPI
 
 from .admin_api import admin_router, catalog_router
 from .admin_console_api import admin_console_api_router
+from .admin_governance_api import admin_governance_router, governance_catalog_router
+from .admin_rbac import AdminPermissionMiddleware
 from .admin_web import admin_web_router
 from .api import router
 from .config import Settings
@@ -25,17 +27,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title="MyPets API",
         version="0.1.0",
         description=(
-            "Server-authoritative account, device, pet, synchronization, pet asset publishing, and administrator console API."
+            "Server-authoritative account, device, pet, synchronization, pet asset publishing, administrator governance, and console API."
         ),
     )
     app.state.settings = resolved
     app.state.engine = engine
     app.state.session_factory = session_factory
     app.state.asset_object_store = FileObjectStore(resolved.asset_storage_path)
+    app.add_middleware(AdminPermissionMiddleware)
     app.include_router(router)
     app.include_router(admin_router)
     app.include_router(admin_console_api_router)
+    app.include_router(admin_governance_router)
     app.include_router(catalog_router)
+    app.include_router(governance_catalog_router)
     app.include_router(admin_web_router)
 
     @app.get("/health")
