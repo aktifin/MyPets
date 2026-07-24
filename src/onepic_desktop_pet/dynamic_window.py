@@ -40,6 +40,29 @@ class DynamicPetWindow(PetWindow):
         self._walk_motion_factors = bundle.manifest.walk_motion_factors
         return dict(bundle.pixmaps)
 
+    def show_care_feedback(self, action: str) -> None:
+        """Map confirmed server care actions onto existing local animations."""
+
+        mapping = {
+            "feed": PetState.HAPPY,
+            "play": PetState.WAVE,
+            "clean": PetState.SHY,
+            "pet": PetState.HAPPY,
+            "rest": PetState.SLEEPY,
+        }
+        self._show_emotion(mapping.get(action, PetState.HAPPY), 1700)
+
+    def trigger_care_feedback(self, action: str) -> None:
+        """Compatibility alias for callers using the newer verb-oriented name."""
+
+        self.show_care_feedback(action)
+
+    def trigger_growth_feedback(self, event_type: str) -> None:
+        """Celebrate confirmed level, bond, or stage transitions without new assets."""
+
+        state = PetState.SURPRISED if event_type == "growth_stage_changed" else PetState.HAPPY
+        self._show_emotion(state, 2400 if event_type == "growth_stage_changed" else 1900)
+
     def load_pet_assets(self, manifest_path: Path | None) -> None:
         """Load an entire package before mutating visible state, then switch from an idle frame."""
 
@@ -86,17 +109,3 @@ class DynamicPetWindow(PetWindow):
         self.move(self._constrained_position(old_position))
         self.set_state(PetState.IDLE)
         self._schedule(self.behavior.initial_idle())
-
-    def show_care_feedback(self, action: str) -> None:
-        """Play a semantic animation only after the cloud confirms a care action."""
-
-        mapping = {
-            "feed": PetState.HAPPY,
-            "play": PetState.WAVE,
-            "clean": PetState.HAPPY,
-            "pet": PetState.SHY,
-            "rest": PetState.SLEEPY,
-        }
-        state = mapping.get(action.strip().lower(), PetState.HAPPY)
-        self._record_user_interaction()
-        self._show_emotion(state, 1800)
