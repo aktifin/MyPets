@@ -1,0 +1,108 @@
+{
+  "schema_version": "2.1",
+  "template_id": "sun-sun",
+  "identity_version": "1.0.0",
+  "asset_version": "2.0.0",
+  "display_name": "榫榫",
+  "local_pet": {
+    "pet_id": "bundled-sun-sun",
+    "name": "榫榫"
+  },
+  "renderer": {
+    "kind": "spritesheet",
+    "path": "spritesheet.webp",
+    "columns": 8,
+    "rows": 11,
+    "cell_width": 192,
+    "cell_height": 208
+  },
+  "capabilities": {
+    "growth": true,
+    "folded_messages": true,
+    "reminders": true,
+    "visiting": true,
+    "gathering": true,
+    "edge_peek": true,
+    "ai_chat": true,
+    "voice_chat": true
+  },
+  "appearance": {
+    "edge_peek": {
+      "left_visible_ratio": 0.30,
+      "right_visible_ratio": 0.30,
+      "anchor": "face"
+    }
+  },
+  "walk_motion_factors": [0.55, 0.75, 1.15, 1.55, 0.55, 0.75, 1.15, 1.55],
+  "animations": {
+    "idle": [
+      {"row": 0, "column": 0},
+      {"row": 0, "column": 1},
+      {"row": 0, "column": 2},
+      {"row": 0, "column": 3},
+      {"row": 0, "column": 4},
+      {"row": 0, "column": 5},
+      {"row": 0, "column": 6}
+    ],
+    "walk": [
+      {"row": 1, "column": 0},
+      {"row": 1, "column": 1},
+      {"row": 1, "column": 2},
+      {"row": 1, "column": 3},
+      {"row": 1, "column": 4},
+      {"row": 1, "column": 5},
+      {"row": 1, "column": 6},
+      {"row": 1, "column": 7}
+    ],
+    "wave": [
+      {"row": 3, "column": 0},
+      {"row": 3, "column": 1},
+      {"row": 3, "column": 2},
+      {"row": 3, "column": 3}
+    ],
+    "happy": [
+      {"row": 4, "column": 0},
+      {"row": 4, "column": 1},
+      {"row": 4, "column": 2},
+      {"row": 4, "column": 3},
+      {"row": 4, "column": 4}
+    ],
+    "failed": [
+      {"row": 5, "column": 0},
+      {"row": 5, "column": 1},
+      {"row": 5, "column": 2},
+      {"row": 5, "column": 3},
+      {"row": 5, "column": 4},
+      {"row": 5, "column": 5},
+      {"row": 5, "column": 6},
+      {"row": 5, "column": 7}
+    ],
+    "waiting": [
+      {"row": 6, "column": 0},
+      {"row": 6, "column": 1},
+      {"row": 6, "column": 2},
+      {"row": 6, "column": 3},
+      {"row": 6, "column": 4},
+      {"row": 6, "column": 5}
+    ],
+    "review": [
+      {"row": 7, "column": 0},
+      {"row": 7, "column": 1},
+      {"row": 7, "column": 2},
+      {"row": 7, "column": 3},
+      {"row": 7, "column": 4},
+      {"row": 7, "column": 5}
+    ]
+  },
+  "fallback_actions": {
+    "sit": "waiting",
+    "sleep": "waiting",
+    "shy": "review",
+    "surprised": "failed",
+    "annoyed": "failed",
+    "sleepy": "waiting",
+    "curious": "review",
+    "selfie": "review",
+    "drag": "failed"
+  }
+}
