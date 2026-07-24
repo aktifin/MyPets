@@ -5,6 +5,7 @@
 - 从项目内只读 JSON 读取默认功能设置；
 - 从当前用户本地应用数据目录读取上次窗口位置、显示尺寸和边缘吸附偏好；
 - 校验窗口、移动、动画、休息与边缘模式参数并忽略未知字段；
+- 统一提供用户数据目录，供设置和 SQLite 本地状态仓库复用；
 - 仅在用户配置目录保存用户和设备相关状态，不覆盖项目默认配置。
 
 输入为 JSON 文件，输出为 PetSettings 实例。保存操作使用临时文件原子替换。
@@ -51,12 +52,18 @@ class PetSettings:
     edge_offset_ratio: float | None = None
 
 
-def user_settings_path() -> Path:
-    """返回当前用户可写的设置文件路径。"""
+def user_data_dir() -> Path:
+    """返回当前用户的 MyPets 可写数据目录。"""
 
     base = os.environ.get("LOCALAPPDATA")
     root = Path(base) if base else Path.home() / ".desktop_pet"
-    return root / "OnePicDesktopPet" / "settings.json"
+    return root / "OnePicDesktopPet"
+
+
+def user_settings_path() -> Path:
+    """返回当前用户可写的设置文件路径。"""
+
+    return user_data_dir() / "settings.json"
 
 
 def _read_json(path: Path) -> dict[str, Any]:
