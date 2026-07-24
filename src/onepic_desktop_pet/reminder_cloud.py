@@ -1,15 +1,15 @@
-"""Reminder HTTP reconciliation and durable command retry using the shared device session."""
+"""Reminder snapshot reconciliation and durable command retry."""
 
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
 from .cloud_api import CloudApiClient
 from .cloud_session import CloudSessionController
 from .reminder_cache import ReminderCache, ReminderCommand
+from .reminder_transport import ReminderTransport
 from .reminders import parse_reminder_occurrence
 
 
@@ -25,16 +25,19 @@ class ReminderCloudController(QObject):
         api: CloudApiClient,
         session: CloudSessionController,
         cache: ReminderCache,
+        *,
+        transport: ReminderTransport | None = None,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self.api = api
         self.session = session
         self.cache = cache
+        self.transport = transport or ReminderTransport(api, parent=self)
         self._refresh_in_flight = False
         self._command_in_flight: ReminderCommand | None = None
-        self.api.operation_succeeded.connect(self._on_success)
-        self.api.operation_failed.connect(self._on_failure)
+        self.transport.operation_succeeded.connect(self._on_success)
+        self.transport.operation_failed.connect(self._on_failure)
         self.session.state_changed.connect(self._on_session_state)
 
     @property
@@ -48,15 +51,8 @@ class ReminderCloudController(QObject):
         if not self.session.connected or self._refresh_in_flight:
             return
         try:
-            token = self.api._require_device_token()
             self._refresh_in_flight = True
-            self.api._request(
-                "reminders",
-                "GET",
-                "/api/v1/reminders/snapshot",
-                token=token,
-                query={"limit": 500},
-            )
+            self.transport.refresh()
         except (RuntimeError, ValueError) as exc:
             self._refresh_in_flight = False
             self.status_message.emit(str(exc))
@@ -81,7 +77,8 @@ class ReminderCloudController(QObject):
         self,
         occurrence_id: str,
         action: str,
-        *,        snooze_minutes: int | None = None,
+        *,
+        snooze_minutes: int | None = None,
     ) -> bool:
         account_id = self.account_id
         if not account_id:
@@ -132,30 +129,9 @@ class ReminderCloudController(QObject):
             return
         command = pending[0]
         try:
-            token = self.api._require_device_token()
-            operation = (
-                f"reminder_command:{command.command_id}:"
-                f"{command.action}:{command.occurrence_id}"
-            )
-            path_suffix = {
-                "delivered": "delivered",
-                "completed": "complete",
-                "snoozed": "snooze",
-                "dismissed": "dismiss",
-            }[command.action]
-            payload: dict[str, Any] = {}
-            if command.action == "snoozed":
-                payload["minutes"] = command.snooze_minutes
             self._command_in_flight = command
-            self.api._json_request(
-                operation,
-                "POST",
-                f"/api/v1/reminders/occurrences/{command.occurrence_id}/{path_suffix}",
-                payload,
-                token=token,
-                headers={"Idempotency-Key": command.idempotency_key},
-            )
-        except (KeyError, RuntimeError, ValueError) as exc:
+            self.transport.submit(command)
+        except (RuntimeError, ValueError) as exc:
             self._command_in_flight = None
             self.action_failed.emit(command.action, command.occurrence_id, str(exc))
 
@@ -166,9 +142,6 @@ class ReminderCloudController(QObject):
             self._flush_commands()
 
     def _on_success(self, operation: str, payload: object) -> None:
-        if operation == "events":
-            self.refresh()
-            return
         if operation == "reminders":
             self._refresh_in_flight = False
             if not isinstance(payload, dict):
