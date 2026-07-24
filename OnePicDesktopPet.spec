@@ -5,6 +5,14 @@ from pathlib import Path
 
 
 datas = [("assets", "assets"), ("config", "config")]
+
+# Only runtime files from bundled pets enter the desktop release. Work and QA folders stay out.
+bundled_pet = Path("outputs/sun-sun")
+for filename in ("pet.json", "manifest.json", "spritesheet.webp"):
+    source = bundled_pet / filename
+    if source.is_file():
+        datas.append((str(source), "outputs/sun-sun"))
+
 private_assets = Path("user_assets")
 if os.environ.get("ONEPIC_INCLUDE_USER_ASSETS") == "1" and private_assets.exists():
     # 个人版只携带运行时真正需要的私有文件。原始上传副本、候选图、
@@ -16,10 +24,13 @@ if os.environ.get("ONEPIC_INCLUDE_USER_ASSETS") == "1" and private_assets.exists
         private_manifest = private_pet / "manifest.json"
         if private_manifest.is_file():
             datas.append((str(private_manifest), "user_assets/pet"))
-        for private_png in private_pet.rglob("*.png"):
-            relative_parent = private_png.relative_to(private_pet).parent
-            destination = Path("user_assets/pet") / relative_parent
-            datas.append((str(private_png), str(destination)))
+        for private_image in private_pet.rglob("*"):
+            if private_image.is_file() and private_image.suffix.lower() in {
+                ".png", ".webp", ".jpg", ".jpeg"
+            }:
+                relative_parent = private_image.relative_to(private_pet).parent
+                destination = Path("user_assets/pet") / relative_parent
+                datas.append((str(private_image), str(destination)))
     if private_selfie.is_file():
         datas.append((str(private_selfie), "user_assets"))
     if private_workflow.is_file():
@@ -39,7 +50,6 @@ a = Analysis(
     optimize=0,
 )
 pyz = PYZ(a.pure)
-
 exe = EXE(
     pyz,
     a.scripts,

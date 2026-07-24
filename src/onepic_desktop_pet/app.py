@@ -1,8 +1,9 @@
-"""Desktop application lifecycle, tray UI, local cache, and optional cloud synchronization."""
+"""Desktop application lifecycle, tray UI, local cache, cloud sync, and pet assets."""
 
 from __future__ import annotations
 
 import sys
+from datetime import datetime
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QGuiApplication, QIcon
@@ -12,17 +13,19 @@ from .cloud_api import CloudApiClient
 from .cloud_session import CloudSessionController
 from .config import PetSettings, load_settings, save_settings
 from .credential_store import CredentialStore, default_credential_store
+from .domain import AccountPetRelation, PetIdentity, PetProfile, PetRole
+from .dynamic_window import DynamicPetWindow
 from .edge_dock import EdgeDockController
 from .edge_geometry import EdgeSide
 from .local_store import LocalStateStore
 from .login_dialog import CloudLoginDialog
-from .pet_registry import PetRegistry
+from .pet_assets import PetAssetCatalog
+from .pet_registry import LOCAL_ACCOUNT_ID, PetRegistry
 from .resources import resource_path
-from .window import PetWindow
 
 
 class DesktopPetApplication:
-    """Own the Qt application, desktop pet window, cache, tray, and cloud session."""
+    """Own the Qt app, desktop window, cache, cloud session, and versioned asset catalog."""
 
     def __init__(
         self,
@@ -30,6 +33,7 @@ class DesktopPetApplication:
         local_store: LocalStateStore | None = None,
         credential_store: CredentialStore | None = None,
         cloud_api: CloudApiClient | None = None,
+        asset_catalog: PetAssetCatalog | None = None,
     ) -> None:
         if QApplication.instance() is None:
             QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
@@ -43,8 +47,15 @@ class DesktopPetApplication:
         self.local_store = local_store or LocalStateStore.open_default()
         self.pet_registry = PetRegistry(self.local_store)
         self.active_pet = self.pet_registry.bootstrap_local_pet()
+        self.asset_catalog = asset_catalog or PetAssetCatalog()
+        self._register_bundled_pets()
+        self.active_pet = self.pet_registry.active_pet() or self.active_pet
+        self._asset_selection = self.asset_catalog.selection_for(self.active_pet)
 
-        self.window = PetWindow(self.settings)
+        self.window = DynamicPetWindow(
+            self.settings,
+            self._asset_selection.manifest_path,
+        )
         self.edge_dock = EdgeDockController(self.window, self.settings)
         self.window.quit_requested.connect(self.quit)
 
@@ -62,9 +73,39 @@ class DesktopPetApplication:
         self.cloud_session.pets_changed.connect(self._pets_changed)
         self._login_dialog: CloudLoginDialog | None = None
         self._quitting = False
+        self._asset_status = ""
 
         self.tray = self._create_tray()
         self._refresh_active_pet_ui()
+
+    def _register_bundled_pets(self) -> None:
+        """Expose bundled runtime packages as local pet instances without changing current choice."""
+
+        for definition in self.asset_catalog.bundled_local_pets():
+            if self.local_store.get_pet(definition.pet_id) is not None:
+                continue
+            profile = PetProfile(
+                identity=PetIdentity(
+                    pet_id=definition.pet_id,
+                    name=definition.name,
+                    template_id=definition.identity.template_id,
+                    template_version="1.0.0",
+                    identity_version=definition.identity.identity_version,
+                    primary_owner_account_id=LOCAL_ACCOUNT_ID,
+                ),
+                asset_version=definition.identity.asset_version,
+                updated_at=datetime.now().astimezone(),
+            )
+            self.pet_registry.register_pet(
+                profile,
+                AccountPetRelation(
+                    account_id=LOCAL_ACCOUNT_ID,
+                    pet_id=definition.pet_id,
+                    role=PetRole.OWNER,
+                    affinity=50,
+                ),
+                make_active=False,
+            )
 
     def _create_tray(self) -> QSystemTrayIcon:
         icon = QIcon(str(resource_path("assets/icons/pet.png")))
@@ -159,17 +200,32 @@ class DesktopPetApplication:
         group.setExclusive(True)
         for pet in pets:
             pet_id = pet.identity.pet_id
-            action = QAction(pet.identity.name, self.pet_menu)
+            selection = self.asset_catalog.selection_for(pet)
+            label = pet.identity.name
+            if not selection.exact:
+                label += "（兼容形象）"
+            action = QAction(label, self.pet_menu)
             action.setCheckable(True)
             action.setChecked(pet_id == active_id)
             action.triggered.connect(
-                lambda _checked=False, pet_id=pet_id: self.cloud_session.switch_active_pet(
-                    pet_id
-                )
+                lambda _checked=False, pet_id=pet_id: self._switch_pet(pet_id)
             )
             group.addAction(action)
             self.pet_menu.addAction(action)
         self._pet_action_group = group
+
+    def _switch_pet(self, pet_id: str) -> None:
+        """Keep bundled/local pets local even when a cloud account is connected."""
+
+        pet = self.local_store.get_pet(pet_id)
+        if pet is None:
+            return
+        if pet.identity.primary_owner_account_id == LOCAL_ACCOUNT_ID:
+            self.pet_registry.switch_active_pet(pet_id)
+            self._pets_changed()
+            self.cloud_session.status_message.emit("已切换本地宠物")
+            return
+        self.cloud_session.switch_active_pet(pet_id)
 
     def open_cloud_login(self) -> None:
         if self._login_dialog is None:
@@ -198,7 +254,8 @@ class DesktopPetApplication:
 
     def _cloud_status_message(self, message: str) -> None:
         if message:
-            self.tray.setToolTip(f"{self.active_pet.identity.name} · {message}")
+            suffix = f" · {self._asset_status}" if self._asset_status else ""
+            self.tray.setToolTip(f"{self.active_pet.identity.name} · {message}{suffix}")
 
     def _pets_changed(self) -> None:
         active = self.pet_registry.active_pet()
@@ -212,9 +269,23 @@ class DesktopPetApplication:
         self._rebuild_pet_menu()
 
     def _refresh_active_pet_ui(self) -> None:
+        selection = self.asset_catalog.selection_for(self.active_pet)
+        self._asset_status = ""
+        if selection.cache_key != self._asset_selection.cache_key:
+            try:
+                self.window.load_pet_assets(selection.manifest_path)
+            except (OSError, ValueError) as exc:
+                self._asset_status = f"形象加载失败：{exc}"
+            else:
+                self._asset_selection = selection
+                if self.edge_dock.attached:
+                    QTimer.singleShot(0, self.edge_dock.restore)
+        if not selection.exact and not self._asset_status:
+            self._asset_status = "使用兼容形象"
         title = f"{self.active_pet.identity.name} · MyPets"
         self.window.setWindowTitle(title)
-        self.tray.setToolTip(title)
+        tooltip = f"{title} · {self._asset_status}" if self._asset_status else title
+        self.tray.setToolTip(tooltip)
 
     def _tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         if reason in (

@@ -18,17 +18,20 @@
 - 托盘支持账户登录、设备绑定、立即同步和多宠物选择；
 - 使用 Qt 原生网络异步执行完整快照与增量同步；
 - Windows 设备密钥保存到 Credential Manager，密码和访问令牌不落盘；
+- 按 `template_id / identity_version / asset_version` 选择和热切换宠物形象；
+- 同时支持逐帧图片包与固定网格精灵表；
+- 内置公开演示宠物与榫榫精灵表宠物；
 - 用户可在本地放入自己的自拍成片，不提交到 Git；
 - 原图登记后自动作为自拍成片，保持原始像素尺寸；
 - 标准角色形象和走路 GIF 必须分别得到用户确认；
 - 表情符号由程序独立绘制，换角色后仍可显示闪光、爱心、惊叹号、疑问号、怒气、Zzz 和汗滴；
-- 宠物 Manifest 2.0 校验工具；
+- 统一的逐帧与精灵表 Manifest 校验工具；
 - 独立 FastAPI 后端包，支持账户、设备、宠物和语义增量同步；
 - PyInstaller Windows 打包脚本。
 
 ## 云养宠演进基线
 
-仓库已经加入第四批架构基础：
+仓库已经加入第五批架构基础：
 
 - 多宠物、成长、串门、折叠消息、提醒和云事件的纯领域模型；
 - SQLite 本地缓存、设备当前宠物、提醒实例、离线 outbox 和同步游标；
@@ -37,9 +40,10 @@
 - 桌面端登录与注册窗口、Qt HTTP 传输和云端会话编排；
 - Windows Credential Manager 设备密钥存储；
 - 自动完整同步、增量轮询和托盘宠物切换；
-- 视觉身份、能力声明、动作降级、边缘探头和素材版本的 Manifest 规范；
+- 形象版本目录、精灵表切帧、动作降级、缓存安装和原子热切换；
+- 视觉身份、能力声明、边缘探头和素材版本的 Manifest 规范；
 - 不侵入 `PetWindow` 主动画逻辑的边缘吸附控制器；
-- 管理员和素材制作者可执行的 Manifest 校验命令；
+- 管理员和素材制作者可执行的统一 Manifest 校验命令；
 - 明确 AI 仅用于文字与语音聊天，不包含智能体、工具调用和电脑自动操作。
 
 完整边界与实施顺序见：
@@ -48,8 +52,9 @@
 - [PC 本地状态仓库](docs/本地状态仓库.md)
 - [后端同步 API](docs/后端同步API.md)
 - [PC 桌面云端连接](docs/桌面云端连接.md)
+- [宠物形象运行时](docs/宠物形象运行时.md)
 
-当前 SQLite 只属于客户端缓存层。按宠物模板动态加载不同动画素材、小程序、实时串门、多宠聚会和 AI 聊天服务尚未实现。
+当前 SQLite 只属于客户端缓存层。云端 CDN 自动下载、管理员发布 API、成长阶段换装、小程序、实时串门、多宠聚会和 AI 聊天服务尚未实现。
 
 ## 最快体验
 
@@ -62,6 +67,8 @@
 ```
 
 环境脚本只在项目内创建 `.venv` 并安装依赖，不会自动安装 Python、Git，不会修改系统环境变量，也不会申请管理员权限。缺少 Python 3.12 时会停止并给出提示。
+
+启动后，托盘菜单“切换宠物”中可以选择现有本地宠物或内置的“榫榫”，窗口会在不重启应用的情况下切换对应素材包。
 
 ## 启动后端开发服务
 
@@ -130,19 +137,19 @@ python -m uvicorn mypets_backend.main:app --reload
 
 ## 宠物 Manifest 校验
 
-修改官方或私有宠物素材后，运行：
+修改官方、内置或私有宠物素材后，运行：
 
 ```powershell
 .\.venv\Scripts\python.exe .\tools\validate_pet_manifest.py
 ```
 
-也可以指定其他 Manifest：
+也可以指定逐帧或精灵表 Manifest：
 
 ```powershell
-.\.venv\Scripts\python.exe .\tools\validate_pet_manifest.py .\user_assets\pet\manifest.json
+.\.venv\Scripts\python.exe .\tools\validate_pet_manifest.py .\outputs\sun-sun\manifest.json
 ```
 
-校验会覆盖基础动作、走路位移曲线、动作降级、边缘形象参数、路径越界和素材缺失。
+校验覆盖版本身份、必需动作、动作降级循环、精灵表网格、单元格越界、路径穿越、素材缺失，以及可选文件大小和 SHA-256。
 
 ## 自定义自拍照片
 
@@ -173,7 +180,7 @@ python -m pip install -e ".[dev]"
 python -m pytest
 ```
 
-默认打包生成不含任何 `user_assets/` 或后端运行数据库的公开演示版本。只有角色和走路均确认后，才能显式构建个人版本：
+默认打包生成不含任何 `user_assets/`、后端运行数据库或 `work/` 中间产物的公开演示版本。发布包会包含经过运行时校验的榫榫最小素材包。只有角色和走路均确认后，才能显式构建个人版本：
 
 ```powershell
 .\scripts\build.ps1 -IncludeUserAssets
@@ -195,6 +202,7 @@ dist/OnePicDesktopPet/OnePicDesktopPet.exe
 - [PC 本地状态仓库](docs/本地状态仓库.md)
 - [后端同步 API](docs/后端同步API.md)
 - [PC 桌面云端连接](docs/桌面云端连接.md)
+- [宠物形象运行时](docs/宠物形象运行时.md)
 - [素材规范](docs/素材规范.md)
 - [角色与走路验收清单](docs/角色与走路验收清单.md)
 - [隐私说明](docs/隐私说明.md)
