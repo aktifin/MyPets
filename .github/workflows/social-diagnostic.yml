@@ -21,5 +21,11 @@ jobs:
           python-version: '3.12'
       - name: Install backend
         run: python -m pip install -q -e '.[dev]'
-      - name: Run social tests verbosely
-        run: python -m pytest tests/test_social_shared_care.py -x -vv --tb=long
+      - name: Run social tests and print failure tail
+        shell: bash
+        run: |
+          set +e
+          python -m pytest tests/test_social_shared_care.py -x -vv --tb=long > /tmp/social-pytest.log 2>&1
+          status=$?
+          tail -n 180 /tmp/social-pytest.log
+          exit $status
