@@ -53,7 +53,7 @@ class ReminderCloudController(QObject):
             self.api._request(
                 "reminders",
                 "GET",
-                "/api/v1/reminders/occurrences",
+                "/api/v1/reminders/snapshot",
                 token=token,
                 query={"limit": 500},
             )
@@ -81,8 +81,7 @@ class ReminderCloudController(QObject):
         self,
         occurrence_id: str,
         action: str,
-        *,
-        snooze_minutes: int | None = None,
+        *,        snooze_minutes: int | None = None,
     ) -> bool:
         account_id = self.account_id
         if not account_id:
@@ -172,17 +171,21 @@ class ReminderCloudController(QObject):
             return
         if operation == "reminders":
             self._refresh_in_flight = False
-            if not isinstance(payload, list):
-                self.status_message.emit("提醒列表响应必须是数组")
+            if not isinstance(payload, dict):
+                self.status_message.emit("提醒快照响应必须是对象")
+                return
+            items = payload.get("items")
+            if not isinstance(items, list):
+                self.status_message.emit("提醒快照 items 必须是数组")
                 return
             account_id = self.account_id
             try:
-                for item in payload:
+                for item in items:
                     self.cache.put(
                         parse_reminder_occurrence(item, account_id=account_id)
                     )
             except ValueError as exc:
-                self.status_message.emit(f"提醒列表响应无效：{exc}")
+                self.status_message.emit(f"提醒快照响应无效：{exc}")
                 return
             self.reminders_changed.emit()
             self._flush_commands()
