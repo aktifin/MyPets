@@ -21,6 +21,9 @@ Thumbs.db
 user_assets/*
 !user_assets/README.md
 
-# 本地日志和临时输出
+# 本地数据库、日志和临时输出
+*.sqlite
+*.sqlite3
+*.db
 *.log
 *.tmp
