@@ -2,8 +2,9 @@
 
 This directory contains the runnable FastAPI modular monolith for MyPets.
 It owns account authentication, persistent device credentials, server-authoritative pet
-snapshots, account-pet relations, append-only semantic synchronization events,
-administrator-reviewed pet asset publishing, administrator governance, and the web console.
+snapshots, account-pet relations, friendship and shared care, append-only semantic
+synchronization events, the user Web portal, administrator-reviewed pet asset publishing,
+administrator governance, and the administrator console.
 
 The desktop SQLite database remains a rebuildable offline cache. It must not be treated as
 the authority for pet growth, ownership, presence, or cross-device read state.
@@ -16,6 +17,12 @@ python -m pip install -e ".[dev]"
 $env:MYPETS_JWT_SECRET = "replace-with-at-least-24-random-characters"
 $env:MYPETS_ADMIN_USERNAMES = "local_admin"
 python -m uvicorn mypets_backend.main:app --reload
+```
+
+Open the user portal at:
+
+```text
+http://127.0.0.1:8000/portal
 ```
 
 Open the administrator console at:
@@ -38,6 +45,27 @@ object storage.
 5. Synchronization endpoints accept device access tokens only.
 
 Raw passwords and raw device secrets are never stored in the database.
+
+The user portal stores its short-lived account token only in browser `sessionStorage`.
+It does not use persistent `localStorage` or authentication cookies.
+
+## User Web portal
+
+The `/portal` application supports:
+
+- account registration and login;
+- display-name and password maintenance;
+- pet creation and account-level Web pet selection;
+- safe pet name and personality configuration;
+- pet visibility and remote-care settings;
+- friend requests, friend removal, blocking, and unblocking;
+- caregiver and viewer invitation maintenance.
+
+Web pet selection is independent from each physical device's `active_pet_id`. Pet
+configuration changes publish the same semantic synchronization events used by the PC
+client.
+
+See `../docs/Web用户门户.md`.
 
 ## Administrator roles
 
