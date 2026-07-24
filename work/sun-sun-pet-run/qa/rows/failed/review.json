@@ -1,0 +1,142 @@
+{
+  "ok": true,
+  "frames_root": "C:\\Users\\rokey\\Documents\\Codex\\2026-07-23\\create-a-pet-based-on-what\\work\\sun-sun-pet-run\\qa\\rows\\failed\\frames",
+  "states": [
+    "failed"
+  ],
+  "errors": [],
+  "warnings": [],
+  "rows": [
+    {
+      "state": "failed",
+      "expected_frames": 8,
+      "actual_frames": 8,
+      "extraction_method": "components",
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "frames": [
+        {
+          "index": 0,
+          "file": "C:\\Users\\rokey\\Documents\\Codex\\2026-07-23\\create-a-pet-based-on-what\\work\\sun-sun-pet-run\\qa\\rows\\failed\\frames\\failed\\00.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 21425,
+          "bbox": [
+            21,
+            5,
+            171,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 275
+        },
+        {
+          "index": 1,
+          "file": "C:\\Users\\rokey\\Documents\\Codex\\2026-07-23\\create-a-pet-based-on-what\\work\\sun-sun-pet-run\\qa\\rows\\failed\\frames\\failed\\01.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 24616,
+          "bbox": [
+            6,
+            5,
+            186,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 307
+        },
+        {
+          "index": 2,
+          "file": "C:\\Users\\rokey\\Documents\\Codex\\2026-07-23\\create-a-pet-based-on-what\\work\\sun-sun-pet-run\\qa\\rows\\failed\\frames\\failed\\02.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 25412,
+          "bbox": [
+            5,
+            5,
+            187,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 360
+        },
+        {
+          "index": 3,
+          "file": "C:\\Users\\rokey\\Documents\\Codex\\2026-07-23\\create-a-pet-based-on-what\\work\\sun-sun-pet-run\\qa\\rows\\failed\\frames\\failed\\03.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 25102,
+          "bbox": [
+            8,
+            5,
+            183,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 322
+        },
+        {
+          "index": 4,
+          "file": "C:\\Users\\rokey\\Documents\\Codex\\2026-07-23\\create-a-pet-based-on-what\\work\\sun-sun-pet-run\\qa\\rows\\failed\\frames\\failed\\04.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 23263,
+          "bbox": [
+            13,
+            5,
+            178,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 311
+        },
+        {
+          "index": 5,
+          "file": "C:\\Users\\rokey\\Documents\\Codex\\2026-07-23\\create-a-pet-based-on-what\\work\\sun-sun-pet-run\\qa\\rows\\failed\\frames\\failed\\05.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 23889,
+          "bbox": [
+            14,
+            5,
+            177,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 317
+        },
+        {
+          "index": 6,
+          "file": "C:\\Users\\rokey\\Documents\\Codex\\2026-07-23\\create-a-pet-based-on-what\\work\\sun-sun-pet-run\\qa\\rows\\failed\\frames\\failed\\06.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 23816,
+          "bbox": [
+            12,
+            5,
+            180,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 263
+        },
+        {
+          "index": 7,
+          "file": "C:\\Users\\rokey\\Documents\\Codex\\2026-07-23\\create-a-pet-based-on-what\\work\\sun-sun-pet-run\\qa\\rows\\failed\\frames\\failed\\07.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 23497,
+          "bbox": [
+            15,
+            5,
+            177,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 327
+        }
+      ]
+    }
+  ]
+}

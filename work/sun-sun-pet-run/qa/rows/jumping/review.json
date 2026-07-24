@@ -1,0 +1,97 @@
+{
+  "ok": true,
+  "frames_root": "C:\\Users\\rokey\\Documents\\Codex\\2026-07-23\\create-a-pet-based-on-what\\work\\sun-sun-pet-run\\qa\\rows\\jumping\\frames",
+  "states": [
+    "jumping"
+  ],
+  "errors": [],
+  "warnings": [],
+  "rows": [
+    {
+      "state": "jumping",
+      "expected_frames": 5,
+      "actual_frames": 5,
+      "extraction_method": "components",
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "frames": [
+        {
+          "index": 0,
+          "file": "C:\\Users\\rokey\\Documents\\Codex\\2026-07-23\\create-a-pet-based-on-what\\work\\sun-sun-pet-run\\qa\\rows\\jumping\\frames\\jumping\\00.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 24958,
+          "bbox": [
+            8,
+            5,
+            183,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 357
+        },
+        {
+          "index": 1,
+          "file": "C:\\Users\\rokey\\Documents\\Codex\\2026-07-23\\create-a-pet-based-on-what\\work\\sun-sun-pet-run\\qa\\rows\\jumping\\frames\\jumping\\01.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 20840,
+          "bbox": [
+            10,
+            5,
+            182,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 269
+        },
+        {
+          "index": 2,
+          "file": "C:\\Users\\rokey\\Documents\\Codex\\2026-07-23\\create-a-pet-based-on-what\\work\\sun-sun-pet-run\\qa\\rows\\jumping\\frames\\jumping\\02.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 21118,
+          "bbox": [
+            10,
+            5,
+            181,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 283
+        },
+        {
+          "index": 3,
+          "file": "C:\\Users\\rokey\\Documents\\Codex\\2026-07-23\\create-a-pet-based-on-what\\work\\sun-sun-pet-run\\qa\\rows\\jumping\\frames\\jumping\\03.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 20178,
+          "bbox": [
+            14,
+            5,
+            178,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 277
+        },
+        {
+          "index": 4,
+          "file": "C:\\Users\\rokey\\Documents\\Codex\\2026-07-23\\create-a-pet-based-on-what\\work\\sun-sun-pet-run\\qa\\rows\\jumping\\frames\\jumping\\04.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 22365,
+          "bbox": [
+            13,
+            5,
+            178,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 358
+        }
+      ]
+    }
+  ]
+}
