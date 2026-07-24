@@ -1,10 +1,10 @@
-"""Server-authoritative pet care and activity endpoints."""
+"""Server-authoritative pet care, growth, and activity endpoints."""
 
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any
+from datetime import UTC, datetime
+from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 
 from .api import get_principal, get_session
 from .models import AccountPetRelation, Pet, SyncEvent
-from .pet_care import CARE_RULES, CareAction, apply_care_action
+from .pet_care import CARE_RULES, CareAction, CareMutation, apply_care_action
+from .pet_state_service import settle_pet_and_publish
 from .schemas import PetView, RelationView
 from .security import Principal
 from .services import (
@@ -29,6 +30,7 @@ pet_care_router = APIRouter(prefix="/api/v1", tags=["pet-care"])
 CARE_ROLES = {"owner", "co_owner", "caregiver"}
 CARE_COOLDOWN_SECONDS = 5
 DAILY_CARE_LIMIT = 50
+GROWTH_EVENT_TYPES = {"growth_level_up", "bond_level_up", "growth_stage_changed"}
 
 
 class PetCareRequest(BaseModel):
@@ -67,6 +69,20 @@ class PetCareResponse(BaseModel):
 
 class PetActivityResponse(BaseModel):
     items: list[PetCareInteractionView]
+
+
+class PetGrowthHistoryItem(BaseModel):
+    event_type: Literal["growth_level_up", "bond_level_up", "growth_stage_changed"]
+    previous_value: str
+    current_value: str
+    source: str
+    created_at: datetime
+
+
+class PetGrowthResponse(BaseModel):
+    pet: PetView
+    settled_at: datetime
+    history: list[PetGrowthHistoryItem]
 
 
 def _aware(value: datetime) -> datetime:
@@ -127,13 +143,87 @@ def _relation_for_actor(
     *,
     account_id: str,
     pet_id: str,
+    require_care: bool = True,
 ) -> AccountPetRelation:
     relation = session.get(AccountPetRelation, (account_id, pet_id))
     if relation is None:
         raise HTTPException(status_code=404, detail="宠物不存在或无访问权限")
-    if relation.role not in CARE_ROLES:
+    if require_care and relation.role not in CARE_ROLES:
         raise HTTPException(status_code=403, detail="当前角色没有照料宠物的权限")
     return relation
+
+
+def _append_growth_event(
+    session: Session,
+    *,
+    account_id: str,
+    idempotency_key: str,
+    event_type: str,
+    pet: Pet,
+    relation: AccountPetRelation,
+    previous_value: int | str,
+    current_value: int | str,
+) -> None:
+    append_event(
+        session,
+        account_id=account_id,
+        event_type=event_type,
+        idempotency_key=idempotency_key,
+        payload={
+            "cause": "pet_care",
+            "pet_id": pet.id,
+            "pet": pet_view(pet).model_dump(mode="json"),
+            "relation": relation_view(relation).model_dump(mode="json"),
+            "transition": {
+                "previous_value": str(previous_value),
+                "current_value": str(current_value),
+                "source": "pet_care",
+            },
+        },
+    )
+
+
+def _append_growth_events_for_relation(
+    session: Session,
+    *,
+    event_key: str,
+    pet: Pet,
+    relation: AccountPetRelation,
+    mutation: CareMutation,
+) -> None:
+    if mutation.growth_level_changed:
+        _append_growth_event(
+            session,
+            account_id=relation.account_id,
+            idempotency_key=f"{event_key}:growth-level",
+            event_type="growth_level_up",
+            pet=pet,
+            relation=relation,
+            previous_value=mutation.previous_growth_level,
+            current_value=mutation.growth_level,
+        )
+    if mutation.bond_level_changed:
+        _append_growth_event(
+            session,
+            account_id=relation.account_id,
+            idempotency_key=f"{event_key}:bond-level",
+            event_type="bond_level_up",
+            pet=pet,
+            relation=relation,
+            previous_value=mutation.previous_bond_level,
+            current_value=mutation.bond_level,
+        )
+    if mutation.growth_stage_changed:
+        _append_growth_event(
+            session,
+            account_id=relation.account_id,
+            idempotency_key=f"{event_key}:growth-stage",
+            event_type="growth_stage_changed",
+            pet=pet,
+            relation=relation,
+            previous_value=mutation.previous_growth_stage,
+            current_value=mutation.growth_stage,
+        )
 
 
 @pet_care_router.post(
@@ -179,6 +269,7 @@ def care_for_pet(
         raise HTTPException(status_code=409, detail="宠物外出期间不能执行该照料动作")
 
     now = datetime.now(UTC)
+    settle_pet_and_publish(session, pet, now=now, trigger="care")
     recent = _recent_interactions(
         session,
         account_id=principal.account_id,
@@ -252,9 +343,73 @@ def care_for_pet(
             idempotency_key=event_key,
             payload=recipient_payload,
         )
+        _append_growth_events_for_relation(
+            session,
+            event_key=event_key,
+            pet=pet,
+            relation=recipient_relation,
+            mutation=mutation,
+        )
 
     session.commit()
     return response
+
+
+@pet_care_router.get(
+    "/pets/{pet_id}/growth",
+    response_model=PetGrowthResponse,
+)
+def pet_growth(
+    pet_id: str,
+    principal: Annotated[Principal, Depends(get_principal)],
+    session: Annotated[Session, Depends(get_session)],
+    limit: int = Query(default=30, ge=1, le=100),
+) -> PetGrowthResponse:
+    _relation_for_actor(
+        session,
+        account_id=principal.account_id,
+        pet_id=pet_id,
+        require_care=False,
+    )
+    pet = session.get(Pet, pet_id)
+    if pet is None:
+        raise HTTPException(status_code=404, detail="宠物不存在")
+    settle_pet_and_publish(session, pet, now=datetime.now(UTC), trigger="growth_read")
+    session.commit()
+
+    rows = session.scalars(
+        select(SyncEvent)
+        .where(
+            SyncEvent.account_id == principal.account_id,
+            SyncEvent.event_type.in_(GROWTH_EVENT_TYPES),
+        )
+        .order_by(SyncEvent.sequence.desc())
+        .limit(max(limit * 3, 30))
+    )
+    history: list[PetGrowthHistoryItem] = []
+    for row in rows:
+        payload = _event_payload(row)
+        if payload.get("pet_id") != pet_id:
+            continue
+        transition = payload.get("transition")
+        if not isinstance(transition, dict):
+            continue
+        history.append(
+            PetGrowthHistoryItem(
+                event_type=row.event_type,  # type: ignore[arg-type]
+                previous_value=str(transition.get("previous_value", "")),
+                current_value=str(transition.get("current_value", "")),
+                source=str(transition.get("source") or "unknown"),
+                created_at=_aware(row.created_at),
+            )
+        )
+        if len(history) >= limit:
+            break
+    return PetGrowthResponse(
+        pet=pet_view(pet),
+        settled_at=_aware(pet.updated_at),
+        history=history,
+    )
 
 
 @pet_care_router.get(
@@ -267,8 +422,12 @@ def pet_activity(
     session: Annotated[Session, Depends(get_session)],
     limit: int = Query(default=30, ge=1, le=100),
 ) -> PetActivityResponse:
-    if session.get(AccountPetRelation, (principal.account_id, pet_id)) is None:
-        raise HTTPException(status_code=404, detail="宠物不存在或无访问权限")
+    _relation_for_actor(
+        session,
+        account_id=principal.account_id,
+        pet_id=pet_id,
+        require_care=False,
+    )
     rows = session.scalars(
         select(SyncEvent)
         .where(
