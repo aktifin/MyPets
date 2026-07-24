@@ -48,8 +48,18 @@ class ReminderCache:
                 """
             )
 
-    def put(self, occurrence: ReminderOccurrence) -> None:
+    def put(
+        self,
+        occurrence: ReminderOccurrence,
+        *,
+        authoritative: bool = False,
+    ) -> bool:
+        """Apply server data unless a newer local command is still awaiting confirmation."""
+
+        if not authoritative and self.has_pending_command(occurrence.occurrence_id):
+            return False
         self.store.put_reminder(occurrence)
+        return True
 
     def get(self, occurrence_id: str) -> ReminderOccurrence | None:
         row = self._connection.execute(
@@ -70,7 +80,9 @@ class ReminderCache:
         if states:
             placeholders = ",".join("?" for _ in states)
             conditions.append(f"state IN ({placeholders})")
-            parameters.extend(state.value for state in sorted(states, key=lambda item: item.value))
+            parameters.extend(
+                state.value for state in sorted(states, key=lambda item: item.value)
+            )
         parameters.append(max(1, min(1000, int(limit))))
         rows = self._connection.execute(
             f"SELECT * FROM reminder_occurrences WHERE {' AND '.join(conditions)} "
@@ -168,9 +180,7 @@ class ReminderCache:
         )
         with self.store.transaction() as connection:
             connection.execute(
-                """
-                INSERT INTO reminder_command_outbox VALUES (?,?,?,?,?,?,?)
-                """,
+                "INSERT INTO reminder_command_outbox VALUES (?,?,?,?,?,?,?)",
                 (
                     command.command_id,
                     command.account_id,
@@ -182,6 +192,16 @@ class ReminderCache:
                 ),
             )
         return command
+
+    def has_pending_command(self, occurrence_id: str) -> bool:
+        row = self._connection.execute(
+            """
+            SELECT 1 FROM reminder_command_outbox
+            WHERE occurrence_id=? LIMIT 1
+            """,
+            (occurrence_id,),
+        ).fetchone()
+        return row is not None
 
     def pending_commands(self, account_id: str, limit: int = 100) -> list[ReminderCommand]:
         rows = self._connection.execute(
