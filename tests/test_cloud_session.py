@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QObject, Signal
+from PySide6.QtCore import QObject, Signal
 
 from onepic_desktop_pet.cloud_session import CloudConnectionState, CloudSessionController
 from onepic_desktop_pet.cloud_types import DeviceCredentials, normalize_base_url
@@ -12,7 +12,28 @@ from onepic_desktop_pet.local_store import LocalStateStore
 from onepic_desktop_pet.pet_registry import PetRegistry
 
 
-_QT_APP = QCoreApplication.instance() or QCoreApplication([])
+class FakeTimeout:
+    def __init__(self) -> None:
+        self.callback = None
+
+    def connect(self, callback) -> None:
+        self.callback = callback
+
+
+class FakeTimer:
+    def __init__(self) -> None:
+        self.timeout = FakeTimeout()
+        self.interval = 0
+        self.active = False
+
+    def setInterval(self, value: int) -> None:
+        self.interval = value
+
+    def start(self) -> None:
+        self.active = True
+
+    def stop(self) -> None:
+        self.active = False
 
 
 class FakeApi(QObject):
@@ -139,7 +160,14 @@ def _controller(tmp_path: Path, monkeypatch):
     registry.bootstrap_local_pet()
     credentials = MemoryCredentialStore()
     api = FakeApi(settings.cloud_base_url)
-    controller = CloudSessionController(api, store, registry, credentials, settings)
+    controller = CloudSessionController(
+        api,
+        store,
+        registry,
+        credentials,
+        settings,
+        poll_timer=FakeTimer(),
+    )
     return controller, api, store, credentials
 
 
@@ -190,6 +218,7 @@ def test_login_binds_device_then_persists_credentials_after_device_auth(
     api.operation_succeeded.emit("bootstrap", _bootstrap_payload())
     assert controller.state is CloudConnectionState.CONNECTED
     assert controller.registry.active_pet().identity.name == "小白"
+    controller.stop()
     store.close()
 
 
