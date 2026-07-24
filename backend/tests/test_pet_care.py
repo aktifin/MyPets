@@ -3,11 +3,60 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from conftest import bind_device, register_account
 from mypets_backend.models import Account, AccountPetRelation, Pet, SyncEvent
 
 
-def _create_pet(client: TestClient, auth: dict[str, str], *, key: str = "create-care-pet") -> dict:
+def _bind_device(
+    client: TestClient,
+    account_auth: dict[str, str],
+    *,
+    public_id: str = "windows-device-care-0001",
+    name: str = "照料测试电脑",
+) -> tuple[dict, dict[str, str], str]:
+    bound = client.post(
+        "/api/v1/devices/bind",
+        headers=account_auth,
+        json={"public_id": public_id, "name": name, "platform": "windows"},
+    )
+    assert bound.status_code == 201, bound.text
+    binding = bound.json()
+    exchanged = client.post(
+        "/api/v1/auth/device-token",
+        json={
+            "device_id": binding["device"]["id"],
+            "device_secret": binding["device_secret"],
+        },
+    )
+    assert exchanged.status_code == 200, exchanged.text
+    headers = {"Authorization": f"Bearer {exchanged.json()['access_token']}"}
+    return binding["device"], headers, binding["device_secret"]
+
+
+def _register_account(
+    client: TestClient,
+    username: str,
+    *,
+    display_name: str | None = None,
+    password: str = "a-strong-test-password",
+) -> dict[str, str]:
+    response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": username,
+            "display_name": display_name or username,
+            "password": password,
+        },
+    )
+    assert response.status_code == 201, response.text
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
+def _create_pet(
+    client: TestClient,
+    auth: dict[str, str],
+    *,
+    key: str = "create-care-pet",
+) -> dict:
     response = client.post(
         "/api/v1/pets",
         headers={**auth, "Idempotency-Key": key},
@@ -59,8 +108,12 @@ def test_feed_updates_server_state_and_is_idempotent(
 
     with client.app.state.session_factory() as session:
         row = session.get(Pet, pet_id)
-        relation = session.get(AccountPetRelation, (row.primary_owner_account_id, pet_id))
-        assert row is not None and relation is not None
+        assert row is not None
+        relation = session.get(
+            AccountPetRelation,
+            (row.primary_owner_account_id, pet_id),
+        )
+        assert relation is not None
         assert row.hunger == 88
         assert row.growth_exp == 4
         assert relation.affinity == 2
@@ -80,7 +133,7 @@ def test_device_token_can_play_and_sync_pet_update(
     account_auth: dict[str, str],
 ) -> None:
     pet = _create_pet(client, account_auth, key="create-device-care-pet")
-    device, device_auth, _secret = bind_device(client, account_auth)
+    device, device_auth, _secret = _bind_device(client, account_auth)
 
     response = client.post(
         f"/api/v1/pets/{pet['pet_id']}/interactions/play",
@@ -142,8 +195,8 @@ def test_viewer_and_unrelated_accounts_cannot_care_for_pet(
     account_auth: dict[str, str],
 ) -> None:
     pet = _create_pet(client, account_auth, key="create-private-care-pet")
-    viewer_auth = register_account(client, "viewer_user")
-    stranger_auth = register_account(client, "stranger_user")
+    viewer_auth = _register_account(client, "viewer_user")
+    stranger_auth = _register_account(client, "stranger_user")
 
     with client.app.state.session_factory() as session:
         viewer = session.scalar(select(Account).where(Account.username == "viewer_user"))
