@@ -108,7 +108,7 @@ def test_folded_notifications_keep_message_and_reminder_counts_separate(
     store.close()
 
 
-def test_notification_and_reminder_reject_naive_datetime(tmp_path: Path) -> None:
+def test_store_entry_points_reject_naive_datetime(tmp_path: Path) -> None:
     store = LocalStateStore(tmp_path / "state.db")
 
     notification = FoldedNotification(
@@ -126,22 +126,12 @@ def test_notification_and_reminder_reject_naive_datetime(tmp_path: Path) -> None
     else:
         raise AssertionError("无时区通知不应写入")
 
-    reminder = ReminderOccurrence(
-        "r1",
-        "myreminder",
-        "source-1",
-        "account-1",
-        "标题",
-        "正文",
-        datetime(2026, 7, 24),
-        "Asia/Tokyo",
-    )
     try:
-        store.put_reminder(reminder)
+        store.list_due_reminders("account-1", datetime(2026, 7, 24))
     except ValueError as exc:
         assert "时区" in str(exc)
     else:
-        raise AssertionError("无时区提醒不应写入")
+        raise AssertionError("无时区查询时间不应被接受")
     store.close()
 
 
