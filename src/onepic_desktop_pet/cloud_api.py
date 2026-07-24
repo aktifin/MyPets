@@ -169,6 +169,84 @@ class CloudApiClient(QObject):
             headers={"Idempotency-Key": key},
         )
 
+    def list_conversations(self) -> None:
+        self._request(
+            "conversations",
+            "GET",
+            "/api/v1/conversations",
+            token=self._require_device_token(),
+        )
+
+    def create_conversation(self, recipient_username: str) -> None:
+        username = recipient_username.strip()
+        if not username:
+            raise ValueError("收件人用户名不能为空")
+        self._json_request(
+            "conversation_create",
+            "POST",
+            "/api/v1/conversations",
+            {"recipient_username": username},
+            token=self._require_device_token(),
+            headers={"Idempotency-Key": f"desktop-conversation-{uuid4()}"},
+        )
+
+    def fetch_messages(
+        self,
+        conversation_id: str,
+        *,
+        after_sequence: int = 0,
+        limit: int = 200,
+    ) -> None:
+        conversation_id = conversation_id.strip()
+        if not conversation_id:
+            raise ValueError("conversation_id 不能为空")
+        self._request(
+            f"messages:{conversation_id}",
+            "GET",
+            f"/api/v1/conversations/{conversation_id}/messages",
+            token=self._require_device_token(),
+            query={
+                "after_sequence": max(0, int(after_sequence)),
+                "limit": max(1, min(200, int(limit))),
+            },
+        )
+
+    def send_message(
+        self,
+        conversation_id: str,
+        content: str,
+        *,
+        sender_pet_id: str | None = None,
+    ) -> None:
+        conversation_id = conversation_id.strip()
+        content = content.strip()
+        if not conversation_id or not content:
+            raise ValueError("会话和消息内容不能为空")
+        payload: dict[str, Any] = {"content": content}
+        if sender_pet_id:
+            payload["sender_pet_id"] = sender_pet_id
+        self._json_request(
+            f"message_send:{conversation_id}",
+            "POST",
+            f"/api/v1/conversations/{conversation_id}/messages",
+            payload,
+            token=self._require_device_token(),
+            headers={"Idempotency-Key": f"desktop-message-{uuid4()}"},
+        )
+
+    def mark_message_read(self, message_id: str) -> None:
+        message_id = message_id.strip()
+        if not message_id:
+            raise ValueError("message_id 不能为空")
+        self._request(
+            f"message_read:{message_id}",
+            "POST",
+            f"/api/v1/messages/{message_id}/read",
+            token=self._require_device_token(),
+            body=b"{}",
+            content_type="application/json",
+        )
+
     def _require_account_token(self) -> str:
         if not self._account_token:
             raise RuntimeError("尚未取得账户访问令牌")
