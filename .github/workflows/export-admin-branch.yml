@@ -1,0 +1,21 @@
+name: Export admin branch source
+
+on:
+  push:
+    branches: [codex/admin-pet-publishing]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Archive source
+        run: zip -qr mypets-source.zip . -x '.git/*'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mypets-admin-source
+          path: mypets-source.zip
+          retention-days: 1
