@@ -59,11 +59,15 @@ The `/portal` application supports:
 - safe pet name and personality configuration;
 - pet visibility and remote-care settings;
 - friend requests, friend removal, blocking, and unblocking;
-- caregiver and viewer invitation maintenance.
+- caregiver and viewer invitation maintenance;
+- asynchronous visit requests, decisions, recall, paired read-only pet status cards, and
+  visit history;
+- responsive visit forms and stacked pet cards for narrow mobile layouts.
 
 Web pet selection is independent from each physical device's `active_pet_id`. Pet
-configuration changes publish the same semantic synchronization events used by the PC
-client.
+configuration and visit presence changes publish the same semantic synchronization events
+used by the PC client. The portal only lists host pets already filtered by the friendship and
+privacy API.
 
 See `../docs/Web用户门户.md`.
 
