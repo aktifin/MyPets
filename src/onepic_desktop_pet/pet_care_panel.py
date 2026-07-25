@@ -1,6 +1,12 @@
-"""Compact, non-modal desktop panel for server-authoritative pet care."""
+"""紧凑型桌面照料与日常互动状态面板模块。
+
+本模块提供权威状态展示与一键照料请求控制，并在操作成功时
+自动记录互动履历至本地 SQLite 数据库。
+"""
 
 from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -15,12 +21,15 @@ from PySide6.QtWidgets import (
 
 from .domain import PetProfile
 
+if TYPE_CHECKING:
+    from .local_store import LocalStateStore
+
 
 class PetCarePanel(QDialog):
-    """Display cached pet state and emit explicit care requests.
+    """显示宠物状态与照料操作控制面板。
 
-    The panel never mutates PetProfile locally.  Buttons are disabled until the caller
-    receives a server response, so visible state cannot get ahead of cloud authority.
+    面板不直接在本地篡改 PetProfile 状态，按钮在等待服务器响应时禁用，
+    操作成功后更新 UI 并记录日常互动履历。
     """
 
     action_requested = Signal(str)
@@ -41,8 +50,17 @@ class PetCarePanel(QDialog):
         ("boredom", "无聊度"),
     )
 
-    def __init__(self, parent=None) -> None:
+    def __init__(
+        self,
+        parent=None,
+        store: LocalStateStore | None = None,
+        pet_id: str = "default_pet",
+    ) -> None:
         super().__init__(parent)
+        self.store = store
+        self.pet_id = pet_id
+        self._last_action: tuple[str, str] | None = None
+
         self.setWindowTitle("宠物状态与照料")
         self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
@@ -72,7 +90,7 @@ class PetCarePanel(QDialog):
         for action, label in self.ACTIONS:
             button = QPushButton(label)
             button.clicked.connect(
-                lambda _checked=False, action=action: self.action_requested.emit(action)
+                lambda _checked=False, act=action, lbl=label: self._on_action_clicked(act, lbl)
             )
             actions.addWidget(button)
             self.action_buttons[action] = button
@@ -87,7 +105,12 @@ class PetCarePanel(QDialog):
         close_button.clicked.connect(self.hide)
         root.addWidget(close_button, alignment=Qt.AlignmentFlag.AlignRight)
 
+    def _on_action_clicked(self, action_type: str, action_name: str) -> None:
+        self._last_action = (action_type, action_name)
+        self.action_requested.emit(action_type)
+
     def set_pet(self, pet: PetProfile) -> None:
+        self.pet_id = pet.identity.pet_id
         stats = pet.stats
         self.name_label.setText(pet.identity.name)
         stage_names = {
@@ -117,3 +140,13 @@ class PetCarePanel(QDialog):
         self.status_label.setStyleSheet(
             "color: #b42318;" if error else "color: #067647;"
         )
+        if not error and self._last_action and self.store is not None:
+            act_type, act_name = self._last_action
+            self.store.save_interaction_record(
+                pet_id=self.pet_id,
+                action_type=act_type,
+                action_name=act_name,
+                detail=message,
+                source="user",
+            )
+        self._last_action = None

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -25,7 +26,7 @@ from .domain import (
     ReminderOccurrenceState,
 )
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def local_state_path() -> Path:
@@ -138,6 +139,28 @@ class LocalStateStore:
                 CREATE TABLE IF NOT EXISTS cloud_cursors (
                     stream TEXT PRIMARY KEY, sequence_number INTEGER NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS chat_history (
+                    message_id TEXT PRIMARY KEY,
+                    pet_id TEXT NOT NULL,
+                    sender TEXT NOT NULL,
+                    sender_name TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    emotion TEXT,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_chat_history_pet_created
+                    ON chat_history(pet_id, created_at ASC);
+                CREATE TABLE IF NOT EXISTS interaction_records (
+                    record_id TEXT PRIMARY KEY,
+                    pet_id TEXT NOT NULL,
+                    action_type TEXT NOT NULL,
+                    action_name TEXT NOT NULL,
+                    detail TEXT NOT NULL,
+                    source TEXT NOT NULL DEFAULT 'user',
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_interaction_records_pet_created
+                    ON interaction_records(pet_id, created_at DESC);
                 """
             )
             connection.execute(
@@ -601,3 +624,134 @@ class LocalStateStore:
             (stream,),
         ).fetchone()
         return int(row["sequence_number"]) if row else 0
+
+    def save_chat_message(
+        self,
+        pet_id: str,
+        sender: str,
+        sender_name: str,
+        content: str,
+        *,
+        emotion: str | None = None,
+        message_id: str | None = None,
+        created_at: datetime | None = None,
+    ) -> str:
+        """保存单条聊天消息到本地数据库。"""
+        msg_id = message_id or str(uuid.uuid4())
+        created_iso = (
+            _iso(created_at, "created_at") if created_at else datetime.now(UTC).isoformat()
+        )
+        with self.transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO chat_history VALUES (?,?,?,?,?,?,?)
+                ON CONFLICT(message_id) DO UPDATE SET
+                    pet_id=excluded.pet_id,
+                    sender=excluded.sender,
+                    sender_name=excluded.sender_name,
+                    content=excluded.content,
+                    emotion=excluded.emotion,
+                    created_at=excluded.created_at
+                """,
+                (msg_id, pet_id, sender, sender_name, content, emotion, created_iso),
+            )
+        return msg_id
+
+    def list_chat_history(
+        self,
+        pet_id: str,
+        limit: int = 100,
+    ) -> list[dict[str, str | None]]:
+        """按时间顺序获取指定宠物的历史聊天记录。"""
+        rows = self._connection.execute(
+            """
+            SELECT * FROM chat_history
+            WHERE pet_id=?
+            ORDER BY created_at ASC, rowid ASC
+            LIMIT ?
+            """,
+            (pet_id, max(1, min(1000, int(limit)))),
+        ).fetchall()
+        return [
+            {
+                "message_id": row["message_id"],
+                "pet_id": row["pet_id"],
+                "sender": row["sender"],
+                "sender_name": row["sender_name"],
+                "content": row["content"],
+                "emotion": row["emotion"],
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+
+    def clear_chat_history(self, pet_id: str) -> None:
+        """清空指定宠物的聊天记录。"""
+        with self.transaction() as connection:
+            connection.execute("DELETE FROM chat_history WHERE pet_id=?", (pet_id,))
+
+    def save_interaction_record(
+        self,
+        pet_id: str,
+        action_type: str,
+        action_name: str,
+        *,
+        detail: str = "",
+        source: str = "user",
+        record_id: str | None = None,
+        created_at: datetime | None = None,
+    ) -> str:
+        """保存单条日常互动记录到本地数据库。"""
+        rec_id = record_id or str(uuid.uuid4())
+        created_iso = (
+            _iso(created_at, "created_at") if created_at else datetime.now(UTC).isoformat()
+        )
+        with self.transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO interaction_records VALUES (?,?,?,?,?,?,?)
+                ON CONFLICT(record_id) DO UPDATE SET
+                    pet_id=excluded.pet_id,
+                    action_type=excluded.action_type,
+                    action_name=excluded.action_name,
+                    detail=excluded.detail,
+                    source=excluded.source,
+                    created_at=excluded.created_at
+                """,
+                (rec_id, pet_id, action_type, action_name, detail, source, created_iso),
+            )
+        return rec_id
+
+    def list_interaction_records(
+        self,
+        pet_id: str,
+        limit: int = 100,
+    ) -> list[dict[str, str]]:
+        """按时间倒序获取指定宠物的日常互动履历。"""
+        rows = self._connection.execute(
+            """
+            SELECT * FROM interaction_records
+            WHERE pet_id=?
+            ORDER BY created_at DESC, rowid DESC
+            LIMIT ?
+            """,
+            (pet_id, max(1, min(1000, int(limit)))),
+        ).fetchall()
+        return [
+            {
+                "record_id": row["record_id"],
+                "pet_id": row["pet_id"],
+                "action_type": row["action_type"],
+                "action_name": row["action_name"],
+                "detail": row["detail"],
+                "source": row["source"],
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
+
+    def clear_interaction_records(self, pet_id: str) -> None:
+        """清空指定宠物的日常互动履历。"""
+        with self.transaction() as connection:
+            connection.execute("DELETE FROM interaction_records WHERE pet_id=?", (pet_id,))
+

@@ -419,3 +419,21 @@ class PetPersonalityScore(Base):
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
 
+
+class PetInteractionLog(Base):
+    """宠物日常照料与互动历史日志模型。"""
+
+    __tablename__ = "pet_interaction_logs"
+    __table_args__ = (Index("ix_pet_interaction_logs_pet", "pet_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    pet_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("pets.id", ondelete="CASCADE"), nullable=False
+    )
+    action_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    action_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    detail: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    source: Mapped[str] = mapped_column(String(32), default="user", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+

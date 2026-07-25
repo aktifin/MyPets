@@ -34,6 +34,7 @@ def test_alembic_metadata_tables_complete():
         "admin_audit_logs",
         "pet_growth_logs",
         "pet_personality_scores",
+        "pet_interaction_logs",
         "friend_requests",
         "friendships",
         "account_blocks",
