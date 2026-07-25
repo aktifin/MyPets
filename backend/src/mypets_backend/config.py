@@ -36,7 +36,9 @@ class Settings:
 
     # Pet content review, user image submission, production work orders, and
     # personal asset deployment are retained in source but disabled by default.
-    pet_review_enabled: bool = False
+    pet_review_enabled: bool = field(
+        default_factory=lambda: _env_bool("MYPETS_ENABLE_PET_REVIEW", False)
+    )
 
     # MYPETS_ADMIN_USERNAMES remains a backward-compatible super-administrator list.
     # Explicit role lists are merged into admin_usernames in __post_init__ so the
