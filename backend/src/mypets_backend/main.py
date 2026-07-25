@@ -16,6 +16,10 @@ from .admin_governance_api import admin_governance_router, governance_catalog_ro
 from .admin_rbac import AdminPermissionMiddleware
 from .admin_web import admin_web_router
 from .api import router
+from .asset_submission_api import (
+    admin_asset_submission_router,
+    asset_submission_router,
+)
 from .config import Settings
 from .database import Base, create_database_engine, create_session_factory
 from .message_center_api import message_center_router
@@ -74,9 +78,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         description=(
             "Server-authoritative accounts, user Web portal, pets, friendship, shared care, "
             "asynchronous pet visits, desktop dual-pet visit interactions, lazy settlement, "
-            "categorized messaging, resume-safe reminders, realtime cursor notifications, "
-            "external reminder providers, synchronization, pet asset publishing, administrator "
-            "governance, and console API."
+            "categorized messaging, resume-safe reminders, safe user pet-image submissions, "
+            "realtime cursor notifications, external reminder providers, synchronization, pet "
+            "asset publishing, administrator governance, and console API."
         ),
     )
     app.state.settings = resolved
@@ -88,6 +92,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(router)
     app.include_router(realtime_router)
     app.include_router(user_portal_api_router)
+    app.include_router(asset_submission_router)
     app.include_router(pet_care_router)
     app.include_router(social_router)
     app.include_router(visit_scene_router)
@@ -101,6 +106,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Static governance paths such as /pet-template-versions/compare must be
     # registered before admin_router's dynamic /{version_id} route.
     app.include_router(admin_governance_router)
+    app.include_router(admin_asset_submission_router)
     app.include_router(admin_router)
     app.include_router(admin_console_api_router)
     app.include_router(catalog_router)
