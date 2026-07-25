@@ -23,6 +23,9 @@ class Settings:
     access_token_minutes: int = 30
     device_token_hours: int = 12
     create_schema_on_start: bool = True
+    realtime_ticket_seconds: int = 60
+    realtime_poll_interval_seconds: float = 1.0
+    realtime_heartbeat_seconds: int = 20
 
     # MYPETS_ADMIN_USERNAMES remains a backward-compatible super-administrator list.
     # Explicit role lists are merged into admin_usernames in __post_init__ so the
@@ -78,6 +81,18 @@ class Settings:
                 "MYPETS_CREATE_SCHEMA_ON_START", "1"
             ).lower()
             not in {"0", "false", "no"},
+            realtime_ticket_seconds=int(
+                os.getenv("MYPETS_REALTIME_TICKET_SECONDS", cls.realtime_ticket_seconds)
+            ),
+            realtime_poll_interval_seconds=float(
+                os.getenv(
+                    "MYPETS_REALTIME_POLL_INTERVAL_SECONDS",
+                    cls.realtime_poll_interval_seconds,
+                )
+            ),
+            realtime_heartbeat_seconds=int(
+                os.getenv("MYPETS_REALTIME_HEARTBEAT_SECONDS", cls.realtime_heartbeat_seconds)
+            ),
             admin_usernames=_csv_values(
                 os.getenv("MYPETS_ADMIN_USERNAMES", "pet_editor,pet_reviewer")
             ),
@@ -156,6 +171,12 @@ class Settings:
             raise ValueError("账户访问令牌有效期不能短于 5 分钟")
         if self.device_token_hours < 1:
             raise ValueError("设备访问令牌有效期不能短于 1 小时")
+        if not 15 <= self.realtime_ticket_seconds <= 300:
+            raise ValueError("实时连接票据有效期必须位于 15 到 300 秒")
+        if not 0.25 <= self.realtime_poll_interval_seconds <= 10:
+            raise ValueError("实时游标轮询间隔必须位于 0.25 到 10 秒")
+        if not 5 <= self.realtime_heartbeat_seconds <= 120:
+            raise ValueError("实时连接心跳间隔必须位于 5 到 120 秒")
         if not self.asset_storage_dir.strip():
             raise ValueError("MYPETS_ASSET_STORAGE_DIR 不能为空")
         if self.max_asset_package_bytes < 1024:
