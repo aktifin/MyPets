@@ -92,8 +92,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(social_router)
     app.include_router(visit_scene_router)
     app.include_router(visit_router)
-    app.include_router(messaging_router)
+    # The projected conversation route must be registered before the compatibility route.
     app.include_router(message_center_router)
+    app.include_router(messaging_router)
     app.include_router(reminder_router)
     app.include_router(reminder_snapshot_router)
     app.include_router(reminder_integration_router)
