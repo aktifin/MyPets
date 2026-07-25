@@ -138,8 +138,8 @@ def test_visit_and_shared_care_events_project_once(client: TestClient) -> None:
         json={"username": "category_caregiver", "role": "caregiver"},
     )
     assert invitation.status_code == 201, invitation.text
-    assert invitation.json()["invited_account"]["id"] == caregiver_id
-    assert invitation.json()["invited_by"]["id"] == host_id
+    assert invitation.json()["invited_account"]["account_id"] == caregiver_id
+    assert invitation.json()["invited_by"]["account_id"] == host_id
 
     caregiver_conversations = client.get("/api/v1/conversations", headers=caregiver_auth)
     assert caregiver_conversations.status_code == 200, caregiver_conversations.text
