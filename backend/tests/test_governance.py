@@ -217,7 +217,7 @@ def _selected_pet_state_version(client: TestClient, owner_auth: dict[str, str], 
     dashboard = client.get("/api/v1/portal/dashboard", headers=owner_auth)
     assert dashboard.status_code == 200, dashboard.text
     item = next(row for row in dashboard.json()["pets"] if row["pet"]["pet_id"] == pet_id)
-    return int(item["pet"]["state_version"])
+    return int(item["pet"]["stats"]["state_version"])
 
 
 def test_governance_routes_reject_normal_accounts(governance_client: TestClient) -> None:
