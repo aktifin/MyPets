@@ -22,6 +22,7 @@ from .messaging_api import messaging_router
 from .models import Account
 from .object_store import FileObjectStore
 from .pet_care_api import pet_care_router
+from .realtime_api import realtime_router
 from .reminder_api import reminder_router
 from .reminder_integration_api import reminder_integration_router
 from .reminder_snapshot_api import reminder_snapshot_router
@@ -70,9 +71,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version="0.2.0-alpha",
         description=(
             "Server-authoritative accounts, user Web portal, pets, friendship, shared care, "
-            "asynchronous pet visits, lazy settlement, messaging, reminders, external reminder "
-            "providers, synchronization, pet asset publishing, administrator governance, and "
-            "console API."
+            "asynchronous pet visits, lazy settlement, messaging, reminders, realtime cursor "
+            "notifications, external reminder providers, synchronization, pet asset publishing, "
+            "administrator governance, and console API."
         ),
     )
     app.state.settings = resolved
@@ -82,6 +83,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(AdminPermissionMiddleware)
     app.add_middleware(PetSettlementMiddleware)
     app.include_router(router)
+    app.include_router(realtime_router)
     app.include_router(user_portal_api_router)
     app.include_router(pet_care_router)
     app.include_router(social_router)

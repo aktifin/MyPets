@@ -18,6 +18,7 @@ from .config import Settings
 
 _password_hasher = PasswordHasher()
 TokenKind = Literal["account", "device"]
+_REALTIME_AUDIENCE = "mypets-realtime"
 
 
 @dataclass(frozen=True)
@@ -88,6 +89,51 @@ def create_access_token(
 
 def decode_access_token(token: str, settings: Settings) -> Principal:
     payload = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
+    return _principal_from_claims(payload)
+
+
+def create_realtime_ticket(
+    settings: Settings,
+    principal: Principal,
+) -> tuple[str, datetime]:
+    """Create a short-lived ticket intended only for a WebSocket subprotocol header."""
+
+    now = datetime.now(UTC)
+    expires_at = now + timedelta(seconds=settings.realtime_ticket_seconds)
+    payload = {
+        "sub": principal.account_id,
+        "kind": "realtime",
+        "source_kind": principal.kind,
+        "device_id": principal.device_id,
+        "device_version": principal.device_version,
+        "aud": _REALTIME_AUDIENCE,
+        "iat": now,
+        "exp": expires_at,
+        "jti": str(uuid4()),
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm="HS256"), expires_at
+
+
+def decode_realtime_ticket(token: str, settings: Settings) -> Principal:
+    payload = jwt.decode(
+        token,
+        settings.jwt_secret,
+        algorithms=["HS256"],
+        audience=_REALTIME_AUDIENCE,
+    )
+    if payload.get("kind") != "realtime":
+        raise jwt.InvalidTokenError("invalid realtime ticket kind")
+    source_kind = payload.get("source_kind")
+    claims = {
+        "sub": payload.get("sub"),
+        "kind": source_kind,
+        "device_id": payload.get("device_id"),
+        "device_version": payload.get("device_version"),
+    }
+    return _principal_from_claims(claims)
+
+
+def _principal_from_claims(payload: dict) -> Principal:
     account_id = str(payload.get("sub", "")).strip()
     kind = payload.get("kind")
     device_id = payload.get("device_id")

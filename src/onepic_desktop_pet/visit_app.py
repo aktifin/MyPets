@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtGui import QAction
 
 from .pet_registry import LOCAL_ACCOUNT_ID
+from .realtime import RealtimeClient
 from .social_app import SocialDesktopPetApplication
 from .visit_client import VisitController
 from .visit_dialog import VisitDialog
@@ -18,8 +19,10 @@ class VisitDesktopPetApplication(SocialDesktopPetApplication):
             self.cloud_api,
             parent=self.qt_app,
         )
+        self.realtime_client = RealtimeClient(self.cloud_api, parent=self.qt_app)
         self._visit_dialog: VisitDialog | None = None
         self._known_pending_visit_ids: set[str] = set()
+        self._realtime_refresh_pending = False
         self.visit_action = QAction("异步串门…", self.tray_menu)
         self.visit_action.triggered.connect(self.open_visit_dialog)
         self.tray_menu.insertAction(self.social_action, self.visit_action)
@@ -28,7 +31,9 @@ class VisitDesktopPetApplication(SocialDesktopPetApplication):
         self.visit_controller.status_message.connect(self._visit_status)
         self.visit_controller.operation_failed.connect(self._visit_failed)
         self.visit_controller.pets_sync_requested.connect(self.cloud_session.sync_now)
-        self.cloud_session.state_changed.connect(lambda _state: self._refresh_visit_context())
+        self.cloud_session.state_changed.connect(self._cloud_state_for_visits_and_realtime)
+        self.realtime_client.cursor_available.connect(self._realtime_cursor_available)
+        self.realtime_client.status_message.connect(self._realtime_status)
 
     def open_visit_dialog(self) -> None:
         if self._visit_dialog is None:
@@ -88,6 +93,26 @@ class VisitDesktopPetApplication(SocialDesktopPetApplication):
                 f"收到 {len(new_ids)} 个新的串门申请，可在托盘菜单中处理。",
             )
 
+    def _cloud_state_for_visits_and_realtime(self, state: str) -> None:
+        self._refresh_visit_context()
+        if state == "connected":
+            self.realtime_client.start()
+            if self._realtime_refresh_pending:
+                self._realtime_refresh_pending = False
+                self.reminder_cloud.refresh()
+                self.social_controller.refresh(self._managed_active_pet_id())
+                self.visit_controller.refresh(self._visit_active_pet_id())
+        elif state in {"disabled", "offline"}:
+            self.realtime_client.stop()
+
+    def _realtime_cursor_available(self, _cursor: int) -> None:
+        self._realtime_refresh_pending = True
+        self.cloud_session.sync_now()
+
+    def _realtime_status(self, message: str) -> None:
+        if "不可用" in message or "异常" in message:
+            self.tray.setToolTip(f"{self.active_pet.identity.name} · {message}")
+
     def _visit_status(self, message: str) -> None:
         if self._visit_dialog is not None:
             self._visit_dialog.set_status(message)
@@ -107,6 +132,7 @@ class VisitDesktopPetApplication(SocialDesktopPetApplication):
     def quit(self) -> None:
         if self._quitting:
             return
+        self.realtime_client.stop()
         if self._visit_dialog is not None:
             self._visit_dialog.close()
         super().quit()
