@@ -6,7 +6,7 @@ import asyncio
 from datetime import UTC, datetime
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -66,15 +66,6 @@ def _validate_principal(session: Session, principal: Principal) -> bool:
     )
 
 
-def _safe_after_sequence(websocket: WebSocket) -> int:
-    raw = websocket.query_params.get("after_sequence", "0")
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return 0
-    return max(0, value)
-
-
 @realtime_router.websocket("/ws")
 async def realtime_websocket(websocket: WebSocket) -> None:
     settings: Settings = websocket.app.state.settings
@@ -96,8 +87,7 @@ async def realtime_websocket(websocket: WebSocket) -> None:
         server_cursor = current_cursor(session, principal.account_id)
 
     await websocket.accept(subprotocol=REALTIME_PROTOCOL)
-    client_cursor = min(_safe_after_sequence(websocket), server_cursor)
-    last_announced_cursor = client_cursor
+    last_announced_cursor = server_cursor
     await websocket.send_json(
         {
             "type": "hello",
