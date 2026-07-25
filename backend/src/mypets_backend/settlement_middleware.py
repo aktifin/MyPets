@@ -12,13 +12,16 @@ from datetime import UTC, datetime
 
 import jwt
 from fastapi import Request
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 
 from .models import Account, Device
 from .pet_state_service import settle_pets_for_account
-from .security import decode_access_token
-from .visit_service import settle_due_visits
+from .security import Principal, decode_access_token
+from .social_models import AccountBlock
+from .visit_service import settle_due_visits, terminate_visits_between
 
 _SETTLEMENT_PATHS = {
     "/api/v1/pets",
@@ -41,32 +44,45 @@ class PetSettlementMiddleware(BaseHTTPMiddleware):
         )
         if should_settle:
             self._settle_if_authenticated(request)
-        return await call_next(request)
+        response = await call_next(request)
+        if (
+            request.method == "POST"
+            and request.url.path == "/api/v1/blocks"
+            and 200 <= response.status_code < 300
+        ):
+            self._terminate_newly_blocked_visits(request)
+        return response
 
     @staticmethod
-    def _settle_if_authenticated(request: Request) -> None:
+    def _principal_if_valid(request: Request, session: Session) -> Principal | None:
         authorization = request.headers.get("Authorization", "")
         scheme, _, token = authorization.partition(" ")
         if scheme.lower() != "bearer" or not token.strip():
-            return
+            return None
         try:
             principal = decode_access_token(token.strip(), request.app.state.settings)
         except jwt.PyJWTError:
-            return
+            return None
+        account = session.get(Account, principal.account_id)
+        if account is None:
+            return None
+        if principal.kind == "device":
+            device = session.get(Device, principal.device_id)
+            if (
+                device is None
+                or device.account_id != principal.account_id
+                or device.revoked_at is not None
+                or device.credential_version != principal.device_version
+            ):
+                return None
+        return principal
 
+    @classmethod
+    def _settle_if_authenticated(cls, request: Request) -> None:
         with request.app.state.session_factory() as session:
-            account = session.get(Account, principal.account_id)
-            if account is None:
+            principal = cls._principal_if_valid(request, session)
+            if principal is None:
                 return
-            if principal.kind == "device":
-                device = session.get(Device, principal.device_id)
-                if (
-                    device is None
-                    or device.account_id != principal.account_id
-                    or device.revoked_at is not None
-                    or device.credential_version != principal.device_version
-                ):
-                    return
             now = datetime.now(UTC)
             settle_due_visits(session, now=now)
             trigger = "pet_care" if request.method == "POST" else "pet_list"
@@ -80,4 +96,28 @@ class PetSettlementMiddleware(BaseHTTPMiddleware):
                 now=now,
                 trigger=trigger,
             )
+            session.commit()
+
+    @classmethod
+    def _terminate_newly_blocked_visits(cls, request: Request) -> None:
+        with request.app.state.session_factory() as session:
+            principal = cls._principal_if_valid(request, session)
+            if principal is None:
+                return
+            blocked_ids = list(
+                session.scalars(
+                    select(AccountBlock.blocked_account_id).where(
+                        AccountBlock.blocker_account_id == principal.account_id
+                    )
+                )
+            )
+            now = datetime.now(UTC)
+            for blocked_account_id in blocked_ids:
+                terminate_visits_between(
+                    session,
+                    principal.account_id,
+                    blocked_account_id,
+                    now=now,
+                    reason="account_blocked",
+                )
             session.commit()
