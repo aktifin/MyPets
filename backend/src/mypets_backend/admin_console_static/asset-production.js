@@ -165,7 +165,7 @@ function renderProductionJobs() {
       actions.push(productionActionButton("重新排队", "queued", job.job_id, "primary"));
     }
     if (job.artifact?.package_url) {
-      actions.push(`<a class="preview-link" href="${escapeHtml(job.artifact.package_url)}">受控下载产物</a>`);
+      actions.push(productionActionButton("受控下载产物", "download", job.job_id));
     }
     const references = job.references.length
       ? `<div class="button-row">${job.references.map((reference, index) => `<button class="secondary compact" data-production-reference="${escapeHtml(reference.reference_id)}" data-production-job="${escapeHtml(job.job_id)}">查看补图 ${index + 1}</button>`).join("")}</div>`
@@ -212,6 +212,10 @@ async function runProductionAction(action, jobId) {
   }
   if (action === "artifact") {
     await openProductionArtifactDialog(job);
+    return;
+  }
+  if (action === "download") {
+    await downloadProductionArtifact(job);
     return;
   }
   const status = action === "progress" ? job.status : action;
@@ -279,6 +283,38 @@ async function submitProductionArtifact(event) {
     $("#productionArtifactDialog").close();
     await loadProductionJobs();
     setStatus("制作产物已通过校验并进入 ready，尚未发布");
+  } catch (error) {
+    setStatus(errorMessage(error), true);
+  }
+}
+
+async function downloadProductionArtifact(job) {
+  const url = job.artifact?.package_url;
+  if (!url) return;
+  try {
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${state.token}`, Accept: "application/zip" },
+    });
+    if (response.status === 401) {
+      logout();
+      throw new Error("登录已过期，请重新登录");
+    }
+    if (!response.ok) {
+      let message = `产物下载失败（${response.status}）`;
+      try {
+        message = (await response.json()).detail || message;
+      } catch {}
+      throw new Error(message);
+    }
+    const objectUrl = URL.createObjectURL(await response.blob());
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = `pet-production-artifact-${job.artifact.artifact_id}.zip`;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    setStatus("制作产物已通过鉴权下载");
   } catch (error) {
     setStatus(errorMessage(error), true);
   }
