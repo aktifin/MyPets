@@ -92,6 +92,7 @@ class VisitDesktopPetApplication(SocialDesktopPetApplication):
         self._active_scene: dict[str, object] | None = None
         self._known_pending_visit_ids: set[str] = set()
         self._realtime_refresh_pending = False
+        self._away_mode_active = False
         self._main_window_was_visible = False
         self._main_window_was_paused = False
 
@@ -292,10 +293,14 @@ class VisitDesktopPetApplication(SocialDesktopPetApplication):
             if self._away_indicator is not None:
                 self._away_indicator.close()
                 self._away_indicator = None
-            if self._main_window_was_visible:
-                self.window.show()
-            self.window.set_paused(self._main_window_was_paused)
-            self._main_window_was_visible = False
+            if self._away_mode_active:
+                if self._main_window_was_visible:
+                    self.window.show()
+                else:
+                    self.window.hide()
+                self.window.set_paused(self._main_window_was_paused)
+                self._away_mode_active = False
+                self._main_window_was_visible = False
             return
 
         visit_id = str(visit.get("visit_id") or "")
@@ -316,9 +321,10 @@ class VisitDesktopPetApplication(SocialDesktopPetApplication):
             indicator.recall_requested.connect(self.visit_controller.recall_visit)
             indicator.show()
             self._away_indicator = indicator
-        if not self._main_window_was_visible:
+        if not self._away_mode_active:
             self._main_window_was_visible = self.window.isVisible()
             self._main_window_was_paused = self.window.paused
+            self._away_mode_active = True
         self.window.set_paused(True)
         self.window.hide()
         self.scene_coordinator.place_indicator(self.window, self._away_indicator)
