@@ -78,7 +78,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     session_factory = create_session_factory(engine)
     if resolved.create_schema_on_start:
         Base.metadata.create_all(engine)
-        _seed_default_admins(session_factory, resolved.admin_usernames)
+        if resolved.pet_review_enabled:
+            _seed_default_admins(session_factory, resolved.admin_usernames)
 
     app = FastAPI(
         title="MyPets API",
@@ -86,11 +87,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         description=(
             "Server-authoritative accounts, user Web portal, pets, friendship, shared care, "
             "asynchronous pet visits, desktop dual-pet visit interactions, lazy settlement, "
-            "categorized messaging, resume-safe reminders, safe user pet-image submissions, "
-            "controlled pet asset production work orders, independently reviewed personal asset "
-            "releases and per-pet rollback, realtime cursor notifications, external reminder "
-            "providers, synchronization, pet asset publishing, administrator governance, and "
-            "console API."
+            "categorized messaging, resume-safe reminders, realtime cursor notifications, "
+            "external reminder providers, synchronization, and read-only published pet assets. "
+            "Pet review and content production workflows are disabled by default."
         ),
     )
     app.state.settings = resolved
@@ -102,9 +101,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(router)
     app.include_router(realtime_router)
     app.include_router(user_portal_api_router)
-    app.include_router(asset_submission_router)
-    app.include_router(asset_production_router)
-    app.include_router(asset_deployment_router)
     app.include_router(pet_care_router)
     app.include_router(social_router)
     app.include_router(visit_scene_router)
@@ -115,18 +111,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(reminder_router)
     app.include_router(reminder_snapshot_router)
     app.include_router(reminder_integration_router)
-    # Static governance paths such as /pet-template-versions/compare must be
-    # registered before admin_router's dynamic /{version_id} route.
-    app.include_router(admin_governance_router)
-    app.include_router(admin_asset_submission_router)
-    app.include_router(admin_asset_production_router)
-    app.include_router(admin_asset_deployment_router)
-    app.include_router(admin_router)
-    app.include_router(admin_console_api_router)
+
+    # Published official assets remain readable so existing pets and desktop caches
+    # continue to work while all review/content-operation entry points are hidden.
     app.include_router(catalog_router)
     app.include_router(governance_catalog_router)
+
+    if resolved.pet_review_enabled:
+        app.include_router(asset_submission_router)
+        app.include_router(asset_production_router)
+        app.include_router(asset_deployment_router)
+        # Static governance paths such as /pet-template-versions/compare must be
+        # registered before admin_router's dynamic /{version_id} route.
+        app.include_router(admin_governance_router)
+        app.include_router(admin_asset_submission_router)
+        app.include_router(admin_asset_production_router)
+        app.include_router(admin_asset_deployment_router)
+        app.include_router(admin_router)
+        app.include_router(admin_console_api_router)
+        app.include_router(admin_web_router)
+
     app.include_router(user_portal_web_router)
-    app.include_router(admin_web_router)
 
     @app.get("/")
     def index() -> RedirectResponse:
