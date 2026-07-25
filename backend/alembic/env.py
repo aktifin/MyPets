@@ -17,6 +17,7 @@ from mypets_backend import social_models  # noqa: F401
 from mypets_backend import visit_models  # noqa: F401
 from mypets_backend import reminder_models  # noqa: F401
 from mypets_backend import user_portal_models  # noqa: F401
+from mypets_backend import asset_submission_models  # noqa: F401
 
 config = context.config
 

@@ -54,6 +54,14 @@ def _required_permission(method: str, path: str) -> str:
             return "publish"
         if re.fullmatch(r"/api/v1/admin/pet-asset-deployments/[^/]+/rollback", path):
             return "publish"
+        if re.fullmatch(
+            r"/api/v1/admin/pet-asset-submissions/[^/]+/start-review", path
+        ):
+            return "edit"
+        if re.fullmatch(
+            r"/api/v1/admin/pet-asset-submissions/[^/]+/(approve|reject)", path
+        ):
+            return "review"
     return "manage"
 
 
