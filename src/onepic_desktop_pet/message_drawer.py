@@ -1,4 +1,4 @@
-"""Low-interruption conversation drawer opened explicitly from the pet badge or tray."""
+"""Low-interruption categorized message drawer opened explicitly by the user."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QComboBox,
     QDialog,
     QHBoxLayout,
     QLabel,
@@ -20,6 +21,19 @@ from PySide6.QtWidgets import (
 
 from .message_cache import MessageCache
 from .messaging import ConversationRecord, MessageRecord
+
+CATEGORY_ICONS = {
+    "direct": "💬",
+    "friend_pet": "🐾",
+    "visit": "🏠",
+    "shared_care": "🤝",
+    "growth": "🌱",
+}
+MESSAGE_TYPE_LABELS = {
+    "visit_message": "串门留言",
+    "care_event": "共同照料",
+    "growth_notice": "成长通知",
+}
 
 
 class MessageDrawer(QDialog):
@@ -38,8 +52,8 @@ class MessageDrawer(QDialog):
         self.display_name = ""
         self._selected_conversation_id: str | None = None
         self.setWindowTitle("MyPets 消息")
-        self.resize(720, 480)
-        self.setMinimumSize(600, 380)
+        self.resize(760, 500)
+        self.setMinimumSize(620, 390)
         self.setModal(False)
         self._build_ui()
 
@@ -48,9 +62,18 @@ class MessageDrawer(QDialog):
         header = QHBoxLayout()
         self.account_label = QLabel("尚未登录")
         header.addWidget(self.account_label, 1)
+        self.category_combo = QComboBox()
+        self.category_combo.addItem("全部分类", "")
+        self.category_combo.addItem("普通私聊", "direct")
+        self.category_combo.addItem("好友宠物", "friend_pet")
+        self.category_combo.addItem("串门留言", "visit")
+        self.category_combo.addItem("共同照料", "shared_care")
+        self.category_combo.addItem("成长通知", "growth")
+        self.category_combo.currentIndexChanged.connect(self.refresh_from_cache)
+        header.addWidget(self.category_combo)
         self.recipient_input = QLineEdit()
         self.recipient_input.setPlaceholderText("输入精确用户名")
-        self.recipient_input.setMaximumWidth(190)
+        self.recipient_input.setMaximumWidth(180)
         header.addWidget(self.recipient_input)
         self.create_button = QPushButton("新建私聊")
         self.create_button.clicked.connect(self._create_conversation)
@@ -62,7 +85,7 @@ class MessageDrawer(QDialog):
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         self.conversation_list = QListWidget()
-        self.conversation_list.setMinimumWidth(210)
+        self.conversation_list.setMinimumWidth(235)
         self.conversation_list.setSelectionMode(
             QAbstractItemView.SelectionMode.SingleSelection
         )
@@ -114,6 +137,7 @@ class MessageDrawer(QDialog):
             self.conversation_title.setText("请先登录云端账户")
 
     def _set_controls_enabled(self, enabled: bool) -> None:
+        self.category_combo.setEnabled(enabled)
         self.recipient_input.setEnabled(enabled)
         self.create_button.setEnabled(enabled)
         self.refresh_button.setEnabled(enabled)
@@ -122,11 +146,16 @@ class MessageDrawer(QDialog):
 
     def refresh_from_cache(self) -> None:
         selected = self._selected_conversation_id
+        category_value = self.category_combo.currentData()
+        category = str(category_value) if category_value else None
         self.conversation_list.blockSignals(True)
         self.conversation_list.clear()
         selected_item: QListWidgetItem | None = None
         if self.account_id:
-            for conversation in self.cache.list_conversations(self.account_id):
+            for conversation in self.cache.list_conversations(
+                self.account_id,
+                category=category,
+            ):
                 item = QListWidgetItem(self._conversation_label(conversation))
                 item.setData(Qt.ItemDataRole.UserRole, conversation.conversation_id)
                 item.setToolTip(self._conversation_tooltip(conversation))
@@ -145,19 +174,23 @@ class MessageDrawer(QDialog):
             self.conversation_list.setCurrentRow(0)
         else:
             self._selected_conversation_id = None
-            self.conversation_title.setText("暂无会话")
+            self.conversation_title.setText("当前分类暂无会话")
             self.message_list.clear()
+            self.message_input.setEnabled(False)
+            self.send_button.setEnabled(False)
 
     @staticmethod
     def _conversation_label(conversation: ConversationRecord) -> str:
-        suffix = f"  💬 {conversation.unread_count}" if conversation.unread_count else ""
-        return f"{conversation.title}{suffix}"
+        icon = CATEGORY_ICONS.get(conversation.category, "💬")
+        suffix = f"  {conversation.unread_count}" if conversation.unread_count else ""
+        return f"{icon} {conversation.title}{suffix}"
 
     @staticmethod
     def _conversation_tooltip(conversation: ConversationRecord) -> str:
+        prefix = conversation.category_label
         if conversation.last_message is None:
-            return "尚无消息"
-        return conversation.last_message.content
+            return f"{prefix} · 尚无消息"
+        return f"{prefix} · {conversation.last_message.content}"
 
     def _select_conversation(self, item: QListWidgetItem | None) -> None:
         if item is None:
@@ -171,8 +204,6 @@ class MessageDrawer(QDialog):
         conversation = self.cache.get_conversation(self.account_id, conversation_id)
         latest = self.cache.latest_message(self.account_id, conversation_id)
         if conversation is not None and conversation.unread_count > 0 and latest is not None:
-            # Reading a conversation acknowledges every message through the latest sequence,
-            # even when the latest message was sent by the local account after older unread mail.
             self.read_requested.emit(latest.message_id)
 
     def _render_selected(self) -> None:
@@ -180,9 +211,23 @@ class MessageDrawer(QDialog):
         if not self.account_id or not conversation_id:
             return
         conversation = self.cache.get_conversation(self.account_id, conversation_id)
-        self.conversation_title.setText(
-            conversation.title if conversation is not None else "会话"
-        )
+        if conversation is None:
+            self.conversation_title.setText("会话")
+            self.message_input.setEnabled(False)
+            self.send_button.setEnabled(False)
+        else:
+            icon = CATEGORY_ICONS.get(conversation.category, "💬")
+            self.conversation_title.setText(
+                f"{icon} {conversation.title} · {conversation.category_label}"
+            )
+            writable = conversation.kind == "direct"
+            self.message_input.setEnabled(writable)
+            self.send_button.setEnabled(writable)
+            self.message_input.setPlaceholderText(
+                "输入消息；内容仅在发送后进入云端"
+                if writable
+                else "系统通知会话为只读"
+            )
         self.message_list.clear()
         for message in self.cache.list_messages(self.account_id, conversation_id):
             item = QListWidgetItem(self._message_text(message))
@@ -198,7 +243,9 @@ class MessageDrawer(QDialog):
     @staticmethod
     def _message_text(message: MessageRecord) -> str:
         time_text = message.created_at.astimezone().strftime("%m-%d %H:%M")
-        return f"{message.sender_display_name} · {time_text}\n{message.content}"
+        type_label = MESSAGE_TYPE_LABELS.get(message.message_type)
+        prefix = f"[{type_label}] " if type_label else ""
+        return f"{prefix}{message.sender_display_name} · {time_text}\n{message.content}"
 
     def _create_conversation(self) -> None:
         username = self.recipient_input.text().strip()
@@ -211,8 +258,16 @@ class MessageDrawer(QDialog):
     def _send_message(self) -> None:
         conversation_id = self._selected_conversation_id
         content = self.message_input.text().strip()
+        conversation = (
+            self.cache.get_conversation(self.account_id, conversation_id)
+            if conversation_id and self.account_id
+            else None
+        )
         if not conversation_id:
             self.set_status("请先选择一个会话。", error=True)
+            return
+        if conversation is None or conversation.kind != "direct":
+            self.set_status("系统通知会话为只读。", error=True)
             return
         if not content:
             self.set_status("消息内容不能为空。", error=True)
