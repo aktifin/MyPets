@@ -1,112 +1,152 @@
-# MyPets 多人云养桌面宠物优化方案 (已更新至 v0.7 版本)
+# MyPets 多人云养桌面宠物实施计划（代码核查更新版）
 
-基于完整产品技术方案与最新代码库（commit `9536ea6` / v0.7: *完成多宠优化阶段 A 架构加固与阶段 B GuestPetWindow 串门 UI 落地*）的逐项对照分析。
+本计划已按当前 `main` 的消息分类、休眠恢复提醒、四向边缘吸附、实时串门与管理平台实现重新核查，并纳入“用户宠物原图提交与审核”第一迭代。
+
+原则：优先完成可验证的用户功能；服务端保持权威状态；桌面 SQLite 仅作可重建缓存；宠物素材包只能是数据，不能包含可执行代码；不把尚未实现的自动生成、生产部署或 AI 工具能力描述为已完成。
 
 ---
 
-## 一、现有实现盘点
+## 一、当前代码基线
 
-### 当前已落地能力
-
-下表列出代码库中已实现且可运行的功能模块：
-
-| 能力域 | 已实现 | 对应代码 |
+| 能力域 | 当前状态 | 主要实现 |
 |---|---|---|
-| **账户与认证** | 注册/登录/JWT/设备密钥/凭据管理/WS Ticket 认证 | [api.py](file:///d:/Project/MyPets/backend/src/mypets_backend/api.py), [realtime_api.py](file:///d:/Project/MyPets/backend/src/mypets_backend/realtime_api.py) |
-| **实时通信 (WS)** | WebSocket 双向长连接 (`/ws/v1/cursor`) + 短时 WS Ticket + Qt/Web 自动重连与 REST 降级 | [realtime_api.py](file:///d:/Project/MyPets/backend/src/mypets_backend/realtime_api.py), [realtime.py](file:///d:/Project/MyPets/src/onepic_desktop_pet/realtime.py) |
-| **多宠物与成长** | **【v0.7 落地】** 结构化 domain 分层、五阶段自动评估晋升算法、`PetGrowthLog` 成长里程碑与 `PetPersonalityScore` 五向性格积分 | [domain/](file:///d:/Project/MyPets/src/onepic_desktop_pet/domain/), [pet_settlement.py](file:///d:/Project/MyPets/backend/src/mypets_backend/pet_settlement.py) |
-| **数据库迁移** | **【v0.7 落地】** Alembic DB 迁移配置 (`alembic.ini`, `env.py`) 及 Base.metadata 23 张表自动化结构校验 | [backend/alembic.ini](file:///d:/Project/MyPets/backend/alembic.ini), [test_alembic_metadata.py](file:///d:/Project/MyPets/backend/tests/test_alembic_metadata.py) |
-| **PC 实时串门与访客窗口** | **【v0.7 落地】** `GuestPetWindow` 独立访客窗口（隐私隔离）+ `AwayIndicator` 桌面折叠外出卡片 + 送客 API 端点联动 | [guest_pet_window.py](file:///d:/Project/MyPets/src/onepic_desktop_pet/presentation/guest_pet_window.py), [away_indicator.py](file:///d:/Project/MyPets/src/onepic_desktop_pet/presentation/away_indicator.py) |
-| **共同照料** | owner/co_owner/caregiver/viewer 四角色 + 邀请/审批 | [social_models.py](file:///d:/Project/MyPets/backend/src/mypets_backend/social_models.py#L80-L101), [social_api.py](file:///d:/Project/MyPets/backend/src/mypets_backend/social_api.py) |
-| **好友系统** | 好友申请/接受/拒绝/黑名单/隐私可见度 | [social_models.py](file:///d:/Project/MyPets/backend/src/mypets_backend/social_models.py#L14-L77) |
-| **消息系统** | 会话/消息/回执/已读同步/折叠通知域模型 | [messaging_api.py](file:///d:/Project/MyPets/backend/src/mypets_backend/messaging_api.py), [message_drawer.py](file:///d:/Project/MyPets/src/onepic_desktop_pet/message_drawer.py) |
-| **异步串门** | 完整状态机：邀请/接受/拒绝/召回/一键送客/到期自动归家 | [visit_models.py](file:///d:/Project/MyPets/backend/src/mypets_backend/visit_models.py), [visit_app.py](file:///d:/Project/MyPets/src/onepic_desktop_pet/visit_app.py) |
-| **提醒接入** | MyReminder 适配/提醒实例/贪睡/离线缓存/提醒卡片 | [reminder_models.py](file:///d:/Project/MyPets/backend/src/mypets_backend/reminder_models.py), [reminder_manager.py](file:///d:/Project/MyPets/src/onepic_desktop_pet/reminder_manager.py) |
-| **边缘半隐藏** | 左右吸附/延迟隐藏/鼠标展开/多显示器/状态持久化 | [edge_dock.py](file:///d:/Project/MyPets/src/onepic_desktop_pet/edge_dock.py), [edge_geometry.py](file:///d:/Project/MyPets/src/onepic_desktop_pet/edge_geometry.py) |
-| **宠物模板管理** | 模板 CRUD/版本/审核/发布/资产部署/回滚/RBAC | [admin_api.py](file:///d:/Project/MyPets/backend/src/mypets_backend/admin_api.py), [admin_governance_api.py](file:///d:/Project/MyPets/backend/src/mypets_backend/admin_governance_api.py) |
-| **素材资产** | 素材包上传/SHA256/Manifest/预览/发布/CDN 对象键 | [asset_packages.py](file:///d:/Project/MyPets/backend/src/mypets_backend/asset_packages.py), [pet_assets.py](file:///d:/Project/MyPets/src/onepic_desktop_pet/pet_assets.py) |
-| **云端同步** | 语义事件/幂等键/游标游走/增量拉取/离线补偿 | [cloud_session.py](file:///d:/Project/MyPets/src/onepic_desktop_pet/cloud_session.py), [sync_apply.py](file:///d:/Project/MyPets/src/onepic_desktop_pet/sync_apply.py) |
-| **本地存储** | SQLite 持久化宠物/消息/提醒/同步游标 | [local_store.py](file:///d:/Project/MyPets/src/onepic_desktop_pet/local_store.py) |
-| **投喂/互动** | PC 端宠物照料面板 + 后端 pet care API | [pet_care_panel.py](file:///d:/Project/MyPets/src/onepic_desktop_pet/pet_care_panel.py), [pet_care_api.py](file:///d:/Project/MyPets/backend/src/mypets_backend/pet_care_api.py) |
-| **启动管理器 GUI** | 集成 Web 门户/门禁管理/撤销审批/全套测试与打包构建 | [local_manager_gui.py](file:///d:/Project/MyPets/tools/local_manager_gui.py) |
-| **桌面窗口** | 透明窗口/连续动画/高 DPI/拖拽/表情增强层/自拍气泡 | [window.py](file:///d:/Project/MyPets/src/onepic_desktop_pet/window.py) |
-| **单元测试** | **160 项测试** 覆盖前后端 + WS + 访客窗口 + 升级算法 + 管理台 | [tests/](file:///d:/Project/MyPets/tests), [backend/tests/](file:///d:/Project/MyPets/backend/tests) |
+| 账户、设备与同步 | 已实现 | JWT、设备凭据、语义事件、游标补偿、多端当前宠物 |
+| WebSocket 实时通知 | 已实现 | 短时票据、Qt/Web 自动重连、REST 游标降级 |
+| 多宠物与成长 | 已实现基础闭环 | 五阶段、等级/经验、延迟结算、成长日志、性格积分 |
+| 投喂与互动 | 已实现 | 服务端照料规则、冷却/限额、桌面状态与照料面板 |
+| 好友与共同照料 | 已实现 | 好友申请、屏蔽、隐私、owner/co_owner/caregiver/viewer |
+| 异步与 PC 实时串门 | 已实现 | 申请/接受/拒绝/召回/送客/到期返家、GuestPetWindow、AwayIndicator |
+| 消息与已读同步 | 已实现 | 私聊、宠物身份、串门/照料/成长分类、回执、跨端已读 |
+| MyReminder | 已实现基础闭环 | 来源同步、本地投递、离线操作、贪睡、休眠恢复合并摘要 |
+| 桌面边缘吸附 | 已实现 | 左/右/上/下四向吸附、半隐藏、多显示器与位置恢复 |
+| 模板与素材发布 | 已实现管理员流程 | ZIP 安全校验、动作矩阵预览、审核、不可变发布、稳定通道与回滚 |
+| 用户宠物原图提交 | 本迭代已实现受理与审核 | 安全图片清理、权利声明、用户查询、管理员领取/通过/驳回、审计与事件 |
+| Web 用户门户 | 已实现主要维护入口 | 账户、宠物、好友、共同照料、串门、专属形象提交 |
+| Web 管理台 | 已实现主要内容运营入口 | RBAC、模板版本、预览审核、发布回滚、原图审核、审计 |
+| 测试与 CI | 持续运行 | Linux 后端/桌面测试、Windows 全量与 Qt 冒烟、Web JS 语法校验 |
+
+### 数据库迁移现状
+
+- 已有 `alembic.ini`、`alembic/env.py` 与 SQLAlchemy 元数据导入。
+- 当前仓库尚无 `alembic/versions` 版本链，不能视为已经完成版本化数据库迁移。
+- 开发/测试仍主要依赖 `Base.metadata.create_all` 创建缺失表。
+- 进入生产部署前必须建立基线 revision、增量 migration、升级/回滚测试和 PostgreSQL 验证。
 
 ---
 
-## 二、产品方案缺口矩阵（v0.7 最新版）
+## 二、缺口矩阵
 
-| 产品方案要求 | 现状 | 缺口等级 | 说明 |
-|---|---|---|---|
-| **一个账户多只宠物** | ✅ 已实现 | — | Pet + AccountPetRelation 模型就绪 |
-| **WebSocket 实时通信** | ✅ 已实现 | — | 长连接与游标补偿已全量上线 |
-| **PC 客户端领域分层** | ✅ **已实现** | — | **v0.7 已落地 `domain/` 结构化子包** |
-| **数据库 Alembic 迁移** | ✅ **已实现** | — | **v0.7 已落地 `alembic.ini` 与 23 表校验** |
-| **宠物成长五阶段与评估** | ✅ **已实现** | — | **v0.7 已落地陪伴天数+经验自动晋升评估** |
-| **性格路线演化** | ✅ **已实现** | — | **v0.7 已落地 `PetPersonalityScore` 五向积分模型** |
-| **PC 实时串门与访客窗口** | ✅ **已实现** | — | **v0.7 已落地 `GuestPetWindow`（隐私隔离）** |
-| **外出标识 AwayIndicator** | ✅ **已实现** | — | **v0.7 已落地桌面折叠外出卡片与提前召回** |
-| **一键送客 / 提前返家** | ✅ **已实现** | — | **v0.7 已落地 `POST /api/v1/visits/{visit_id}/send-home` 端点与菜单** |
-| **共同照料** | ✅ 已实现 | — | 四角色/邀请/审批完整 |
-| **好友与社交** | ✅ 已实现 | — | 好友/黑名单/隐私已落地 |
-| **跨端已读同步** | ✅ 已实现 | — | MessageReceipt + state 机器就绪 |
-| **异步串门状态机** | ✅ 已实现 | — | 完整邀请/接受/召回/送客/到期自动完成 |
-| **边缘吸附半隐藏** | ✅ 已实现 | — | 左右/多显示器/吸附状态持久化/动画就绪 |
-| **宠物消息折叠** | ✅ 已实现 | 🟡 小补 | 消息分组分类标签（好友宠物/串门留言/成长通知）尚需界面化归类 |
-| **MyReminder 接入** | ✅ 已实现 | 🟡 小补 | 休眠恢复合并摘要、串门时备用宠物提醒需完善 |
-| **管理员模板平台** | ✅ 已实现 | 🟡 小补 | 缺视觉身份档案（`pet_visual_identities`）、一致性检查、版权表 |
-| **宠物形象版本** | ✅ 已实现 | 🟡 小补 | `identity_version/asset_version` 已有，用户外观锁定逻辑需补充 |
-| **多宠物聚会** | ❌ 未实现 | 🔴 缺失 | 缺 `pet_gatherings` 模型、`GatheringSceneCoordinator`、多窗口编排 |
-| **AI 文字聊天** | ❌ 未实现 | 🔴 缺失 | 缺 `pet_ai_profiles`、`ai_conversations`、AI 人格、记忆管理 |
-| **AI 语音聊天** | ❌ 未实现 | 🔴 缺失 | 缺 ASR/TTS 集成、`voice_profiles` |
-| **微信小程序** | ❌ 未实现 | 🔴 缺失 | 后端 API 可复用，缺小程序前端 |
-| **PostgreSQL 迁移** | ❌ 未迁移 | 🟡 中等 | 后端使用 SQLite，生产需迁移 PostgreSQL (Alembic 配置已就绪) |
-| **Redis 在线状态** | ❌ 未实现 | 🟡 中等 | 游标当前在内存与 DB 中，分布部署需 Redis |
+| 产品要求 | 状态 | 后续缺口 |
+|---|---|---|
+| 一个账户多宠物 | 已实现 | 继续补多宠批量管理体验 |
+| 宠物成长与性格路线 | 已实现基础能力 | 补成长任务、阶段素材切换和长期平衡参数 |
+| 好友、共同照料和串门 | 已实现 | 补更细隐私策略与多宠聚会 |
+| 分类消息和跨端已读 | 已实现 | 分类目前由最新消息决定，后续可增加固定业务会话与 Web 消息中心 |
+| 休眠恢复提醒 | 已实现 | 后续接操作系统电源事件以提高恢复识别精度 |
+| 用户宠物原图提交 | 本迭代已实现 | 尚未生成动作帧、Spritesheet 或可发布素材包 |
+| 素材制作工单 | 未实现 | 需要处理队列、分配、进度、失败重试和产物关联 |
+| 视觉身份与版权档案 | 未实现 | 需要 `pet_visual_identities`、`pet_asset_rights`、特征一致性与权利复核 |
+| 用户外观锁定 | 未实现 | 需要把批准素材包显式绑定到单只宠物并提供版本回退 |
+| 多宠物聚会 | 未实现 | 需要 gathering 模型、邀请状态机和多窗口编排 |
+| 微信小程序 | 未实现 | 可复用现有 API，需独立小程序前端与登录适配 |
+| AI 文字聊天 | 未实现 | 只允许文本人格、有限记忆和状态联动；禁止工具与设备操作 |
+| AI 语音 | 未实现 | 需按键说话、ASR/TTS、字幕和中断控制，禁止常开监听 |
+| PostgreSQL 与分布式运行 | 未完成 | 需版本化迁移、PostgreSQL、对象存储/CDN、Redis 在线状态和部署自动化 |
 
 ---
 
-## 三、分阶段优化路线（最新进度）
+## 三、阶段进度
 
-### ✅ 阶段 A：架构基线加固与 DB 迁移准备（已完成 - v0.7）
-1. [x] **引入 Alembic 数据库迁移**（已配置 `alembic.ini` 与 23 张表结构元数据校验）。
-2. [x] **PC 客户端分层目录调整**（已创建 `src/onepic_desktop_pet/domain/` 结构化包）。
-3. [x] **成长升级条件与性格路线**（已完成 5 阶段判定算法与五向性格积分模型）。
+### 阶段 A：架构与成长基线
 
-### ✅ 阶段 B：GuestPetWindow 与实时串门窗口（已完成 - v0.7）
-1. [x] **`GuestPetWindow` 独立窗口**：无私人数据权限的独立访客桌面窗口，提供打招呼与一键提前送客菜单。
-2. [x] **外出标识 `AwayIndicator`**：主宠物外出串门时显示桌面折叠外出胶囊卡片，支持一键提前召回。
-3. [x] **一键送客 API 端点**：`POST /api/v1/visits/{visit_id}/send-home` 及前后端控制器联动。
+- [x] SQLAlchemy 模型与 Alembic 环境基础。
+- [x] PC 领域包拆分。
+- [x] 五阶段成长评估与性格积分。
+- [ ] 建立真实 Alembic revision 版本链并验证 SQLite/PostgreSQL 升级。
 
-### ⏳ 阶段 C：消息分组与提醒休眠恢复（下一步 - 预计 1 周）
-1. **消息分组标签**：按好友宠物、串门留言、共同照料、成长通知进行会话分类。
-2. **提醒休眠恢复**：休眠唤醒后合并错过提醒为摘要，避免连续触发多个提醒动画。
+### 阶段 B：PC 串门场景
 
-### ⏳ 阶段 D：用户上传宠物图 ➔ 资源包制作管线（重点补充方案 - 预计 1-2 周）
-1. **用户侧原图提交 API (`POST /api/v1/pet-asset-submissions`)**：
-   - 支持用户上传原始宠物图片、指定性格、风格偏好（保留原画风/轻度Q版/完整Q版）。
-   - 创建 `UserPetSubmission` 模型记录提交状态 (`pending_processing`, `in_review`, `approved`, `rejected`)。
-2. **自动化与管理员制作管线 (Asset Pipeline Builder)**：
-   - **系统自动模式**：抠图背景分离 ➔ 动作序列/透明 Spritesheet 图集生成 ➔ `asset_manifest.json` 导出 ➔ `validate_asset_package` 校验 13 种必需动作（`idle`, `walk`, `sit`, `sleep`, `wave`, `happy`, `shy` 等）。
-   - **管理员人工审核与精修模式**：管理员在 `/admin` 控制台查看用户原图提交清单，可手动补充动作帧并进行视觉验收。
-3. **版本部署与下发**：
-   - 审核通过后，打包生成固化素材包 (`identity_version`/`asset_version`)；
-   - 更新部署通道指针，客户端和 Web 端通过 `/api/v1/catalog/pet-assets/latest` 自动同步专属形象素材包。
+- [x] GuestPetWindow 隔离访客窗口。
+- [x] AwayIndicator 外出胶囊。
+- [x] 召回、送客和到期自动返家。
+- [x] 双宠基础互动与素材隔离。
 
-### ⏳ 阶段 E：视觉身份档案与版权校验（预计 1-2 周）
-1. **`pet_visual_identities` 与 `pet_asset_rights`**。
-2. **发布流程增加特征一致性评分与版权核验**。
+### 阶段 C：消息分组与提醒休眠恢复
 
-### ⏳ 阶段 F：AI 聊天系统（预计 2 周）
-1. **AI 人格、有限记忆与情绪联动**（`pet_ai_profiles` 与对话能力）。
+- [x] 普通私聊、好友宠物、串门留言、共同照料、成长通知分类。
+- [x] 业务事件幂等投影到消息/回执/实时同步链路。
+- [x] 休眠期间错过提醒合并为单张摘要。
+- [x] 宠物外出时提醒使用独立工具窗口并定位到外出标识附近。
 
-### ⏳ 阶段 G：多宠物聚会（预计 2 周）
-1. **`pet_gatherings` 与 `GatheringSceneCoordinator`** 组队聚会多窗口编排。
+### 阶段 D：用户宠物原图到素材制作管线
+
+#### 迭代 D1：安全受理与审核（本批完成）
+
+- [x] `POST /api/v1/pet-asset-submissions` multipart 上传。
+- [x] 仅 owner/co_owner 可为宠物提交。
+- [x] JPEG/PNG/WebP 实际解码、尺寸/像素限制、动画拒绝。
+- [x] EXIF 方向校正并重新编码，移除 EXIF/GPS 等原始元数据。
+- [x] 明确记录权利依据、风格偏好、性格/识别提示和内容哈希。
+- [x] 用户门户提交、列表、审核意见与鉴权下载。
+- [x] 管理台列表、鉴权预览、领取审核、通过、驳回。
+- [x] 编辑与审核权限分离、管理员审计日志、用户同步事件。
+- [x] 审核通过不自动修改 `identity_version`/`asset_version`，也不直接发布。
+
+#### 迭代 D2：制作工单与产物关联（下一开发批）
+
+- [ ] 新增素材制作工单与状态：queued/processing/needs_input/ready/failed/cancelled。
+- [ ] 将审核通过的 submission 转为人工制作工单，支持负责人、进度和操作日志。
+- [ ] 管理员上传制作后的数据素材包并复用 `validate_asset_package` 校验 13 种动作。
+- [ ] 产物显式关联原始 submission、模板版本与目标宠物，不允许静默替换。
+- [ ] 用户可查看制作进度、补充图片或撤回尚未开始的工单。
+- [ ] 暂不实现无审核的全自动图像生成或自动发布。
+
+#### 迭代 D3：专属素材部署
+
+- [ ] 审核制作产物并生成不可变 release。
+- [ ] 建立单宠专属部署指针和客户端安全下载。
+- [ ] 更新宠物视觉版本前进行兼容性检查并保留回退版本。
+
+### 阶段 E：视觉身份与版权治理
+
+- [ ] `pet_visual_identities`：稳定外观特征、参考图、版本和一致性阈值。
+- [ ] `pet_asset_rights`：权利来源、声明、复核、到期与撤销记录。
+- [ ] 发布前特征一致性评分、权利复核和人工签署。
+- [ ] 权利撤销后的停止分发与已有客户端缓存处置规则。
+
+### 阶段 F：多宠物聚会
+
+- [ ] `pet_gatherings`、成员邀请、容量与隐私规则。
+- [ ] GatheringSceneCoordinator 多窗口布局和离场恢复。
+
+### 阶段 G：微信小程序 MVP
+
+- [ ] 登录绑定、宠物状态/照料、消息、提醒、好友和串门。
+- [ ] 设备管理与隐私设置。
+
+### 阶段 H：受限 AI 文本与语音
+
+- [ ] 先实现无工具调用的宠物人格文本聊天、有限记忆和安全配额。
+- [ ] AI 只能返回文本、情绪和动画提示，不能执行 shell、浏览器、文件或设备操作。
+- [ ] 后续加入按键说话、ASR/TTS、字幕与中断；不做常开监听。
 
 ---
 
-## 四、阶段成果评估与验证
+## 四、近期开发顺序
 
-- **单元测试**：已成功扩充至 **160 项**（前端/桌面/后端综合）与 **56 项**（后端独立测试），运行通过率 **100%**。
-- **隐私与代码安全**：`git add --dry-run .` 保持干净，无未授权私人图片及绝对路径暴露。
+1. 完成本批 D1 的真实 CI 与代码合并。
+2. 开展 D2 素材制作工单、人工产物上传和 submission-to-package 追踪。
+3. 补真实 Alembic 基线 revision，并验证现有开发 SQLite 升级。
+4. 开展 E 阶段视觉身份与版权档案，作为专属素材正式发布的硬门槛。
+5. 再进入多宠聚会、小程序和受限 AI 能力。
 
+---
 
+## 五、验收标准
+
+- 所有状态变更由服务端事务控制，并有幂等或明确冲突行为。
+- 用户只能访问本人拥有权限的宠物图片和提交；管理员图片也必须鉴权。
+- 上传内容经过实际解码和重新编码，不按扩展名信任文件类型，不保留原始 EXIF/GPS。
+- 审核通过不等于素材已生成或已发布，界面和 API 必须明确区分。
+- 任何素材包都只能包含声明式资源与 Manifest，不允许脚本、插件或可执行文件。
+- Linux、Windows、后端、Web 脚本和 Qt 冒烟检查全部通过后才允许合并到 `main`。
