@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -83,7 +83,7 @@ class PetPersonalAssetRelease(Base):
     )
     object_key: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     package_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
-    package_size: Mapped[int] = mapped_column(nullable=False)
+    package_size: Mapped[int] = mapped_column(Integer, nullable=False)
     manifest_json: Mapped[str] = mapped_column(Text, nullable=False)
     published_by_account_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=False
