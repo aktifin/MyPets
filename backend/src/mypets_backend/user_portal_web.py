@@ -41,6 +41,16 @@ def user_portal_script() -> FileResponse:
     return _asset("app.js", "text/javascript; charset=utf-8")
 
 
+@user_portal_web_router.get("/portal/visits.js")
+def user_portal_visit_script() -> FileResponse:
+    return _asset("visits.js", "text/javascript; charset=utf-8")
+
+
 @user_portal_web_router.get("/portal/styles.css")
 def user_portal_styles() -> FileResponse:
     return _asset("styles.css", "text/css; charset=utf-8")
+
+
+@user_portal_web_router.get("/portal/visits.css")
+def user_portal_visit_styles() -> FileResponse:
+    return _asset("visits.css", "text/css; charset=utf-8")

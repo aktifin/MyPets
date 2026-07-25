@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MyPets 用户中心</title>
   <link rel="stylesheet" href="/portal/styles.css">
+  <link rel="stylesheet" href="/portal/visits.css">
   <script src="/portal/app.js" defer></script>
+  <script src="/portal/visits.js" defer></script>
 </head>
 <body>
   <header class="topbar">
@@ -30,6 +32,7 @@
           <li>创建宠物、选择 Web 当前宠物、配置名称与性格</li>
           <li>宠物可见性、远程照料和共同照料邀请</li>
           <li>好友申请、好友列表、屏蔽与解除屏蔽</li>
+          <li>好友宠物异步串门、到期返家与主动召回</li>
         </ul>
       </article>
 
@@ -60,6 +63,7 @@
         <button class="main-tab active" data-section="account-section" type="button">账户</button>
         <button class="main-tab" data-section="pets-section" type="button">宠物</button>
         <button class="main-tab" data-section="friends-section" type="button">好友与共同照料</button>
+        <button class="main-tab" data-section="visits-section" type="button">异步串门</button>
       </nav>
 
       <p id="global-status" class="status global-status" aria-live="polite"></p>
@@ -174,6 +178,52 @@
             <div id="block-list" class="card-list"></div>
           </article>
         </div>
+      </section>
+
+      <section id="visits-section" class="workspace visits-workspace" hidden>
+        <article class="panel visit-compose-panel">
+          <div class="section-heading">
+            <div><p class="eyebrow">VISIT REQUEST</p><h2>发起异步串门</h2></div>
+            <button id="refresh-visits" class="secondary" type="button">刷新串门</button>
+          </div>
+          <form id="visit-request-form" class="visit-form">
+            <label>来访宠物<select id="visit-visitor-pet" required></select></label>
+            <label>接待好友<select id="visit-friend" required></select></label>
+            <label>接待宠物<select id="visit-host-pet" required></select></label>
+            <label>串门时长
+              <select id="visit-duration">
+                <option value="30">30 分钟</option>
+                <option value="60" selected>1 小时</option>
+                <option value="120">2 小时</option>
+                <option value="240">4 小时</option>
+              </select>
+            </label>
+            <label class="visit-note-field">留言<textarea id="visit-note" rows="3" maxlength="200" placeholder="可选，最多 200 字"></textarea></label>
+            <button id="send-visit-request" type="submit">发送串门申请</button>
+          </form>
+          <p class="hint">只能选择本人拥有或共同拥有、且当前在家的宠物。接待宠物由服务端按照好友关系和可见性过滤。</p>
+        </article>
+
+        <div class="two-column visits-request-columns">
+          <article class="panel">
+            <div class="section-heading"><div><p class="eyebrow">INCOMING</p><h2>收到的串门申请</h2></div><span id="incoming-visit-count" class="badge">0</span></div>
+            <div id="incoming-visits" class="card-list"></div>
+          </article>
+          <article class="panel">
+            <div class="section-heading"><div><p class="eyebrow">OUTGOING</p><h2>发出的串门申请</h2></div><span id="outgoing-visit-count" class="badge">0</span></div>
+            <div id="outgoing-visits" class="card-list"></div>
+          </article>
+        </div>
+
+        <article class="panel">
+          <div class="section-heading"><div><p class="eyebrow">ACTIVE</p><h2>正在串门</h2></div><span id="active-visit-count" class="badge">0</span></div>
+          <div id="active-visits" class="visit-grid"></div>
+        </article>
+
+        <article class="panel">
+          <div class="section-heading"><div><p class="eyebrow">HISTORY</p><h2>串门历史</h2></div><span class="badge">最近 100 条</span></div>
+          <div id="visit-history" class="card-list"></div>
+        </article>
       </section>
     </section>
   </main>
