@@ -93,7 +93,10 @@
         return;
       }
       if (!payload || typeof payload !== "object") return;
-      if (payload.type === "events_available" && Number.isInteger(payload.cursor)) {
+      if (
+        (payload.type === "hello" || payload.type === "events_available")
+        && Number.isInteger(payload.cursor)
+      ) {
         queueRefresh(payload.cursor);
       } else if (payload.type === "heartbeat") {
         value.send(JSON.stringify({ type: "ack", cursor: Number(payload.cursor) || 0 }));
