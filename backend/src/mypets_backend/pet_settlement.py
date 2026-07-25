@@ -38,16 +38,32 @@ def _clamp(value: int) -> int:
     return min(100, max(0, int(value)))
 
 
-def settle_pet_state(pet: Pet, now: datetime) -> SettlementMutation:
-    """Apply whole-hour elapsed state changes once and advance the settlement anchor.
+STAGE_TRANSITIONS = (
+    ("newborn", "child", 1, 100),
+    ("child", "juvenile", 3, 300),
+    ("juvenile", "adult", 7, 700),
+    ("adult", "bond", 14, 1500),
+)
 
-    The first functional rule set is intentionally conservative and deterministic:
-    hunger, energy, mood, and cleanliness decline; boredom increases; resting pets regain
-    energy. Health only declines while hunger or cleanliness is critically low and is
-    protected by ``HEALTH_FLOOR``.
-    """
+
+def evaluate_growth_stage_transition(pet: Pet, age_days: int) -> str | None:
+    """按陪伴天数与成长经验计算阶段晋升目标。"""
+
+    current_stage = (pet.growth_stage or "newborn").lower()
+    exp = int(pet.growth_exp or 0)
+    for from_stage, to_stage, min_days, min_exp in STAGE_TRANSITIONS:
+        if current_stage == from_stage:
+            if age_days >= min_days and exp >= min_exp:
+                return to_stage
+            break
+    return None
+
+
+def settle_pet_state(pet: Pet, now: datetime) -> SettlementMutation:
+    """Apply whole-hour elapsed state changes once and advance the settlement anchor."""
 
     current_time = _aware(now)
+    created_anchor = _aware(pet.created_at or current_time)
     anchor = pet.updated_at or pet.created_at or current_time
     settled_from = _aware(anchor)
     if current_time <= settled_from:
@@ -83,11 +99,16 @@ def settle_pet_state(pet: Pet, now: datetime) -> SettlementMutation:
         if int(pet.hunger) <= 10 or int(pet.cleanliness) <= 10:
             pet.health = max(HEALTH_FLOOR, int(pet.health) - 1)
 
+    age_days = max(0, int((current_time - created_anchor).total_seconds() // 86400))
+    next_stage = evaluate_growth_stage_transition(pet, age_days)
+    if next_stage:
+        pet.growth_stage = next_stage
+
     deltas = {
         field: int(getattr(pet, field)) - value
         for field, value in before.items()
     }
-    if any(value != 0 for value in deltas.values()):
+    if any(value != 0 for value in deltas.values()) or next_stage:
         pet.state_version = max(1, int(pet.state_version or 1) + 1)
     pet.updated_at = current_time
     return SettlementMutation(
@@ -96,3 +117,4 @@ def settle_pet_state(pet: Pet, now: datetime) -> SettlementMutation:
         elapsed_hours=elapsed_hours,
         deltas=deltas,
     )
+

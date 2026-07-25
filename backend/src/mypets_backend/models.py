@@ -381,3 +381,41 @@ class AdminAuditLog(Base):
     resource_id: Mapped[str] = mapped_column(String(36), nullable=False)
     details_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class PetGrowthLog(Base):
+    """宠物成长与阶段变更里程碑日志。"""
+
+    __tablename__ = "pet_growth_logs"
+    __table_args__ = (Index("ix_pet_growth_logs_pet", "pet_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    pet_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("pets.id", ondelete="CASCADE"), nullable=False
+    )
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    from_stage: Mapped[str] = mapped_column(String(32), nullable=False)
+    to_stage: Mapped[str] = mapped_column(String(32), nullable=False)
+    level: Mapped[int] = mapped_column(Integer, nullable=False)
+    note: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class PetPersonalityScore(Base):
+    """宠物性格路线与日常交互倾向积分。"""
+
+    __tablename__ = "pet_personality_scores"
+
+    pet_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("pets.id", ondelete="CASCADE"), primary_key=True
+    )
+    lively_score: Mapped[int] = mapped_column(Integer, default=0)
+    gentle_score: Mapped[int] = mapped_column(Integer, default=0)
+    social_score: Mapped[int] = mapped_column(Integer, default=0)
+    exploratory_score: Mapped[int] = mapped_column(Integer, default=0)
+    lazy_score: Mapped[int] = mapped_column(Integer, default=0)
+    primary_personality: Mapped[str] = mapped_column(String(64), default="balanced")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+

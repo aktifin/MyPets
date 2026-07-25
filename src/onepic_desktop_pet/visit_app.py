@@ -5,6 +5,8 @@ from __future__ import annotations
 from PySide6.QtGui import QAction
 
 from .pet_registry import LOCAL_ACCOUNT_ID
+from .presentation.away_indicator import AwayIndicator
+from .presentation.guest_pet_window import GuestPetWindow
 from .realtime import RealtimeClient
 from .social_app import SocialDesktopPetApplication
 from .visit_client import VisitController
@@ -21,8 +23,11 @@ class VisitDesktopPetApplication(SocialDesktopPetApplication):
         )
         self.realtime_client = RealtimeClient(self.cloud_api, parent=self.qt_app)
         self._visit_dialog: VisitDialog | None = None
+        self._guest_window: GuestPetWindow | None = None
+        self._away_indicator: AwayIndicator | None = None
         self._known_pending_visit_ids: set[str] = set()
         self._realtime_refresh_pending = False
+
         self.visit_action = QAction("异步串门…", self.tray_menu)
         self.visit_action.triggered.connect(self.open_visit_dialog)
         self.tray_menu.insertAction(self.social_action, self.visit_action)
@@ -79,7 +84,10 @@ class VisitDesktopPetApplication(SocialDesktopPetApplication):
         if not isinstance(snapshot, dict):
             return
         visits = snapshot.get("visits")
-        incoming = visits.get("incoming_requests", []) if isinstance(visits, dict) else []
+        if not isinstance(visits, dict):
+            return
+
+        incoming = visits.get("incoming_requests", [])
         current_ids = {
             str(item.get("visit_id"))
             for item in incoming
@@ -92,6 +100,83 @@ class VisitDesktopPetApplication(SocialDesktopPetApplication):
                 "MyPets 串门",
                 f"收到 {len(new_ids)} 个新的串门申请，可在托盘菜单中处理。",
             )
+
+        active_visits = visits.get("active", [])
+        identity = self.cloud_session.identity
+        my_account_id = identity.account_id if identity else None
+        my_pet_id = self._visit_active_pet_id()
+
+        guest_visit = None
+        away_visit = None
+        for v in active_visits:
+            if not isinstance(v, dict):
+                continue
+            if my_account_id and v.get("host_account_id") == my_account_id:
+                guest_visit = v
+            if my_pet_id and v.get("visitor_pet_id") == my_pet_id:
+                away_visit = v
+
+        self._update_guest_window(guest_visit)
+        self._update_away_indicator(away_visit)
+
+    def _update_guest_window(self, visit: dict[str, object] | None) -> None:
+        if visit is None:
+            if self._guest_window is not None:
+                self._guest_window.close()
+                self._guest_window = None
+            return
+
+        visit_id = str(visit.get("visit_id", ""))
+        if self._guest_window is not None and self._guest_window.visit_id == visit_id:
+            return
+
+        if self._guest_window is not None:
+            self._guest_window.close()
+
+        visitor_pet = visit.get("visitor_pet", {})
+        host_account = visit.get("host_account", {})
+        visitor_pet_id = str(visit.get("visitor_pet_id", ""))
+        visitor_pet_name = visitor_pet.get("name", "来访宠物") if isinstance(visitor_pet, dict) else "来访宠物"
+        visitor_owner = host_account.get("display_name", "好友") if isinstance(host_account, dict) else "好友"
+
+        window = GuestPetWindow(
+            visit_id=visit_id,
+            visitor_pet_id=visitor_pet_id,
+            visitor_pet_name=visitor_pet_name,
+            visitor_owner_name=visitor_owner,
+        )
+        window.send_guest_home_requested.connect(self.visit_controller.send_guest_home)
+        window.show()
+        self._guest_window = window
+
+    def _update_away_indicator(self, visit: dict[str, object] | None) -> None:
+        if visit is None:
+            if self._away_indicator is not None:
+                self._away_indicator.close()
+                self._away_indicator = None
+            self.window.show()
+            return
+
+        visit_id = str(visit.get("visit_id", ""))
+        if self._away_indicator is not None and self._away_indicator.visit_id == visit_id:
+            return
+
+        if self._away_indicator is not None:
+            self._away_indicator.close()
+
+        host_account = visit.get("host_account", {})
+        host_name = host_account.get("display_name", "好友") if isinstance(host_account, dict) else "好友"
+        note = str(visit.get("note", ""))
+
+        indicator = AwayIndicator(
+            visit_id=visit_id,
+            pet_name=self.active_pet.identity.name,
+            host_name=host_name,
+            note=note,
+        )
+        indicator.recall_requested.connect(self.visit_controller.recall_visit)
+        indicator.show()
+        self._away_indicator = indicator
 
     def _cloud_state_for_visits_and_realtime(self, state: str) -> None:
         self._refresh_visit_context()
@@ -133,6 +218,10 @@ class VisitDesktopPetApplication(SocialDesktopPetApplication):
         if self._quitting:
             return
         self.realtime_client.stop()
+        if self._guest_window is not None:
+            self._guest_window.close()
+        if self._away_indicator is not None:
+            self._away_indicator.close()
         if self._visit_dialog is not None:
             self._visit_dialog.close()
         super().quit()

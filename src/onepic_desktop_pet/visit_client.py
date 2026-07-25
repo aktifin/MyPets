@@ -115,6 +115,13 @@ class VisitController(QObject):
             f"/api/v1/visits/{visit_id}/recall",
         )
 
+    def send_guest_home(self, visit_id: str) -> None:
+        self._mutate(
+            "visit_send_home",
+            "POST",
+            f"/api/v1/visits/{visit_id}/send-home",
+        )
+
     def _mutate(
         self,
         operation: str,
@@ -153,9 +160,10 @@ class VisitController(QObject):
                 "visit_reject": "串门申请已拒绝",
                 "visit_cancel": "串门申请已取消",
                 "visit_recall": "宠物已召回",
+                "visit_send_home": "访客宠物已发送返家",
             }.get(label, "串门操作已完成")
         )
-        if label in {"visit_accept", "visit_recall"}:
+        if label in {"visit_accept", "visit_recall", "visit_send_home"}:
             self.pets_sync_requested.emit()
         self.refresh(self.active_pet_id)
 

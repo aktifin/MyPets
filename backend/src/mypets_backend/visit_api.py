@@ -424,3 +424,29 @@ def recall_visit(
     result = _view(session, value, principal)
     session.commit()
     return result
+
+
+@visit_router.post("/{visit_id}/send-home", response_model=VisitView)
+def send_home_visit(
+    visit_id: str,
+    principal: Annotated[Principal, Depends(get_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> VisitView:
+    settle_due_visits(session)
+    value = _visit(session, visit_id)
+    _require_participant(value, principal.account_id)
+    if value.host_account_id != principal.account_id:
+        raise HTTPException(status_code=403, detail="只有接待方可以发送来访宠物提前返家")
+    if value.status != "active":
+        raise HTTPException(status_code=409, detail="该串门当前不能发送返家")
+    finish_visit(
+        session,
+        value,
+        now=datetime.now(UTC),
+        status="recalled",
+        reason="guest_sent_home",
+    )
+    result = _view(session, value, principal)
+    session.commit()
+    return result
+
