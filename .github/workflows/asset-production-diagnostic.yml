@@ -23,4 +23,10 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install -q --upgrade pip && python -m pip install -q -e ".[dev]"
       - name: Run focused asset production tests
-        run: python -m pytest -vv --tb=long tests/test_asset_production.py tests/test_asset_production_web.py
+        shell: bash
+        run: |
+          set +e
+          python -m pytest -vv --tb=long tests/test_asset_production.py tests/test_asset_production_web.py > pytest.log 2>&1
+          code=$?
+          tail -n 260 pytest.log
+          exit $code
