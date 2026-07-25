@@ -37,9 +37,13 @@ def _asset(name: str, media_type: str) -> FileResponse:
 def admin_console() -> HTMLResponse:
     html = _path("index.html").read_text(encoding="utf-8")
     marker = "</body>"
-    script = '<script src="/admin/asset-submissions.js" defer></script>'
-    if script not in html:
-        html = html.replace(marker, f"  {script}\n{marker}", 1)
+    scripts = (
+        '<script src="/admin/asset-submissions.js" defer></script>',
+        '<script src="/admin/asset-production.js" defer></script>',
+    )
+    for script in scripts:
+        if script not in html:
+            html = html.replace(marker, f"  {script}\n{marker}", 1)
     return HTMLResponse(html, headers=_SECURITY_HEADERS)
 
 
@@ -51,6 +55,11 @@ def admin_console_script() -> FileResponse:
 @admin_web_router.get("/admin/asset-submissions.js")
 def admin_asset_submission_script() -> FileResponse:
     return _asset("asset-submissions.js", "text/javascript; charset=utf-8")
+
+
+@admin_web_router.get("/admin/asset-production.js")
+def admin_asset_production_script() -> FileResponse:
+    return _asset("asset-production.js", "text/javascript; charset=utf-8")
 
 
 @admin_web_router.get("/admin/styles.css")
