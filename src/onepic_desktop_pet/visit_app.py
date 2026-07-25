@@ -19,6 +19,7 @@ class VisitDesktopPetApplication(SocialDesktopPetApplication):
             parent=self.qt_app,
         )
         self._visit_dialog: VisitDialog | None = None
+        self._known_pending_visit_ids: set[str] = set()
         self.visit_action = QAction("异步串门…", self.tray_menu)
         self.visit_action.triggered.connect(self.open_visit_dialog)
         self.tray_menu.insertAction(self.social_action, self.visit_action)
@@ -70,6 +71,22 @@ class VisitDesktopPetApplication(SocialDesktopPetApplication):
     def _visit_snapshot_changed(self, snapshot: object) -> None:
         if self._visit_dialog is not None:
             self._visit_dialog.apply_snapshot(snapshot)
+        if not isinstance(snapshot, dict):
+            return
+        visits = snapshot.get("visits")
+        incoming = visits.get("incoming_requests", []) if isinstance(visits, dict) else []
+        current_ids = {
+            str(item.get("visit_id"))
+            for item in incoming
+            if isinstance(item, dict) and item.get("visit_id")
+        }
+        new_ids = current_ids - self._known_pending_visit_ids
+        self._known_pending_visit_ids = current_ids
+        if new_ids:
+            self.tray.showMessage(
+                "MyPets 串门",
+                f"收到 {len(new_ids)} 个新的串门申请，可在托盘菜单中处理。",
+            )
 
     def _visit_status(self, message: str) -> None:
         if self._visit_dialog is not None:
@@ -84,7 +101,7 @@ class VisitDesktopPetApplication(SocialDesktopPetApplication):
     def _pets_changed(self) -> None:
         super()._pets_changed()
         self._refresh_visit_context()
-        if self._visit_dialog is not None and self._visit_dialog.isVisible():
+        if self.cloud_session.connected:
             self.visit_controller.refresh(self._visit_active_pet_id())
 
     def quit(self) -> None:
