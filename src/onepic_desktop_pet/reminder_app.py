@@ -31,7 +31,8 @@ class ReminderDesktopPetApplication(DesktopPetApplication):
             self.reminder_cache,
             parent=self.qt_app,
         )
-        self.reminder_card = ReminderCard(self.window)
+        # Independent tool window: reminders remain visible when the active pet is away/hidden.
+        self.reminder_card = ReminderCard()
 
         self.reminder_scheduler.reminders_due.connect(self._show_due_reminders)
         self.reminder_scheduler.resume_summary_due.connect(self._show_resume_summary)
