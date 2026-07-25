@@ -108,6 +108,23 @@ class DynamicPetWindow(PetWindow):
         state = PetState.SURPRISED if event_type == "growth_stage_changed" else PetState.HAPPY
         self._show_emotion(state, 2400 if event_type == "growth_stage_changed" else 1900)
 
+    def show_visit_interaction(self, action: str) -> None:
+        """Animate the host pet after a server-confirmed dual-pet visit action."""
+
+        normalized = action.strip().lower()
+        mapping = {
+            "greet": PetState.HAPPY,
+            "wave": PetState.WAVE,
+            "play": PetState.CURIOUS,
+            "sit_together": PetState.SIT,
+        }
+        if normalized not in mapping:
+            return
+        self._show_emotion(
+            mapping[normalized],
+            2200 if normalized == "sit_together" else 1700,
+        )
+
     def load_pet_assets(self, manifest_path: Path | None) -> None:
         """Load an entire package before mutating visible state, then switch from an idle frame."""
 
