@@ -100,10 +100,8 @@ class VisitDesktopPetApplication(SocialDesktopPetApplication):
             if self._realtime_refresh_pending:
                 self._realtime_refresh_pending = False
                 self.reminder_cloud.refresh()
-                if self._social_dialog is not None and self._social_dialog.isVisible():
-                    self.social_controller.refresh(self._managed_active_pet_id())
-                if self._visit_dialog is not None and self._visit_dialog.isVisible():
-                    self.visit_controller.refresh(self._visit_active_pet_id())
+                self.social_controller.refresh(self._managed_active_pet_id())
+                self.visit_controller.refresh(self._visit_active_pet_id())
         elif state in {"disabled", "offline"}:
             self.realtime_client.stop()
 
