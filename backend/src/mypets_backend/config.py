@@ -42,6 +42,8 @@ class Settings:
     max_asset_package_bytes: int = 32 * 1024 * 1024
     max_asset_uncompressed_bytes: int = 128 * 1024 * 1024
     max_asset_files: int = 512
+    max_pet_submission_bytes: int = 12 * 1024 * 1024
+    max_pet_submission_pixels: int = 40 * 1024 * 1024
 
     myreminder_base_url: str = ""
     myreminder_integration_secret: str = field(default="", repr=False)
@@ -120,6 +122,18 @@ class Settings:
                 )
             ),
             max_asset_files=int(os.getenv("MYPETS_MAX_ASSET_FILES", cls.max_asset_files)),
+            max_pet_submission_bytes=int(
+                os.getenv(
+                    "MYPETS_MAX_PET_SUBMISSION_BYTES",
+                    cls.max_pet_submission_bytes,
+                )
+            ),
+            max_pet_submission_pixels=int(
+                os.getenv(
+                    "MYPETS_MAX_PET_SUBMISSION_PIXELS",
+                    cls.max_pet_submission_pixels,
+                )
+            ),
             myreminder_base_url=os.getenv("MYPETS_MYREMINDER_BASE_URL", ""),
             myreminder_integration_secret=os.getenv(
                 "MYPETS_MYREMINDER_INTEGRATION_SECRET", ""
@@ -185,6 +199,10 @@ class Settings:
             raise ValueError("素材包解压大小上限不能小于压缩大小上限")
         if not 1 <= self.max_asset_files <= 10000:
             raise ValueError("素材包文件数量上限必须位于 1 到 10000")
+        if not 64 * 1024 <= self.max_pet_submission_bytes <= 64 * 1024 * 1024:
+            raise ValueError("宠物原图大小上限必须位于 64 KiB 到 64 MiB")
+        if not 4096 <= self.max_pet_submission_pixels <= 100_000_000:
+            raise ValueError("宠物原图像素上限必须位于 4096 到 1 亿")
         if bool(self.myreminder_base_url) != bool(self.myreminder_integration_secret):
             raise ValueError("MyReminder 服务地址和集成密钥必须同时配置")
         if self.myreminder_integration_secret and len(self.myreminder_integration_secret) < 24:
