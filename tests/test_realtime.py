@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 
-from PySide6.QtCore import QCoreApplication, QObject, Signal
+from PySide6.QtCore import QObject, Signal
+from PySide6.QtWidgets import QApplication
 
 from onepic_desktop_pet.realtime import (
     REALTIME_PROTOCOL,
@@ -82,13 +83,17 @@ class FakeApi:
     base_url = "https://pets.example.test"
 
 
+def _application() -> QApplication:
+    return QApplication.instance() or QApplication([])
+
+
 def test_websocket_url_requires_http_transport() -> None:
     assert websocket_url("http://127.0.0.1:8000/") == "ws://127.0.0.1:8000/api/v1/realtime/ws"
     assert websocket_url("https://pets.example.test") == "wss://pets.example.test/api/v1/realtime/ws"
 
 
 def test_realtime_socket_uses_ticket_subprotocol_and_emits_cursor() -> None:
-    QCoreApplication.instance() or QCoreApplication([])
+    app = _application()
     fake = FakeSocket()
     realtime = RealtimeSocket(socket=fake)
     cursors: list[int] = []
@@ -105,9 +110,12 @@ def test_realtime_socket_uses_ticket_subprotocol_and_emits_cursor() -> None:
     fake.connected.emit()
     assert realtime.connected is True
     fake.textMessageReceived.emit(
+        json.dumps({"type": "hello", "cursor": 16})
+    )
+    fake.textMessageReceived.emit(
         json.dumps({"type": "events_available", "cursor": 17})
     )
-    assert cursors == [17]
+    assert cursors == [16, 17]
     assert json.loads(fake.sent[-1]) == {"type": "ack", "cursor": 17}
 
     fake.textMessageReceived.emit(json.dumps({"type": "heartbeat", "cursor": 17}))
@@ -115,10 +123,11 @@ def test_realtime_socket_uses_ticket_subprotocol_and_emits_cursor() -> None:
 
     realtime.stop()
     assert fake.closed is True
+    assert app is not None
 
 
 def test_realtime_client_requests_ticket_forwards_cursor_and_stops() -> None:
-    QCoreApplication.instance() or QCoreApplication([])
+    app = _application()
     tickets = FakeTicketTransport()
     socket = FakeRealtimeSocket()
     client = RealtimeClient(
@@ -141,3 +150,4 @@ def test_realtime_client_requests_ticket_forwards_cursor_and_stops() -> None:
     client.stop()
     assert tickets.aborted is True
     assert socket.stopped is True
+    assert app is not None
