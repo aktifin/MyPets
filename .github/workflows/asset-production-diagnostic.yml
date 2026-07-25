@@ -1,0 +1,26 @@
+name: Asset production diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -q --upgrade pip && python -m pip install -q -e ".[dev]"
+      - name: Run focused asset production tests
+        run: python -m pytest -vv --tb=long tests/test_asset_production.py tests/test_asset_production_web.py
