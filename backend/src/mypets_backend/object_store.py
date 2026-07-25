@@ -46,6 +46,22 @@ class FileObjectStore:
         temporary.replace(target)
         return target
 
+    def delete(self, key: str, *, missing_ok: bool = True) -> None:
+        target = self._path(key)
+        try:
+            target.unlink()
+        except FileNotFoundError:
+            if not missing_ok:
+                raise
+            return
+        parent = target.parent
+        while parent != self.root:
+            try:
+                parent.rmdir()
+            except OSError:
+                break
+            parent = parent.parent
+
     def path(self, key: str) -> Path:
         path = self._path(key)
         if not path.is_file():
