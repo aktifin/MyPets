@@ -85,7 +85,9 @@ jobs:
       - name: Validate Web console JavaScript
         run: >-
           node --check src/mypets_backend/admin_console_static/app.js
+          && node --check src/mypets_backend/admin_console_static/asset-submissions.js
           && node --check src/mypets_backend/user_portal_static/app.js
+          && node --check src/mypets_backend/user_portal_static/asset-submissions.js
           && node --check src/mypets_backend/user_portal_static/visits.js
           && node --check src/mypets_backend/user_portal_static/realtime.js
 
