@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from .api import get_principal, get_session
 from .models import Account, AccountPetRelation, Pet
 from .security import Principal, normalize_username
-from .social_models import AccountBlock, Friendship
+from .social_models import AccountBlock, Friendship, PetPrivacy
 from .visit_models import PetVisit
 from .visit_service import (
     finish_visit,
@@ -153,6 +153,16 @@ def _require_manager(session: Session, account_id: str, pet_id: str) -> tuple[Pe
     return pet, relation
 
 
+def _host_pet_visible(session: Session, requester_account_id: str, host_pet: Pet) -> bool:
+    relation = session.get(AccountPetRelation, (requester_account_id, host_pet.id))
+    if relation is not None:
+        return True
+    privacy = session.get(PetPrivacy, host_pet.id)
+    if privacy is None:
+        return False
+    return privacy.visibility in {"friends", "public"}
+
+
 def _visit(session: Session, visit_id: str) -> PetVisit:
     value = session.get(PetVisit, visit_id)
     if value is None:
@@ -226,6 +236,8 @@ def create_visit_request(
 
     visitor_pet, _ = _require_manager(session, principal.account_id, body.visitor_pet_id)
     host_pet, _ = _require_manager(session, host.id, body.host_pet_id)
+    if not _host_pet_visible(session, principal.account_id, host_pet):
+        raise HTTPException(status_code=404, detail="接待宠物不存在或当前不可见")
     if visitor_pet.id == host_pet.id:
         raise HTTPException(status_code=400, detail="来访宠物和接待宠物不能相同")
     if visitor_pet.presence not in {"home", "resting"}:
@@ -319,6 +331,8 @@ def accept_visit(
         session, value.requester_account_id, value.visitor_pet_id
     ) is None:
         raise HTTPException(status_code=409, detail="来访宠物关系已失效")
+    if not _host_pet_visible(session, value.requester_account_id, host_pet):
+        raise HTTPException(status_code=409, detail="接待宠物已不再对申请方可见")
     if visitor_pet.presence not in {"home", "resting"}:
         raise HTTPException(status_code=409, detail="来访宠物当前不在家")
     if host_pet.presence not in {"home", "resting"}:
