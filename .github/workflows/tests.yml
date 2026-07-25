@@ -25,8 +25,12 @@ jobs:
       - name: Test
         shell: pwsh
         run: |
-          python -m pytest -q --tb=short 2>&1 | Tee-Object -FilePath pytest-output.txt
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $failed = $false
+          python -m pytest -q --tb=short -k "not test_selfie_completion_shows_photo_bubble" 2>&1 | Tee-Object -FilePath pytest-output.txt
+          if ($LASTEXITCODE -ne 0) { $failed = $true }
+          python -m pytest -q --tb=short tests/test_window.py::test_selfie_completion_shows_photo_bubble 2>&1 | Tee-Object -FilePath pytest-output.txt -Append
+          if ($LASTEXITCODE -ne 0) { $failed = $true }
+          if ($failed) { exit 1 }
       - name: Upload Windows pytest diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
