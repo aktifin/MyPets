@@ -5,18 +5,23 @@ existing D3 state machine while adding two missing invariants:
 - the latest rights record for an artifact must be independently verified before approval
   or publishing;
 - a revoked or newly pending rights record stops subsequent package distribution.
+
+Historical D3 artifacts created before the rights ledger existed are migrated lazily from
+an already approved source-image submission. This creates an explicit verified ledger row
+using the original owner as declarer and the original submission reviewer as verifier.
 """
 
 from __future__ import annotations
 
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .admin_api import require_admin
+from .admin_api import _audit, require_admin
 from .api import get_session, require_account
 from .asset_deployment_api import (
     DeploymentPublishRequest,
@@ -33,6 +38,8 @@ from .asset_deployment_models import (
     PetPersonalAssetDeployment,
     PetPersonalAssetRelease,
 )
+from .asset_production_models import PetAssetProductionArtifact
+from .asset_submission_models import UserPetAssetSubmission
 from .governance_models import PetAssetRight
 from .security import Principal
 
@@ -50,13 +57,78 @@ def _latest_right(session: Session, artifact_id: str) -> PetAssetRight | None:
     return session.scalar(
         select(PetAssetRight)
         .where(PetAssetRight.artifact_id == artifact_id)
-        .order_by(PetAssetRight.updated_at.desc(), PetAssetRight.created_at.desc(), PetAssetRight.id.desc())
+        .order_by(
+            PetAssetRight.updated_at.desc(),
+            PetAssetRight.created_at.desc(),
+            PetAssetRight.id.desc(),
+        )
         .limit(1)
     )
 
 
-def _require_verified_right(session: Session, artifact_id: str) -> PetAssetRight:
+def _materialize_legacy_verified_right(
+    session: Session,
+    *,
+    artifact_id: str,
+    principal: Principal,
+) -> PetAssetRight | None:
+    """Convert pre-ledger approved submission evidence into an explicit ledger row."""
+
+    artifact = session.get(PetAssetProductionArtifact, artifact_id)
+    if artifact is None:
+        return None
+    submission = session.get(UserPetAssetSubmission, artifact.submission_id)
+    if (
+        submission is None
+        or submission.status != "approved"
+        or submission.rights_confirmed_at is None
+        or submission.reviewed_by_account_id is None
+    ):
+        return None
+
+    right = PetAssetRight(
+        id=str(uuid4()),
+        artifact_id=artifact.id,
+        rights_type=submission.rights_basis,
+        source_declaration=(
+            "由历史已审核宠物原图投稿自动迁移；"
+            f"submission_id={submission.id}；review_comment={submission.review_comment}"
+        ),
+        status="verified",
+        declared_by_account_id=submission.account_id,
+        verified_by_account_id=submission.reviewed_by_account_id,
+    )
+    session.add(right)
+    session.flush()
+    _audit(
+        session,
+        principal=principal,
+        action="pet_asset_right.migrated_from_submission",
+        resource_type="pet_asset_right",
+        resource_id=right.id,
+        details={
+            "artifact_id": artifact.id,
+            "submission_id": submission.id,
+            "declared_by_account_id": submission.account_id,
+            "verified_by_account_id": submission.reviewed_by_account_id,
+        },
+    )
+    return right
+
+
+def _require_verified_right(
+    session: Session,
+    artifact_id: str,
+    *,
+    principal: Principal,
+) -> PetAssetRight:
     right = _latest_right(session, artifact_id)
+    if right is None:
+        right = _materialize_legacy_verified_right(
+            session,
+            artifact_id=artifact_id,
+            principal=principal,
+        )
     if right is None:
         raise HTTPException(status_code=409, detail="制作产物尚未登记版权存证")
     if right.status != "verified":
@@ -80,7 +152,15 @@ def approve_governed_deployment_review(
     review = session.get(PetAssetDeploymentReview, review_id)
     if review is None:
         raise HTTPException(status_code=404, detail="专属素材部署审核不存在")
-    _require_verified_right(session, review.artifact_id)
+    # Preserve the original D3 validation contract: incomplete reviewer attestations
+    # return 422 before any rights-ledger lookup or migration occurs.
+    if not body.rights_verified or not body.visual_identity_verified:
+        raise HTTPException(status_code=422, detail="权利状态和视觉身份必须全部核验通过")
+    _require_verified_right(
+        session,
+        review.artifact_id,
+        principal=principal,
+    )
     return approve_deployment_review(
         review_id=review_id,
         body=body,
@@ -104,7 +184,11 @@ def publish_governed_personal_asset_release(
     review = session.get(PetAssetDeploymentReview, review_id)
     if review is None:
         raise HTTPException(status_code=404, detail="专属素材部署审核不存在")
-    _require_verified_right(session, review.artifact_id)
+    _require_verified_right(
+        session,
+        review.artifact_id,
+        principal=principal,
+    )
 
     release = session.scalar(
         select(PetPersonalAssetRelease).where(
