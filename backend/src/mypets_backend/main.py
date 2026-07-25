@@ -18,6 +18,7 @@ from .admin_web import admin_web_router
 from .api import router
 from .config import Settings
 from .database import Base, create_database_engine, create_session_factory
+from .message_center_api import message_center_router
 from .messaging_api import messaging_router
 from .models import Account
 from .object_store import FileObjectStore
@@ -73,8 +74,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         description=(
             "Server-authoritative accounts, user Web portal, pets, friendship, shared care, "
             "asynchronous pet visits, desktop dual-pet visit interactions, lazy settlement, "
-            "messaging, reminders, realtime cursor notifications, external reminder providers, "
-            "synchronization, pet asset publishing, administrator governance, and console API."
+            "categorized messaging, resume-safe reminders, realtime cursor notifications, "
+            "external reminder providers, synchronization, pet asset publishing, administrator "
+            "governance, and console API."
         ),
     )
     app.state.settings = resolved
@@ -91,6 +93,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(visit_scene_router)
     app.include_router(visit_router)
     app.include_router(messaging_router)
+    app.include_router(message_center_router)
     app.include_router(reminder_router)
     app.include_router(reminder_snapshot_router)
     app.include_router(reminder_integration_router)
