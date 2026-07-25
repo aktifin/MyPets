@@ -74,8 +74,8 @@ def _project_caregiver(session: Session, payload: dict[str, Any]) -> None:
     assert isinstance(invited_by, dict)
     assert isinstance(invited, dict)
     assert isinstance(pet, dict)
-    sender_account_id = _string(invited_by.get("id"))
-    recipient_account_id = _string(invited.get("id"))
+    sender_account_id = _string(invited_by.get("account_id"))
+    recipient_account_id = _string(invited.get("account_id"))
     pet_id = _string(pet.get("pet_id"))
     pet_name = _string(pet.get("name")) or "宠物"
     role = _string(invitation.get("role"))
