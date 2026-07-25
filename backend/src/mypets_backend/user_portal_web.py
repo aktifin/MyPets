@@ -39,9 +39,13 @@ def _asset(name: str, media_type: str) -> FileResponse:
 def user_portal() -> HTMLResponse:
     html = _path("index.html").read_text(encoding="utf-8")
     marker = "</head>"
-    realtime_script = '<script src="/portal/realtime.js" defer></script>'
-    if realtime_script not in html:
-        html = html.replace(marker, f"  {realtime_script}\n{marker}", 1)
+    scripts = (
+        '<script src="/portal/realtime.js" defer></script>',
+        '<script src="/portal/asset-submissions.js" defer></script>',
+    )
+    for script in scripts:
+        if script not in html:
+            html = html.replace(marker, f"  {script}\n{marker}", 1)
     return HTMLResponse(html, headers=_SECURITY_HEADERS)
 
 
@@ -58,6 +62,11 @@ def user_portal_visits_script() -> FileResponse:
 @user_portal_web_router.get("/portal/realtime.js")
 def user_portal_realtime_script() -> FileResponse:
     return _asset("realtime.js", "text/javascript; charset=utf-8")
+
+
+@user_portal_web_router.get("/portal/asset-submissions.js")
+def user_portal_asset_submissions_script() -> FileResponse:
+    return _asset("asset-submissions.js", "text/javascript; charset=utf-8")
 
 
 @user_portal_web_router.get("/portal/styles.css")
