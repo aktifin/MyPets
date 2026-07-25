@@ -45,12 +45,19 @@ class PetSettlementMiddleware(BaseHTTPMiddleware):
         if should_settle:
             self._settle_if_authenticated(request)
         response = await call_next(request)
-        if (
-            request.method == "POST"
-            and request.url.path == "/api/v1/blocks"
-            and 200 <= response.status_code < 300
-        ):
-            self._terminate_newly_blocked_visits(request)
+        if 200 <= response.status_code < 300:
+            if request.method == "POST" and request.url.path == "/api/v1/blocks":
+                self._terminate_newly_blocked_visits(request)
+            elif request.method == "DELETE" and request.url.path.startswith(
+                "/api/v1/friends/"
+            ):
+                friend_account_id = request.url.path.rsplit("/", 1)[-1].strip()
+                if friend_account_id:
+                    self._terminate_relationship_visits(
+                        request,
+                        friend_account_id,
+                        reason="friend_removed",
+                    )
         return response
 
     @staticmethod
@@ -120,4 +127,25 @@ class PetSettlementMiddleware(BaseHTTPMiddleware):
                     now=now,
                     reason="account_blocked",
                 )
+            session.commit()
+
+    @classmethod
+    def _terminate_relationship_visits(
+        cls,
+        request: Request,
+        other_account_id: str,
+        *,
+        reason: str,
+    ) -> None:
+        with request.app.state.session_factory() as session:
+            principal = cls._principal_if_valid(request, session)
+            if principal is None:
+                return
+            terminate_visits_between(
+                session,
+                principal.account_id,
+                other_account_id,
+                now=datetime.now(UTC),
+                reason=reason,
+            )
             session.commit()
