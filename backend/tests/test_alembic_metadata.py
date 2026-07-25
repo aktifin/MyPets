@@ -9,6 +9,7 @@ from mypets_backend import models  # noqa: F401
 from mypets_backend import social_models  # noqa: F401
 from mypets_backend import visit_models  # noqa: F401
 from mypets_backend import reminder_models  # noqa: F401
+from mypets_backend import asset_submission_models  # noqa: F401
 
 
 def test_alembic_metadata_tables_complete():
@@ -38,6 +39,7 @@ def test_alembic_metadata_tables_complete():
         "caregiver_invitations",
         "pet_visits",
         "reminder_occurrences",
+        "user_pet_asset_submissions",
     }
     for expected in expected_tables:
         assert expected in tables, f"表 {expected} 未在 Base.metadata 中声明"
