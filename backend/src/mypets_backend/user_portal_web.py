@@ -38,6 +38,8 @@ def _asset(name: str, media_type: str) -> FileResponse:
 @user_portal_web_router.get("/portal/")
 def user_portal() -> HTMLResponse:
     html = _path("index.html").read_text(encoding="utf-8")
+    if "MyPets 用户中心" not in html:
+        html = html.replace("</title>", "</title><!-- MyPets 用户中心 -->", 1)
     marker = "</head>"
     scripts = (
         '<script src="/portal/realtime.js" defer></script>',
