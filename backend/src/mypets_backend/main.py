@@ -31,6 +31,7 @@ from .asset_submission_api import (
 from .config import Settings
 from .database import Base, create_database_engine, create_session_factory
 from .governance_api import governance_api_router
+from .governance_compat_api import governance_compat_router
 from .governed_asset_deployment_api import (
     admin_governed_asset_deployment_router,
     governed_asset_deployment_router,
@@ -107,6 +108,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(router)
     app.include_router(realtime_router)
     app.include_router(user_portal_api_router)
+    # Static compatibility paths must precede dynamic governance routes.
+    app.include_router(governance_compat_router)
     app.include_router(governance_api_router)
     app.include_router(asset_submission_router)
     app.include_router(asset_production_router)
