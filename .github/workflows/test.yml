@@ -47,6 +47,8 @@ jobs:
           tests/test_reminder_management.py
           tests/test_social_shared_care.py
           tests/test_async_visits.py
+          tests/test_visit_scene_client.py
+          tests/test_guest_pet_window.py
           tests/test_pet_assets.py
           tests/test_asset_download.py
 
