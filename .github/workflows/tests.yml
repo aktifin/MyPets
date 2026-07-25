@@ -30,12 +30,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { $failed = $true }
 
           $windowTests = @(
-            python -m pytest --collect-only -q tests/test_window.py |
+            python -c "import ast, pathlib; p=pathlib.Path('tests/test_window.py'); tree=ast.parse(p.read_text(encoding='utf-8')); print('\n'.join(f'{p.as_posix()}::{node.name}' for node in tree.body if isinstance(node, ast.FunctionDef) and node.name.startswith('test_')))" |
               ForEach-Object { $_.Trim() } |
-              Where-Object { $_ -like '*test_window.py::*' }
+              Where-Object { $_ }
           )
           if ($windowTests.Count -eq 0) {
-            Write-Output "No test_window.py nodes were collected." | Tee-Object -FilePath pytest-output.txt -Append
+            Write-Output "No test_window.py nodes were discovered." | Tee-Object -FilePath pytest-output.txt -Append
             $failed = $true
           }
           foreach ($node in $windowTests) {
