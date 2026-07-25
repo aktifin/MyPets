@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from mypets_backend.admin_rbac import _required_permission
+
 
 def test_user_portal_includes_pet_submission_workspace(client: TestClient) -> None:
     page = client.get("/portal")
@@ -30,3 +32,12 @@ def test_admin_console_includes_submission_review_workspace(client: TestClient) 
     assert "start-review" in script.text
     assert "publication" not in script.text.lower()
     assert script.headers["x-content-type-options"] == "nosniff"
+
+
+def test_submission_review_routes_use_separate_editor_and_reviewer_permissions() -> None:
+    root = "/api/v1/admin/pet-asset-submissions/submission-1"
+    assert _required_permission("GET", root) == "view"
+    assert _required_permission("GET", f"{root}/image") == "view"
+    assert _required_permission("POST", f"{root}/start-review") == "edit"
+    assert _required_permission("POST", f"{root}/approve") == "review"
+    assert _required_permission("POST", f"{root}/reject") == "review"
