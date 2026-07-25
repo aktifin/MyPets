@@ -26,10 +26,22 @@ jobs:
         shell: pwsh
         run: |
           $failed = $false
-          python -m pytest -q --tb=short -k "not test_selfie_completion_shows_photo_bubble" 2>&1 | Tee-Object -FilePath pytest-output.txt
+          python -m pytest -q --tb=short --ignore=tests/test_window.py 2>&1 | Tee-Object -FilePath pytest-output.txt
           if ($LASTEXITCODE -ne 0) { $failed = $true }
-          python -m pytest -q --tb=short tests/test_window.py::test_selfie_completion_shows_photo_bubble 2>&1 | Tee-Object -FilePath pytest-output.txt -Append
-          if ($LASTEXITCODE -ne 0) { $failed = $true }
+
+          $windowTests = @(
+            python -m pytest --collect-only -q tests/test_window.py |
+              Where-Object { $_ -match '^tests[\\/]test_window\.py::' }
+          )
+          if ($windowTests.Count -eq 0) {
+            Write-Output "No test_window.py nodes were collected." | Tee-Object -FilePath pytest-output.txt -Append
+            $failed = $true
+          }
+          foreach ($node in $windowTests) {
+            Write-Output "Running isolated Qt test: $node" | Tee-Object -FilePath pytest-output.txt -Append
+            python -m pytest -q --tb=short $node 2>&1 | Tee-Object -FilePath pytest-output.txt -Append
+            if ($LASTEXITCODE -ne 0) { $failed = $true }
+          }
           if ($failed) { exit 1 }
       - name: Upload Windows pytest diagnostics
         if: failure()
