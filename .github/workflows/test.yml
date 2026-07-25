@@ -34,7 +34,7 @@ jobs:
       - name: Install project and test dependencies
         run: python -m pip install -q --upgrade pip && python -m pip install -q -e ".[dev]"
 
-      - name: Run cache, cloud, realtime, social, visits, reminder, and pet asset tests
+      - name: Run cache, cloud, messaging, visits, reminder, and pet asset tests
         run: >-
           python -m pytest -q --tb=short
           tests/test_local_store.py
@@ -43,7 +43,9 @@ jobs:
           tests/test_cloud_types.py
           tests/test_cloud_session.py
           tests/test_realtime.py
+          tests/test_messaging.py
           tests/test_reminders.py
+          tests/test_reminder_resume.py
           tests/test_reminder_management.py
           tests/test_social_shared_care.py
           tests/test_async_visits.py
