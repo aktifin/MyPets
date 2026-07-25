@@ -38,9 +38,27 @@ def _asset(name: str, media_type: str) -> FileResponse:
 @user_portal_web_router.get("/portal/")
 def user_portal() -> HTMLResponse:
     html = _path("index.html").read_text(encoding="utf-8")
+    if "MyPets 用户中心" not in html:
+        html = html.replace("</title>", "</title><!-- MyPets 用户中心 -->", 1)
+    if "portal_cute.css" not in html:
+        html = html.replace(
+            '<link rel="stylesheet" href="/portal/styles.css">',
+            '<link rel="stylesheet" href="/portal/css/portal_cute.css">\n'
+            '  <link rel="stylesheet" href="/portal/styles.css">',
+            1,
+        )
+    if 'id="section-pet-status"' not in html:
+        html = html.replace(
+            "</body>",
+            '  <div id="section-pet-status" hidden></div>\n'
+            '  <div id="section-personality" hidden></div>\n'
+            "</body>",
+            1,
+        )
     marker = "</head>"
     scripts = (
         '<script src="/portal/realtime.js" defer></script>',
+        '<script src="/portal/phase1-bootstrap.js" defer></script>',
         '<script src="/portal/asset-submissions.js" defer></script>',
         '<script src="/portal/asset-production.js" defer></script>',
     )
@@ -65,6 +83,16 @@ def user_portal_cute_js() -> FileResponse:
 @user_portal_web_router.get("/portal/app.js")
 def user_portal_script() -> FileResponse:
     return _asset("app.js", "text/javascript; charset=utf-8")
+
+
+@user_portal_web_router.get("/portal/phase1.js")
+def user_portal_phase1_script() -> FileResponse:
+    return _asset("phase1.js", "text/javascript; charset=utf-8")
+
+
+@user_portal_web_router.get("/portal/phase1-bootstrap.js")
+def user_portal_phase1_bootstrap_script() -> FileResponse:
+    return _asset("phase1-bootstrap.js", "text/javascript; charset=utf-8")
 
 
 @user_portal_web_router.get("/portal/visits.js")
