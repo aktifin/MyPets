@@ -9,8 +9,11 @@ from io import BytesIO
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-_ALLOWED_MEDIA_TYPES = {"image/jpeg", "image/png", "image/webp"}
-_ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP"}
+_MEDIA_FORMATS = {
+    "image/jpeg": "JPEG",
+    "image/png": "PNG",
+    "image/webp": "WEBP",
+}
 _MIN_SIDE = 64
 _MAX_SIDE = 8192
 
@@ -44,7 +47,8 @@ def sanitize_submission_image(
     """
 
     media_type = declared_media_type.strip().lower()
-    if media_type not in _ALLOWED_MEDIA_TYPES:
+    expected_format = _MEDIA_FORMATS.get(media_type)
+    if expected_format is None:
         raise ValueError("只支持 JPEG、PNG 或 WebP 宠物图片")
     if not data:
         raise ValueError("宠物图片不能为空")
@@ -56,8 +60,8 @@ def sanitize_submission_image(
             warnings.simplefilter("error", Image.DecompressionBombWarning)
             with Image.open(BytesIO(data)) as probe:
                 source_format = str(probe.format or "").upper()
-                if source_format not in _ALLOWED_FORMATS:
-                    raise ValueError("图片实际格式与允许类型不符")
+                if source_format != expected_format:
+                    raise ValueError("图片声明类型与实际格式不一致")
                 if int(getattr(probe, "n_frames", 1)) != 1:
                     raise ValueError("暂不支持动画图片")
                 probe.verify()
