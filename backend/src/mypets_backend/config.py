@@ -13,6 +13,13 @@ def _csv_values(value: str) -> tuple[str, ...]:
     return tuple(sorted({item.strip().lower() for item in value.split(",") if item.strip()}))
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class Settings:
     """Runtime settings for the modular-monolith API."""
@@ -26,6 +33,10 @@ class Settings:
     realtime_ticket_seconds: int = 60
     realtime_poll_interval_seconds: float = 1.0
     realtime_heartbeat_seconds: int = 20
+
+    # Pet content review, user image submission, production work orders, and
+    # personal asset deployment are retained in source but disabled by default.
+    pet_review_enabled: bool = False
 
     # MYPETS_ADMIN_USERNAMES remains a backward-compatible super-administrator list.
     # Explicit role lists are merged into admin_usernames in __post_init__ so the
@@ -95,6 +106,7 @@ class Settings:
             realtime_heartbeat_seconds=int(
                 os.getenv("MYPETS_REALTIME_HEARTBEAT_SECONDS", cls.realtime_heartbeat_seconds)
             ),
+            pet_review_enabled=_env_bool("MYPETS_ENABLE_PET_REVIEW", False),
             admin_usernames=_csv_values(
                 os.getenv("MYPETS_ADMIN_USERNAMES", "pet_editor,pet_reviewer")
             ),
