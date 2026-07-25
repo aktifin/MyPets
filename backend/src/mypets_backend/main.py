@@ -16,6 +16,10 @@ from .admin_governance_api import admin_governance_router, governance_catalog_ro
 from .admin_rbac import AdminPermissionMiddleware
 from .admin_web import admin_web_router
 from .api import router
+from .asset_deployment_api import (
+    admin_asset_deployment_router,
+    asset_deployment_router,
+)
 from .asset_production_api import (
     admin_asset_production_router,
     asset_production_router,
@@ -83,9 +87,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "Server-authoritative accounts, user Web portal, pets, friendship, shared care, "
             "asynchronous pet visits, desktop dual-pet visit interactions, lazy settlement, "
             "categorized messaging, resume-safe reminders, safe user pet-image submissions, "
-            "controlled pet asset production work orders, realtime cursor notifications, "
-            "external reminder providers, synchronization, pet asset publishing, administrator "
-            "governance, and console API."
+            "controlled pet asset production work orders, independently reviewed personal asset "
+            "releases and per-pet rollback, realtime cursor notifications, external reminder "
+            "providers, synchronization, pet asset publishing, administrator governance, and "
+            "console API."
         ),
     )
     app.state.settings = resolved
@@ -99,6 +104,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(user_portal_api_router)
     app.include_router(asset_submission_router)
     app.include_router(asset_production_router)
+    app.include_router(asset_deployment_router)
     app.include_router(pet_care_router)
     app.include_router(social_router)
     app.include_router(visit_scene_router)
@@ -114,6 +120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_governance_router)
     app.include_router(admin_asset_submission_router)
     app.include_router(admin_asset_production_router)
+    app.include_router(admin_asset_deployment_router)
     app.include_router(admin_router)
     app.include_router(admin_console_api_router)
     app.include_router(catalog_router)
