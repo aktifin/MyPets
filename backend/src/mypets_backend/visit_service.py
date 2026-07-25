@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from .visit_models import PetVisit
 
 
 _TERMINAL = {"rejected", "cancelled", "completed", "recalled", "expired"}
+_VISIT_REQUEST_TTL = timedelta(hours=24)
 
 
 def _visit_payload(visit: PetVisit, cause: str) -> dict[str, object]:
@@ -95,7 +96,7 @@ def settle_due_visits(
     now: datetime | None = None,
 ) -> list[PetVisit]:
     effective_now = now or datetime.now(UTC)
-    values = list(
+    active_values = list(
         session.scalars(
             select(PetVisit).where(
                 PetVisit.status == "active",
@@ -104,8 +105,16 @@ def settle_due_visits(
             )
         )
     )
-    completed: list[PetVisit] = []
-    for visit in values:
+    pending_values = list(
+        session.scalars(
+            select(PetVisit).where(
+                PetVisit.status == "pending",
+                PetVisit.created_at <= effective_now - _VISIT_REQUEST_TTL,
+            )
+        )
+    )
+    changed: list[PetVisit] = []
+    for visit in active_values:
         if finish_visit(
             session,
             visit,
@@ -113,8 +122,15 @@ def settle_due_visits(
             status="completed",
             reason="visit_auto_returned",
         ):
-            completed.append(visit)
-    return completed
+            changed.append(visit)
+    for visit in pending_values:
+        visit.status = "expired"
+        visit.completion_reason = "visit_request_expired"
+        visit.responded_at = effective_now
+        visit.completed_at = effective_now
+        publish_visit_update(session, visit, cause="visit_request_expired")
+        changed.append(visit)
+    return changed
 
 
 def terminate_visits_between(
