@@ -39,6 +39,8 @@ class VisitController(QObject):
         if not self.session.connected:
             self.operation_failed.emit("云端未连接，无法读取串门数据")
             return False
+        if self._pending_refresh:
+            return False
         requests = {
             "friends": ("GET", "/api/v1/friends"),
             "visits": ("GET", "/api/v1/visits"),
