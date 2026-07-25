@@ -58,6 +58,7 @@ def user_portal() -> HTMLResponse:
     marker = "</head>"
     scripts = (
         '<script src="/portal/realtime.js" defer></script>',
+        '<script src="/portal/phase1-bootstrap.js" defer></script>',
         '<script src="/portal/asset-submissions.js" defer></script>',
         '<script src="/portal/asset-production.js" defer></script>',
     )
@@ -87,6 +88,11 @@ def user_portal_script() -> FileResponse:
 @user_portal_web_router.get("/portal/phase1.js")
 def user_portal_phase1_script() -> FileResponse:
     return _asset("phase1.js", "text/javascript; charset=utf-8")
+
+
+@user_portal_web_router.get("/portal/phase1-bootstrap.js")
+def user_portal_phase1_bootstrap_script() -> FileResponse:
+    return _asset("phase1-bootstrap.js", "text/javascript; charset=utf-8")
 
 
 @user_portal_web_router.get("/portal/visits.js")
