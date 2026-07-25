@@ -83,6 +83,7 @@ def _materialize_legacy_verified_right(
         or submission.status != "approved"
         or submission.rights_confirmed_at is None
         or submission.reviewed_by_account_id is None
+        or submission.reviewed_by_account_id == submission.account_id
     ):
         return None
 
