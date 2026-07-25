@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from PySide6.QtCore import QPoint
 from PySide6.QtGui import QAction
+from PySide6.QtWidgets import QWidget
 
 from .app import DesktopPetApplication
 from .domain import NotificationKind, ReminderOccurrenceState
 from .reminder_cache import ReminderCache
 from .reminder_card import ReminderCard
 from .reminder_cloud import ReminderCloudController
+from .reminder_resume import ReminderResumeSummary
 from .reminder_scheduler import ReminderScheduler
 
 
@@ -32,6 +34,7 @@ class ReminderDesktopPetApplication(DesktopPetApplication):
         self.reminder_card = ReminderCard(self.window)
 
         self.reminder_scheduler.reminders_due.connect(self._show_due_reminders)
+        self.reminder_scheduler.resume_summary_due.connect(self._show_resume_summary)
         self.reminder_scheduler.delivery_requested.connect(self.reminder_cloud.deliver)
         self.reminder_cloud.account_changed.connect(self._reminder_account_changed)
         self.reminder_cloud.reminders_changed.connect(self._reminders_changed)
@@ -102,18 +105,39 @@ class ReminderDesktopPetApplication(DesktopPetApplication):
         self._position_reminder_card()
         self._refresh_reminder_action()
 
+    def _show_resume_summary(self, summary: object) -> None:
+        if not isinstance(summary, ReminderResumeSummary):
+            return
+        self.reminder_card.show_resume_summary(summary)
+        self.reminder_card.adjustSize()
+        self._position_reminder_card()
+        away = getattr(self, "_away_indicator", None)
+        suffix = "；宠物外出中，提醒仍由本机安全投递" if away is not None and away.isVisible() else ""
+        self.tray.showMessage(
+            "MyPets 提醒恢复",
+            f"系统恢复后发现 {summary.count} 条到期提醒，已合并为一张摘要{suffix}。",
+        )
+        self._refresh_reminder_action()
+
+    def _reminder_anchor(self) -> QWidget:
+        away = getattr(self, "_away_indicator", None)
+        if isinstance(away, QWidget) and away.isVisible():
+            return away
+        return self.window
+
     def _position_reminder_card(self) -> None:
-        window_geometry = self.window.frameGeometry()
+        anchor = self._reminder_anchor()
+        anchor_geometry = anchor.frameGeometry()
         card_size = self.reminder_card.sizeHint()
-        screen = self.window.screen()
-        available = screen.availableGeometry() if screen is not None else window_geometry
-        right_x = window_geometry.right() + 12
-        left_x = window_geometry.left() - card_size.width() - 12
+        screen = anchor.screen()
+        available = screen.availableGeometry() if screen is not None else anchor_geometry
+        right_x = anchor_geometry.right() + 12
+        left_x = anchor_geometry.left() - card_size.width() - 12
         x = right_x if right_x + card_size.width() <= available.right() else left_x
         x = max(available.left(), min(x, available.right() - card_size.width()))
         y = max(
             available.top(),
-            min(window_geometry.top(), available.bottom() - card_size.height()),
+            min(anchor_geometry.top(), available.bottom() - card_size.height()),
         )
         self.reminder_card.move(QPoint(x, y))
 
