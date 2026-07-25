@@ -35,5 +35,7 @@ def test_admin_console_serves_asset_production_workspace(client: TestClient) -> 
     assert script.status_code == 200, script.text
     assert "target_template_version_id" in script.text
     assert "上传成功后产物不可静默替换" in script.text
-    assert "自动发布" not in script.text
+    assert "不会自动发布" in script.text
+    assert "/publish" not in script.text
+    assert "Authorization: `Bearer ${state.token}`" in script.text
     assert script.headers["cache-control"] == "no-store"
