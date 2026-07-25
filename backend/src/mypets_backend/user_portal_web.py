@@ -42,6 +42,7 @@ def user_portal() -> HTMLResponse:
     scripts = (
         '<script src="/portal/realtime.js" defer></script>',
         '<script src="/portal/asset-submissions.js" defer></script>',
+        '<script src="/portal/asset-production.js" defer></script>',
     )
     for script in scripts:
         if script not in html:
@@ -67,6 +68,11 @@ def user_portal_realtime_script() -> FileResponse:
 @user_portal_web_router.get("/portal/asset-submissions.js")
 def user_portal_asset_submissions_script() -> FileResponse:
     return _asset("asset-submissions.js", "text/javascript; charset=utf-8")
+
+
+@user_portal_web_router.get("/portal/asset-production.js")
+def user_portal_asset_production_script() -> FileResponse:
+    return _asset("asset-production.js", "text/javascript; charset=utf-8")
 
 
 @user_portal_web_router.get("/portal/styles.css")
