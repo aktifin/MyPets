@@ -1,0 +1,154 @@
+/* MyPets Web 用户门户 - 马卡龙卡哇伊主题样式系统 */
+
+:root {
+    --cute-bg-pink: #FFF4F8;
+    --cute-bg-blue: #EBF5FF;
+    --cute-primary: #FF708A;
+    --cute-primary-hover: #FF85A1;
+    --cute-accent-mint: #A8EDEA;
+    --cute-accent-purple: #B8A7EA;
+    --cute-text-dark: #4A4A6A;
+    --cute-text-muted: #8A8A9E;
+    --cute-card-bg: rgba(255, 255, 255, 0.85);
+    --cute-glass-border: rgba(255, 255, 255, 0.6);
+    --cute-card-shadow: 0 10px 25px rgba(255, 112, 138, 0.12);
+}
+
+body {
+    font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", sans-serif;
+    background: linear-gradient(135deg, #FFF4F8 0%, #EBF5FF 50%, #F0FDF4 100%);
+    color: var(--cute-text-dark);
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+}
+
+/* 毛玻璃导航栏 */
+.portal-navbar {
+    background: var(--cute-card-bg);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--cute-glass-border);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.04);
+    padding: 12px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.portal-brand {
+    font-size: 20px;
+    font-weight: bold;
+    color: var(--cute-primary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.portal-nav-links {
+    display: flex;
+    gap: 16px;
+}
+
+.nav-link-btn {
+    background: transparent;
+    border: none;
+    font-size: 14px;
+    font-weight: bold;
+    color: var(--cute-text-dark);
+    padding: 8px 16px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.nav-link-btn.active, .nav-link-btn:hover {
+    background: #FFE4EC;
+    color: var(--cute-primary);
+}
+
+/* 主主体容器 */
+.portal-container {
+    max-width: 1100px;
+    margin: 24px auto;
+    padding: 0 16px;
+}
+
+/* 毛玻璃可爱卡片 */
+.cute-card {
+    background: var(--cute-card-bg);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--cute-glass-border);
+    border-radius: 20px;
+    box-shadow: var(--cute-card-shadow);
+    padding: 20px;
+    margin-bottom: 24px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cute-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 14px 30px rgba(255, 112, 138, 0.18);
+}
+
+.card-title {
+    font-size: 18px;
+    font-weight: bold;
+    color: var(--cute-primary);
+    margin-top: 0;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 可爱网格布局 */
+.portal-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+/* 动感彩色进度条 */
+.cute-progress-bar {
+    width: 100%;
+    height: 16px;
+    background: #FFF0F5;
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 8px 0;
+    border: 1px solid #FFD0E0;
+}
+
+.cute-progress-inner {
+    height: 100%;
+    background: linear-gradient(90deg, #A8EDEA 0%, #FED6E3 100%);
+    border-radius: 10px;
+    transition: width 0.3s ease;
+}
+
+/* 可爱圆形按钮 */
+.cute-btn {
+    background: linear-gradient(135deg, #FF9EAA 0%, #FF708A 100%);
+    color: #FFFFFF;
+    font-weight: bold;
+    border: none;
+    border-radius: 20px;
+    padding: 8px 20px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 10px rgba(255, 112, 138, 0.3);
+}
+
+.cute-btn:hover {
+    background: linear-gradient(135deg, #FFAEBA 0%, #FF809A 100%);
+    transform: translateY(-2px);
+}
+
+.cute-btn-secondary {
+    background: #EBF5FF;
+    color: #3B82F6;
+    box-shadow: 0 4px 10px rgba(59, 130, 246, 0.15);
+}

@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .api import get_principal, get_session, require_account
+from .asset_deployment_models import PetPersonalAssetDeployment
 from .models import Account, AccountPetRelation, Pet
 from .schemas import AccountView, PetView, RelationView
 from .security import Principal, hash_password, verify_password
@@ -320,3 +321,22 @@ def update_portal_pet(
             )
     session.commit()
     return PortalPetConfigResponse(pet=pet_view(pet), relation=relation_view(relation))
+
+
+@user_portal_api_router.get("/pets/{pet_id}/deployment")
+def get_portal_pet_deployment(
+    pet_id: str,
+    principal: Annotated[Principal, Depends(get_principal)],
+    session: Annotated[Session, Depends(get_session)],
+):
+    """查询宠物的专属 Release 部署指针与状态。"""
+    require_account(principal)
+    pet, relation = pet_for_account(session, account_id=principal.account_id, pet_id=pet_id)
+    pointer = session.get(PetPersonalAssetDeployment, pet.id)
+    return {
+        "pet_id": pet.id,
+        "pet_name": pet.name,
+        "active_release_id": pointer.active_release_id if pointer else None,
+        "previous_release_id": pointer.previous_release_id if pointer else None,
+        "updated_at": pointer.updated_at.isoformat() if pointer else None,
+    }

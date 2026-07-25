@@ -23,7 +23,7 @@ _SECURITY_HEADERS = {
 
 def _path(name: str) -> Path:
     path = (_WEB_ROOT / name).resolve()
-    if path.parent != _WEB_ROOT.resolve() or not path.is_file():
+    if not str(path).startswith(str(_WEB_ROOT.resolve())) or not path.is_file():
         raise HTTPException(status_code=404, detail="管理台资源不存在")
     return path
 
@@ -45,6 +45,12 @@ def admin_console() -> HTMLResponse:
         if script not in html:
             html = html.replace(marker, f"  {script}\n{marker}", 1)
     return HTMLResponse(html, headers=_SECURITY_HEADERS)
+
+
+@admin_web_router.get("/admin/css/admin_cute.css")
+@admin_web_router.get("/admin/admin_cute.css")
+def admin_cute_css() -> FileResponse:
+    return _asset("css/admin_cute.css", "text/css; charset=utf-8")
 
 
 @admin_web_router.get("/admin/app.js")

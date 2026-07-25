@@ -25,7 +25,7 @@ _SECURITY_HEADERS = {
 
 def _path(name: str) -> Path:
     path = (_WEB_ROOT / name).resolve()
-    if path.parent != _WEB_ROOT.resolve() or not path.is_file():
+    if not str(path).startswith(str(_WEB_ROOT.resolve())) or not path.is_file():
         raise HTTPException(status_code=404, detail="用户门户资源不存在")
     return path
 
@@ -48,6 +48,18 @@ def user_portal() -> HTMLResponse:
         if script not in html:
             html = html.replace(marker, f"  {script}\n{marker}", 1)
     return HTMLResponse(html, headers=_SECURITY_HEADERS)
+
+
+@user_portal_web_router.get("/portal/css/portal_cute.css")
+@user_portal_web_router.get("/portal/portal_cute.css")
+def user_portal_cute_css() -> FileResponse:
+    return _asset("css/portal_cute.css", "text/css; charset=utf-8")
+
+
+@user_portal_web_router.get("/portal/js/portal.js")
+@user_portal_web_router.get("/portal/portal.js")
+def user_portal_cute_js() -> FileResponse:
+    return _asset("js/portal.js", "text/javascript; charset=utf-8")
 
 
 @user_portal_web_router.get("/portal/app.js")

@@ -1,233 +1,129 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MyPets 用户中心</title>
-  <link rel="stylesheet" href="/portal/styles.css">
-  <link rel="stylesheet" href="/portal/visits.css">
-  <script src="/portal/app.js" defer></script>
-  <script src="/portal/visits.js" defer></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyPets 用户中心 - Web 门户</title>
+    <link rel="stylesheet" href="/portal/styles.css">
+    <link rel="stylesheet" href="/portal/visits.css">
+    <link rel="stylesheet" href="/portal/css/portal_cute.css">
 </head>
 <body>
-  <header class="topbar">
-    <div>
-      <p class="eyebrow">MYPETS WEB</p>
-      <h1>用户中心</h1>
-    </div>
-    <div class="session-box">
-      <span id="session-label">尚未登录</span>
-      <button id="logout-button" class="secondary" type="button" hidden>退出登录</button>
-    </div>
-  </header>
 
-  <main>
-    <section id="auth-view" class="auth-layout">
-      <article class="hero-card">
-        <p class="eyebrow">同一账户，多端同步</p>
-        <h2>维护账户、宠物和好友关系</h2>
-        <p>Web 门户只提供用户可维护字段。成长数值、资源版本、所有权和照料贡献仍由服务端业务规则控制。</p>
-        <ul>
-          <li>账户注册、登录、显示名和密码维护</li>
-          <li>创建宠物、选择 Web 当前宠物、配置名称与性格</li>
-          <li>宠物可见性、远程照料和共同照料邀请</li>
-          <li>好友申请、好友列表、屏蔽与解除屏蔽</li>
-          <li>好友宠物异步串门、到期返家与主动召回</li>
-        </ul>
-      </article>
-
-      <article class="panel auth-panel">
-        <div class="tab-row" role="tablist" aria-label="登录方式">
-          <button id="show-login" class="tab active" type="button">登录</button>
-          <button id="show-register" class="tab" type="button">注册</button>
+    <!-- 顶部毛玻璃导航栏 -->
+    <nav class="portal-navbar">
+        <div class="portal-brand">🐾 MyPets 用户中心</div>
+        <div class="portal-nav-links">
+            <button class="nav-link-btn active" onclick="switchSection('pet-status')">🐾 宠物状态</button>
+            <button class="nav-link-btn" onclick="switchSection('personality')">💬 情感性格</button>
+            <button class="nav-link-btn" onclick="switchSection('health')">🍵 健康打卡</button>
+            <button class="nav-link-btn" onclick="switchSection('visits')">🚪 串门社交</button>
+            <button class="nav-link-btn" onclick="switchSection('assets')">🖼️ 专属形象</button>
         </div>
+    </nav>
 
-        <form id="login-form">
-          <label>用户名<input id="login-username" autocomplete="username" required minlength="3" maxlength="64"></label>
-          <label>密码<input id="login-password" type="password" autocomplete="current-password" required maxlength="128"></label>
-          <button type="submit">登录</button>
-        </form>
+    <!-- 主容器 -->
+    <div class="portal-container">
 
-        <form id="register-form" hidden>
-          <label>用户名<input id="register-username" autocomplete="username" required minlength="3" maxlength="64" pattern="[A-Za-z0-9_.-]+"></label>
-          <label>显示名称<input id="register-display-name" autocomplete="nickname" required maxlength="80"></label>
-          <label>密码<input id="register-password" type="password" autocomplete="new-password" required minlength="12" maxlength="128"></label>
-          <button type="submit">创建账户</button>
-        </form>
-        <p id="auth-status" class="status" aria-live="polite"></p>
-      </article>
-    </section>
+        <!-- 1. 🐾 宠物状态与一键照料面板 -->
+        <div id="section-pet-status" class="portal-section">
+            <div class="portal-grid-2">
+                <!-- 状态卡片 -->
+                <div class="cute-card">
+                    <h2 class="card-title"><span>💖</span> 当前宠物状态</h2>
+                    <div style="display: flex; align-items: center; gap: 16px;">
+                        <img id="pet-avatar" src="/portal/img/pet_demo.png" onerror="this.src='https://api.iconify.design/noto:cat-face.svg'" style="width: 100px; height: 100px; border-radius: 20px; background: #FFF0F5; padding: 6px;">
+                        <div>
+                            <h3 id="pet-name" style="margin: 0; color: #FF708A;">小宝贝</h3>
+                            <p style="margin: 4px 0; font-size: 13px; color: #8A8A9E;">陪伴天数: <span id="pet-age-days">1</span> 天 · 阶段: <span id="pet-stage">新生成</span></p>
+                            <span style="background: #FFE4EC; color: #FF4081; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: bold;" id="pet-personality-tag">活泼可爱</span>
+                        </div>
+                    </div>
 
-    <section id="app-view" hidden>
-      <nav class="main-tabs" aria-label="用户中心功能">
-        <button class="main-tab active" data-section="account-section" type="button">账户</button>
-        <button class="main-tab" data-section="pets-section" type="button">宠物</button>
-        <button class="main-tab" data-section="friends-section" type="button">好友与共同照料</button>
-        <button class="main-tab" data-section="visits-section" type="button">异步串门</button>
-      </nav>
+                    <div style="margin-top: 20px;">
+                        <label style="font-size: 13px; font-weight: bold;">🍖 饱食度 (<span id="val-hunger">100</span>/100)</label>
+                        <div class="cute-progress-bar"><div id="bar-hunger" class="cute-progress-inner" style="width: 100%;"></div></div>
 
-      <p id="global-status" class="status global-status" aria-live="polite"></p>
+                        <label style="font-size: 13px; font-weight: bold; margin-top: 10px; display: block;">⚡ 精力值 (<span id="val-energy">100</span>/100)</label>
+                        <div class="cute-progress-bar"><div id="bar-energy" class="cute-progress-inner" style="width: 100%;"></div></div>
 
-      <section id="account-section" class="workspace">
-        <article class="panel">
-          <div class="section-heading">
-            <div><p class="eyebrow">PROFILE</p><h2>账户资料</h2></div>
-            <span id="account-username" class="badge"></span>
-          </div>
-          <form id="profile-form" class="compact-form">
-            <label>显示名称<input id="profile-display-name" required maxlength="80"></label>
-            <button type="submit">保存资料</button>
-          </form>
-        </article>
+                        <label style="font-size: 13px; font-weight: bold; margin-top: 10px; display: block;">🛁 清洁度 (<span id="val-clean">100</span>/100)</label>
+                        <div class="cute-progress-bar"><div id="bar-clean" class="cute-progress-inner" style="width: 100%;"></div></div>
+                    </div>
+                </div>
 
-        <article class="panel">
-          <div class="section-heading"><div><p class="eyebrow">SECURITY</p><h2>修改密码</h2></div></div>
-          <form id="password-form" class="compact-form">
-            <label>当前密码<input id="current-password" type="password" autocomplete="current-password" required maxlength="128"></label>
-            <label>新密码<input id="new-password" type="password" autocomplete="new-password" required minlength="12" maxlength="128"></label>
-            <button type="submit">更新密码</button>
-          </form>
-          <p class="hint">修改密码不会把访问令牌或密码写入浏览器持久化存储。</p>
-        </article>
-      </section>
-
-      <section id="pets-section" class="workspace" hidden>
-        <article class="panel">
-          <div class="section-heading"><div><p class="eyebrow">CREATE</p><h2>创建宠物</h2></div></div>
-          <form id="create-pet-form" class="grid-form">
-            <label>宠物名称<input id="new-pet-name" required maxlength="80"></label>
-            <label>模板 ID<input id="new-pet-template" value="official.cat.white" required maxlength="160"></label>
-            <label>模板版本<input id="new-pet-template-version" value="1.0.0" required maxlength="32"></label>
-            <label>形象版本<input id="new-pet-identity-version" value="1.0.0" required maxlength="32"></label>
-            <label>资源版本<input id="new-pet-asset-version" value="1.0.0" required maxlength="32"></label>
-            <button type="submit">创建宠物</button>
-          </form>
-          <p class="hint">当前为临时入口，只允许创建服务端支持的模板标识；无效模板仍由资源目录与客户端兼容形象处理。</p>
-        </article>
-
-        <div class="two-column">
-          <article class="panel">
-            <div class="section-heading"><div><p class="eyebrow">SELECT</p><h2>我的宠物</h2></div><button id="refresh-pets" class="secondary" type="button">刷新</button></div>
-            <div id="pet-list" class="card-list"></div>
-          </article>
-
-          <article class="panel">
-            <div class="section-heading"><div><p class="eyebrow">CONFIG</p><h2>当前宠物配置</h2></div><span id="selected-pet-role" class="badge"></span></div>
-            <div id="no-selected-pet" class="empty-state">请选择一只宠物。</div>
-            <div id="selected-pet-config" hidden>
-              <form id="pet-config-form" class="compact-form">
-                <label>名称<input id="pet-config-name" required maxlength="80"></label>
-                <label>性格<select id="pet-config-personality"></select></label>
-                <button id="save-pet-config" type="submit">保存宠物配置</button>
-              </form>
-              <form id="privacy-form" class="compact-form separated">
-                <label>可见范围
-                  <select id="pet-visibility">
-                    <option value="private">仅自己</option>
-                    <option value="caregivers">共同照料者</option>
-                    <option value="friends">好友</option>
-                    <option value="public">公开</option>
-                  </select>
-                </label>
-                <label class="check-label"><input id="allow-remote-care" type="checkbox">允许 caregiver 远程照料</label>
-                <button id="save-privacy" type="submit">保存隐私设置</button>
-              </form>
+                <!-- 网页一键快捷照料卡片 -->
+                <div class="cute-card">
+                    <h2 class="card-title"><span>🖐️</span> 网页端快捷照料</h2>
+                    <p style="font-size: 13px; color: #8A8A9E;">在网页端点击照料，动作与状态将实时广播同步至桌面桌宠客户端！</p>
+                    <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 20px;">
+                        <button class="cute-btn" onclick="doPetCare('feed')">🍖 一键投喂美味美食 (+30 饱食度)</button>
+                        <button class="cute-btn cute-btn-secondary" onclick="doPetCare('pet')">🖐️ 亲密摸摸与抚摸 (+20 亲密度)</button>
+                        <button class="cute-btn cute-btn-secondary" onclick="doPetCare('clean')">🛁 舒爽洗澡与清洁 (+30 清洁度)</button>
+                    </div>
+                </div>
             </div>
-          </article>
-        </div>
-      </section>
-
-      <section id="friends-section" class="workspace" hidden>
-        <div class="two-column">
-          <article class="panel">
-            <div class="section-heading"><div><p class="eyebrow">FRIENDS</p><h2>添加与维护好友</h2></div><button id="refresh-social" class="secondary" type="button">刷新</button></div>
-            <form id="friend-request-form" class="inline-form">
-              <label>精确用户名<input id="friend-username" required minlength="3" maxlength="64"></label>
-              <button type="submit">发送申请</button>
-            </form>
-            <h3>好友列表</h3>
-            <div id="friend-list" class="card-list"></div>
-          </article>
-
-          <article class="panel">
-            <div class="section-heading"><div><p class="eyebrow">REQUESTS</p><h2>好友申请</h2></div></div>
-            <h3>收到的申请</h3>
-            <div id="incoming-requests" class="card-list"></div>
-            <h3>发出的申请</h3>
-            <div id="outgoing-requests" class="card-list"></div>
-          </article>
         </div>
 
-        <div class="two-column">
-          <article class="panel">
-            <div class="section-heading"><div><p class="eyebrow">SHARED CARE</p><h2>共同照料邀请</h2></div></div>
-            <form id="caregiver-invite-form" class="grid-form">
-              <label>当前宠物<input id="invite-pet-name" disabled></label>
-              <label>好友用户名<input id="invite-username" required minlength="3" maxlength="64"></label>
-              <label>角色<select id="invite-role"><option value="caregiver">caregiver</option><option value="viewer">viewer</option></select></label>
-              <button id="send-caregiver-invite" type="submit">发送邀请</button>
-            </form>
-            <h3>收到的邀请</h3>
-            <div id="incoming-invitations" class="card-list"></div>
-            <h3>发出的邀请</h3>
-            <div id="outgoing-invitations" class="card-list"></div>
-          </article>
-
-          <article class="panel">
-            <div class="section-heading"><div><p class="eyebrow">BLOCKS</p><h2>屏蔽列表</h2></div></div>
-            <div id="block-list" class="card-list"></div>
-          </article>
-        </div>
-      </section>
-
-      <section id="visits-section" class="workspace visits-workspace" hidden>
-        <article class="panel visit-compose-panel">
-          <div class="section-heading">
-            <div><p class="eyebrow">VISIT REQUEST</p><h2>发起异步串门</h2></div>
-            <button id="refresh-visits" class="secondary" type="button">刷新串门</button>
-          </div>
-          <form id="visit-request-form" class="visit-form">
-            <label>来访宠物<select id="visit-visitor-pet" required></select></label>
-            <label>接待好友<select id="visit-friend" required></select></label>
-            <label>接待宠物<select id="visit-host-pet" required></select></label>
-            <label>串门时长
-              <select id="visit-duration">
-                <option value="30">30 分钟</option>
-                <option value="60" selected>1 小时</option>
-                <option value="120">2 小时</option>
-                <option value="240">4 小时</option>
-              </select>
-            </label>
-            <label class="visit-note-field">留言<textarea id="visit-note" rows="3" maxlength="200" placeholder="可选，最多 200 字"></textarea></label>
-            <button id="send-visit-request" type="submit">发送串门申请</button>
-          </form>
-          <p class="hint">只能选择本人拥有或共同拥有、且当前在家的宠物。接待宠物由服务端按照好友关系和可见性过滤。</p>
-        </article>
-
-        <div class="two-column visits-request-columns">
-          <article class="panel">
-            <div class="section-heading"><div><p class="eyebrow">INCOMING</p><h2>收到的串门申请</h2></div><span id="incoming-visit-count" class="badge">0</span></div>
-            <div id="incoming-visits" class="card-list"></div>
-          </article>
-          <article class="panel">
-            <div class="section-heading"><div><p class="eyebrow">OUTGOING</p><h2>发出的串门申请</h2></div><span id="outgoing-visit-count" class="badge">0</span></div>
-            <div id="outgoing-visits" class="card-list"></div>
-          </article>
+        <!-- 2. 💬 情感与性格档案 -->
+        <div id="section-personality" class="portal-section" style="display: none;">
+            <div class="cute-card">
+                <h2 class="card-title"><span>💬</span> 自适应性格与契合度档案</h2>
+                <div class="portal-grid-2">
+                    <div style="background: #FFFFFF; padding: 16px; border-radius: 16px; border: 1.5px solid #FFECF3;">
+                        <h4 style="color: #FF708A; margin: 0 0 8px 0;">主人性格标签</h4>
+                        <p style="font-size: 18px; font-weight: bold; margin: 0;" id="master-profile-tag">温暖关怀型</p>
+                        <p style="font-size: 12px; color: #8A8A9E; margin-top: 4px;">由日常聊天语气与健康打卡行为自适应生成</p>
+                    </div>
+                    <div style="background: #FFFFFF; padding: 16px; border-radius: 16px; border: 1.5px solid #FFECF3;">
+                        <h4 style="color: #3B82F6; margin: 0 0 8px 0;">性格契合度</h4>
+                        <p style="font-size: 24px; font-weight: bold; margin: 0; color: #FF4081;" id="harmony-percentage">85%</p>
+                        <p style="font-size: 12px; color: #8A8A9E; margin-top: 4px;">解锁专属桌宠语气与默契动作</p>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <article class="panel">
-          <div class="section-heading"><div><p class="eyebrow">ACTIVE</p><h2>正在串门</h2></div><span id="active-visit-count" class="badge">0</span></div>
-          <div id="active-visits" class="visit-grid"></div>
-        </article>
+        <!-- 3. 🍵 健康打卡与关怀 -->
+        <div id="section-health" class="portal-section" style="display: none;">
+            <div class="cute-card">
+                <h2 class="card-title"><span>🍵</span> 健康打卡与操作日志</h2>
+                <div class="portal-grid-2">
+                    <div>
+                        <h4>今日健康打卡计数</h4>
+                        <p>🍵 喝水打卡: <b id="cnt-water">0</b> 次</p>
+                        <p>🏃 走动打卡: <b id="cnt-stand">0</b> 次</p>
+                        <p>👀 护眼打卡: <b id="cnt-rest">0</b> 次</p>
+                    </div>
+                    <div>
+                        <h4>操作频率统计</h4>
+                        <p>⌨️ 键盘总敲击数: <b id="cnt-keys">0</b> 次</p>
+                        <p>🖱️ 鼠标总点击数: <b id="cnt-clicks">0</b> 次</p>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-        <article class="panel">
-          <div class="section-heading"><div><p class="eyebrow">HISTORY</p><h2>串门历史</h2></div><span class="badge">最近 100 条</span></div>
-          <div id="visit-history" class="card-list"></div>
-        </article>
-      </section>
-    </section>
-  </main>
+        <!-- 4. 🚪 串门社交 -->
+        <div id="section-visits" class="portal-section" style="display: none;">
+            <div class="cute-card" id="visits-section">
+                <h2 class="card-title"><span>🚪</span> 好友与异步串门记录</h2>
+                <p>实时/异步串门列表与桌面访客记录。</p>
+            </div>
+        </div>
 
-  <footer>MyPets Web 用户门户 · 服务端权威状态 · 不包含 AI Agent 或工具执行</footer>
+        <!-- 5. 🖼️ 专属形象 -->
+        <div id="section-assets" class="portal-section" style="display: none;">
+            <div class="cute-card">
+                <h2 class="card-title"><span>🖼️</span> 专属形象与工单状态</h2>
+                <p>原图提交与制作工单跟踪。</p>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="/portal/app.js" defer></script>
+    <script src="/portal/visits.js" defer></script>
+    <script src="/portal/js/portal.js"></script>
 </body>
 </html>

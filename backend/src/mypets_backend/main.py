@@ -30,6 +30,7 @@ from .asset_submission_api import (
 )
 from .config import Settings
 from .database import Base, create_database_engine, create_session_factory
+from .governance_api import governance_api_router
 from .message_center_api import message_center_router
 from .messaging_api import messaging_router
 from .models import Account
@@ -102,6 +103,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(router)
     app.include_router(realtime_router)
     app.include_router(user_portal_api_router)
+    app.include_router(governance_api_router)
     app.include_router(asset_submission_router)
     app.include_router(asset_production_router)
     app.include_router(asset_deployment_router)

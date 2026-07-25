@@ -203,6 +203,36 @@ class AssetPackageDownloadController(QObject):
         self.status_message.emit(f"正在获取 {identity.template_id} 的形象版本")
         return True
 
+    def request_private_release_for(self, profile: PetProfile, access_token: str) -> bool:
+        """带 Bearer 鉴权头的专属/私有形象包下载逻辑。"""
+        identity = PetAssetIdentity(
+            profile.identity.template_id,
+            profile.identity.identity_version,
+            profile.asset_version,
+        )
+        if identity.key in self._pending:
+            return True
+        self._pending.add(identity.key)
+        query = urlencode(
+            {
+                "template_id": identity.template_id,
+                "identity_version": identity.identity_version,
+                "asset_version": identity.asset_version,
+            }
+        )
+        request = QNetworkRequest(
+            QUrl(f"{self._base_url}/api/v1/catalog/pet-assets?{query}")
+        )
+        request.setRawHeader(b"Accept", b"application/json")
+        request.setRawHeader(b"User-Agent", b"MyPets-Desktop/0.1")
+        if access_token:
+            request.setRawHeader(b"Authorization", f"Bearer {access_token}".encode("utf-8"))
+        reply = self._manager.get(request)
+        self._operations[reply] = ("metadata", identity)
+        reply.finished.connect(lambda reply=reply: self._finish(reply))
+        self.status_message.emit(f"正在获取专属形象 {identity.template_id}")
+        return True
+
     def _finish(self, reply: QNetworkReply) -> None:
         operation, context = self._operations.pop(reply, ("unknown", None))
         status_value = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)

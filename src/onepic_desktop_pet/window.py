@@ -771,10 +771,16 @@ class PetWindow(QWidget):
         return "body"
 
     def _handle_click(self, point: QPoint) -> None:
-        """根据点击区域更新情绪并选择对应反馈。"""
+        """根据点击区域更新情绪并弹出快捷环形气泡菜单。"""
 
         zone = self._interaction_zone(point)
         self._record_user_interaction()
+
+        # 如果绑定了 bubble_menu，在点击处弹出环形气泡菜单
+        if hasattr(self, "bubble_menu") and self.bubble_menu is not None:
+            global_pos = self.mapToGlobal(point)
+            self.bubble_menu.popup_at(global_pos)
+
         if zone == "camera":
             self.trigger_selfie()
             return
@@ -896,28 +902,49 @@ class PetWindow(QWidget):
             self._schedule(self.behavior.initial_idle())
 
     def _build_context_menu(self) -> QMenu:
-        """构建宠物窗口的右键菜单。"""
+        """构建宠物窗口的高颜值分类右键菜单。"""
 
         menu = QMenu(self)
-        pause_action = QAction("恢复跑动" if self.paused else "暂停跑动", self)
-        pause_action.triggered.connect(lambda: self.set_paused(not self.paused))
-        menu.addAction(pause_action)
-        interact_action = QAction("和她打招呼", self)
-        interact_action.triggered.connect(self.trigger_interaction)
-        menu.addAction(interact_action)
-        selfie_action = QAction("自拍一下", self)
+
+        # 1. 🐾 宠物互动
+        interact_menu = menu.addMenu("🐾 宠物互动")
+        greet_action = QAction("🖐️ 和她打招呼", self)
+        greet_action.triggered.connect(self.trigger_interaction)
+        interact_menu.addAction(greet_action)
+
+        selfie_action = QAction("📸 自拍一下", self)
         selfie_action.triggered.connect(self.trigger_selfie)
-        menu.addAction(selfie_action)
+        interact_menu.addAction(selfie_action)
+
+        pause_action = QAction("⏸️ 恢复跑动" if self.paused else "⏸️ 暂停跑动", self)
+        pause_action.triggered.connect(lambda: self.set_paused(not self.paused))
+        interact_menu.addAction(pause_action)
+
+        # 2. 💬 情感与性格
+        chat_menu = menu.addMenu("💬 情感与性格")
+        chat_action = QAction("💬 与宠物聊天…", self)
+        chat_action.triggered.connect(getattr(self, "chat_dialog_requested", self.trigger_interaction))
+        chat_menu.addAction(chat_action)
+
         mood_action = QAction(
-            "心情："
+            "💖 状态："
             f"亲密 {self.mood.affinity} · "
             f"精力 {self.mood.energy} · "
             f"无聊 {self.mood.boredom}",
             self,
         )
         mood_action.setEnabled(False)
-        menu.addAction(mood_action)
-        size_menu = menu.addMenu("宠物大小")
+        chat_menu.addAction(mood_action)
+
+        # 3. 🍵 健康关怀
+        health_menu = menu.addMenu("🍵 健康关怀")
+        analytics_action = QAction("📊 健康与操作分析…", self)
+        analytics_action.triggered.connect(getattr(self, "health_analytics_requested", self.trigger_interaction))
+        health_menu.addAction(analytics_action)
+
+        # 4. 🎨 形象与设置
+        config_menu = menu.addMenu("🎨 形象与设置")
+        size_menu = config_menu.addMenu("📏 宠物尺寸")
         for label, height in (("小（180）", 180), ("标准（220）", 220), ("大（280）", 280)):
             size_action = QAction(label, self)
             size_action.setCheckable(True)
@@ -926,14 +953,17 @@ class PetWindow(QWidget):
                 lambda _checked=False, value=height: self.set_display_height(value)
             )
             size_menu.addAction(size_action)
-        return_action = QAction("回到主屏幕", self)
+
+        return_action = QAction("🖥️ 回到主屏幕", self)
         return_action.triggered.connect(self.return_to_primary_screen)
-        menu.addAction(return_action)
-        hide_action = QAction("隐藏", self)
+        config_menu.addAction(return_action)
+
+        hide_action = QAction("🙈 隐藏桌宠", self)
         hide_action.triggered.connect(self.hide)
-        menu.addAction(hide_action)
+        config_menu.addAction(hide_action)
+
         menu.addSeparator()
-        quit_action = QAction("退出", self)
+        quit_action = QAction("❌ 退出程序", self)
         quit_action.triggered.connect(self.quit_requested.emit)
         menu.addAction(quit_action)
         return menu

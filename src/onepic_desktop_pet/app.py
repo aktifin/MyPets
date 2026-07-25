@@ -24,9 +24,17 @@ from .edge_dock import EdgeDockController
 from .edge_geometry import EdgeSide
 from .local_store import LocalStateStore
 from .login_dialog import CloudLoginDialog
+from .bubble_menu import PetBubbleMenu
+from .cute_style import apply_cute_style
+from .health_analytics_dialog import HealthAnalyticsDialog
+from .health_scheduler import HealthScheduler
+from .input_analytics import InputAnalytics
 from .message_drawer import MessageDrawer
+from .personality_engine import PersonalityEngine
 from .pet_assets import PetAssetCatalog
 from .pet_care_panel import PetCarePanel
+from .pet_chat_dialog import PetChatDialog
+from .pet_create_dialog import PetCreateDialog
 from .pet_registry import LOCAL_ACCOUNT_ID, PetRegistry
 from .resources import resource_path
 
@@ -67,6 +75,9 @@ class DesktopPetApplication:
             self.settings,
             self._asset_selection.manifest_path,
         )
+        self.bubble_menu = PetBubbleMenu()
+        self.bubble_menu.action_triggered.connect(self._on_bubble_action)
+        self.window.bubble_menu = self.bubble_menu
         self.edge_dock = EdgeDockController(self.window, self.settings)
         self.window.quit_requested.connect(self.quit)
         self.window.message_badge_clicked.connect(self.open_message_drawer)
@@ -96,9 +107,20 @@ class DesktopPetApplication:
         self.asset_downloader.package_installed.connect(self._asset_package_installed)
         self.asset_downloader.download_failed.connect(self._asset_download_failed)
         self.asset_downloader.status_message.connect(self._asset_download_status)
+        self.input_analytics = InputAnalytics()
+        self.qt_app.installEventFilter(self.input_analytics)
+
+        self.personality_engine = PersonalityEngine()
+        self.health_scheduler = HealthScheduler(self.input_analytics)
+        self.health_scheduler.health_reminder_triggered.connect(self._on_health_reminder)
+        self.health_scheduler.start()
+
         self._login_dialog: CloudLoginDialog | None = None
         self._care_panel: PetCarePanel | None = None
         self._message_drawer: MessageDrawer | None = None
+        self._health_dialog: HealthAnalyticsDialog | None = None
+        self._chat_dialog: PetChatDialog | None = None
+        self._create_dialog: PetCreateDialog | None = None
         self._quitting = False
         self._asset_status = ""
 
@@ -155,6 +177,18 @@ class DesktopPetApplication:
         care_action = QAction("宠物状态与照料…", menu)
         care_action.triggered.connect(self.open_pet_care_panel)
         menu.addAction(care_action)
+
+        chat_action = QAction("💬 与宠物聊天…", menu)
+        chat_action.triggered.connect(self.open_pet_chat_dialog)
+        menu.addAction(chat_action)
+
+        health_action = QAction("📊 健康与操作分析…", menu)
+        health_action.triggered.connect(self.open_health_analytics_dialog)
+        menu.addAction(health_action)
+
+        create_pet_action = QAction("✨ 创建新宠物…", menu)
+        create_pet_action.triggered.connect(self.open_pet_create_dialog)
+        menu.addAction(create_pet_action)
 
         self.message_action = QAction("💬 消息", menu)
         self.message_action.triggered.connect(self.open_message_drawer)
@@ -590,6 +624,78 @@ class DesktopPetApplication:
             QTimer.singleShot(max(1, smoke_test_ms), self.quit)
         return self.qt_app.exec()
 
+    def _on_bubble_action(self, action_code: str) -> None:
+        if action_code == "touch":
+            self.window.trigger_interaction()
+        elif action_code == "feed":
+            self.open_pet_care_panel()
+        elif action_code == "chat":
+            self.open_pet_chat_dialog()
+        elif action_code == "checkin":
+            self.open_health_analytics_dialog()
+        elif action_code == "stats":
+            self.open_pet_care_panel()
+
+    def open_health_analytics_dialog(self) -> None:
+        if self._health_dialog is None:
+            self._health_dialog = HealthAnalyticsDialog(self.input_analytics, self.health_scheduler)
+            self._health_dialog.checkin_requested.connect(self._on_health_checkin)
+        self._health_dialog.refresh_data()
+        self._health_dialog.show()
+        self._health_dialog.raise_()
+        self._health_dialog.activateWindow()
+
+    def open_pet_chat_dialog(self) -> None:
+        pet_name = self.active_pet.identity.name
+        if self._chat_dialog is None:
+            self._chat_dialog = PetChatDialog(pet_name=pet_name, engine=self.personality_engine)
+            self._chat_dialog.pet_replied.connect(self._on_pet_chat_replied)
+        self._chat_dialog.show()
+        self._chat_dialog.raise_()
+        self._chat_dialog.activateWindow()
+
+    def open_pet_create_dialog(self) -> None:
+        if self._create_dialog is None:
+            self._create_dialog = PetCreateDialog()
+            self._create_dialog.pet_created.connect(self._on_pet_created)
+        self._create_dialog.show()
+        self._create_dialog.raise_()
+        self._create_dialog.activateWindow()
+
+    def _on_health_reminder(self, reminder_type: str, title: str, message: str) -> None:
+        if QSystemTrayIcon.isSystemTrayAvailable():
+            self.tray.showMessage(title, message, QSystemTrayIcon.MessageIcon.Information, 5000)
+        self.window.trigger_interaction()
+
+    def _on_health_checkin(self, reminder_type: str) -> None:
+        self.window.trigger_interaction()
+
+    def _on_pet_chat_replied(self, text: str, emotion: str) -> None:
+        self.window.trigger_interaction()
+
+    def _on_pet_created(self, name: str, template_id: str) -> None:
+        pet_id = f"local_pet_{int(datetime.now().timestamp())}"
+        identity = PetIdentity(
+            template_id=template_id,
+            identity_version="v1",
+            name=name,
+            primary_owner_account_id=LOCAL_ACCOUNT_ID,
+        )
+        profile = PetProfile(identity=identity, pet_id=pet_id, asset_version="v1")
+        self.local_store.save_pet(profile)
+        self.local_store.save_account_relation(
+            AccountPetRelation(
+                account_id=LOCAL_ACCOUNT_ID,
+                pet_id=pet_id,
+                role=PetRole.OWNER,
+                affinity=50,
+            ),
+            make_active=True,
+        )
+        self.active_pet = profile
+        self._refresh_active_pet_ui()
+        self._rebuild_pet_menu()
+
     def quit(self) -> None:
         if self._quitting:
             return
@@ -597,6 +703,7 @@ class DesktopPetApplication:
         position = self.edge_dock.persistence_position()
         self.settings.start_x = position.x()
         self.settings.start_y = position.y()
+        self.health_scheduler.stop()
         self.cloud_session.stop()
         try:
             save_settings(self.settings)
@@ -609,6 +716,12 @@ class DesktopPetApplication:
                     self._care_panel.close()
                 if self._message_drawer is not None:
                     self._message_drawer.close()
+                if self._health_dialog is not None:
+                    self._health_dialog.close()
+                if self._chat_dialog is not None:
+                    self._chat_dialog.close()
+                if self._create_dialog is not None:
+                    self._create_dialog.close()
                 self.window.close()
                 self.qt_app.quit()
 
