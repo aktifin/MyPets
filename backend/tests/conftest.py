@@ -18,6 +18,7 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
         environment="test",
         access_token_minutes=30,
         device_token_hours=12,
+        pet_review_enabled=True,
         admin_usernames=("admin_creator", "admin_reviewer"),
         asset_storage_dir=str(tmp_path / "assets"),
     )
