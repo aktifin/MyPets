@@ -32,6 +32,7 @@ from .social_api import social_router
 from .user_portal_api import user_portal_api_router
 from .user_portal_web import user_portal_web_router
 from .visit_api import visit_router
+from .visit_scene_api import visit_scene_router
 
 
 def _seed_default_admins(session_factory: sessionmaker, admin_usernames: tuple[str, ...]) -> None:
@@ -71,9 +72,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version="0.2.0-alpha",
         description=(
             "Server-authoritative accounts, user Web portal, pets, friendship, shared care, "
-            "asynchronous pet visits, lazy settlement, messaging, reminders, realtime cursor "
-            "notifications, external reminder providers, synchronization, pet asset publishing, "
-            "administrator governance, and console API."
+            "asynchronous pet visits, desktop dual-pet visit interactions, lazy settlement, "
+            "messaging, reminders, realtime cursor notifications, external reminder providers, "
+            "synchronization, pet asset publishing, administrator governance, and console API."
         ),
     )
     app.state.settings = resolved
@@ -87,6 +88,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(user_portal_api_router)
     app.include_router(pet_care_router)
     app.include_router(social_router)
+    app.include_router(visit_scene_router)
     app.include_router(visit_router)
     app.include_router(messaging_router)
     app.include_router(reminder_router)

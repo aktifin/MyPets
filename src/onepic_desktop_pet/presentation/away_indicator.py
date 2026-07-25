@@ -1,23 +1,16 @@
-"""
-主人桌面宠物外出串门标识组件 (AwayIndicator)。
-
-职责范围：
-- 当自有宠物处于串门或途中状态时，在主人桌面显示低打扰的“外出中”折叠胶囊卡片；
-- 显示目的地好友、剩余预估返家时间与串门备注；
-- 支持展开详情弹框并提供【提前召回宠物】快捷操作。
-"""
+"""Low-distraction indicator shown while the selected pet is visiting a friend."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, Qt, Signal
-from PySide6.QtGui import QAction, QContextMenuEvent, QMouseEvent
+from datetime import UTC, datetime
+
+from PySide6.QtCore import QPoint, QTimer, Qt, Signal
+from PySide6.QtGui import QAction, QCloseEvent, QContextMenuEvent, QMouseEvent
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMenu, QPushButton, QVBoxLayout, QWidget
 
 
 class AwayIndicator(QWidget):
-    """主人桌面宠物外出串门折叠胶囊标识。"""
-
-    recall_requested = Signal(str)  # visit_id
+    recall_requested = Signal(str)
 
     def __init__(
         self,
@@ -25,6 +18,7 @@ class AwayIndicator(QWidget):
         pet_name: str,
         host_name: str,
         note: str = "",
+        scheduled_end_at: datetime | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -32,10 +26,23 @@ class AwayIndicator(QWidget):
         self.pet_name = pet_name
         self.host_name = host_name
         self.note = note
+        self.scheduled_end_at = self._aware(scheduled_end_at)
         self._drag_position = QPoint()
+        self._countdown_timer = QTimer(self)
+        self._countdown_timer.setInterval(1000)
+        self._countdown_timer.timeout.connect(self._update_remaining)
 
-        self._setup_ui()
         self._setup_flags()
+        self._setup_ui()
+        self._update_remaining()
+        if self.scheduled_end_at is not None:
+            self._countdown_timer.start()
+
+    @staticmethod
+    def _aware(value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
     def _setup_flags(self) -> None:
         self.setWindowFlags(
@@ -46,62 +53,66 @@ class AwayIndicator(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
     def _setup_ui(self) -> None:
-        self.resize(230, 70)
+        self.setFixedSize(246, 78)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
-        self.capsule_frame = QFrame(self)
-        self.capsule_frame.setStyleSheet(
-            """
-            QFrame {
-                background-color: rgba(15, 23, 42, 0.90);
-                border: 1px solid #38bdf8;
-                border-radius: 24px;
-            }
-        """
+        frame = QFrame(self)
+        frame.setStyleSheet(
+            "QFrame { background: rgba(15,23,42,230); border: 1px solid #38bdf8; "
+            "border-radius: 25px; }"
         )
-        capsule_layout = QHBoxLayout(self.capsule_frame)
-        capsule_layout.setContentsMargins(12, 6, 12, 6)
-        capsule_layout.setSpacing(8)
+        row = QHBoxLayout(frame)
+        row.setContentsMargins(12, 6, 10, 6)
+        row.setSpacing(8)
 
-        icon_lbl = QLabel("🐾", self.capsule_frame)
-        icon_lbl.setStyleSheet("font-size: 18px; background: transparent;")
-        capsule_layout.addWidget(icon_lbl)
+        icon = QLabel("🐾", frame)
+        icon.setStyleSheet("font-size: 18px; background: transparent;")
+        row.addWidget(icon)
 
-        info_box = QVBoxLayout()
-        info_box.setSpacing(2)
-
-        title_lbl = QLabel(f"{self.pet_name} 外出串门中…", self.capsule_frame)
-        title_lbl.setStyleSheet("color: #f8fafc; font-size: 11px; font-weight: bold; background: transparent;")
-
-        sub_lbl = QLabel(f"作客好友: {self.host_name}", self.capsule_frame)
-        sub_lbl.setStyleSheet("color: #38bdf8; font-size: 10px; background: transparent;")
-
-        info_box.addWidget(title_lbl)
-        info_box.addWidget(sub_lbl)
-        capsule_layout.addLayout(info_box)
-
-        btn_recall = QPushButton("召回", self.capsule_frame)
-        btn_recall.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #be123c;
-                color: #ffffff;
-                border: none;
-                border-radius: 10px;
-                padding: 4px 10px;
-                font-size: 10px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #9f1239;
-            }
-        """
+        info = QVBoxLayout()
+        info.setSpacing(1)
+        title = QLabel(f"{self.pet_name} 外出串门中", frame)
+        title.setStyleSheet(
+            "color: #f8fafc; font-size: 11px; font-weight: 600; background: transparent;"
         )
-        btn_recall.clicked.connect(lambda: self.recall_requested.emit(self.visit_id))
-        capsule_layout.addWidget(btn_recall)
+        self.detail_label = QLabel(frame)
+        self.detail_label.setStyleSheet(
+            "color: #38bdf8; font-size: 9px; background: transparent;"
+        )
+        self.detail_label.setToolTip(self.note or "没有串门留言")
+        info.addWidget(title)
+        info.addWidget(self.detail_label)
+        row.addLayout(info, 1)
 
-        layout.addWidget(self.capsule_frame)
+        recall = QPushButton("召回", frame)
+        recall.setStyleSheet(
+            "QPushButton { background: #be123c; color: white; border: none; "
+            "border-radius: 10px; padding: 4px 9px; font-size: 10px; font-weight: 600; }"
+            "QPushButton:hover { background: #9f1239; }"
+        )
+        recall.clicked.connect(lambda: self.recall_requested.emit(self.visit_id))
+        row.addWidget(recall)
+        layout.addWidget(frame)
+
+    def _update_remaining(self) -> None:
+        suffix = "返家时间待同步"
+        if self.scheduled_end_at is not None:
+            remaining = int(
+                (self.scheduled_end_at.astimezone(UTC) - datetime.now(UTC)).total_seconds()
+            )
+            if remaining <= 0:
+                suffix = "正在确认返家状态"
+                self._countdown_timer.stop()
+            else:
+                minutes, seconds = divmod(remaining, 60)
+                hours, minutes = divmod(minutes, 60)
+                suffix = (
+                    f"预计 {hours:d}:{minutes:02d}:{seconds:02d} 后返家"
+                    if hours
+                    else f"预计 {minutes:d}:{seconds:02d} 后返家"
+                )
+        self.detail_label.setText(f"接待：{self.host_name} · {suffix}")
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -115,20 +126,13 @@ class AwayIndicator(QWidget):
 
     def contextMenuEvent(self, event: QContextMenuEvent) -> None:
         menu = QMenu(self)
-        menu.setStyleSheet(
-            """
-            QMenu {
-                background-color: #1e293b;
-                color: #f8fafc;
-                border: 1px solid #334155;
-                padding: 4px;
-            }
-            QMenu::item:selected {
-                background-color: #0284c7;
-            }
-        """
+        recall = QAction("提前召回宠物", menu)
+        recall.triggered.connect(
+            lambda _checked=False: self.recall_requested.emit(self.visit_id)
         )
-        act_recall = QAction("🏠 提前召回宠物", self)
-        act_recall.triggered.connect(lambda: self.recall_requested.emit(self.visit_id))
-        menu.addAction(act_recall)
+        menu.addAction(recall)
         menu.exec(event.globalPos())
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self._countdown_timer.stop()
+        super().closeEvent(event)

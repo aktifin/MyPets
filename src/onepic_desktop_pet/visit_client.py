@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from PySide6.QtCore import QObject, Signal
 
 from .cloud_api import CloudApiClient
@@ -11,6 +13,8 @@ from .social_client import SocialTransport
 
 class VisitController(QObject):
     snapshot_changed = Signal(object)
+    scene_changed = Signal(object)
+    interaction_succeeded = Signal(str, str)
     status_message = Signal(str)
     operation_failed = Signal(str)
     pets_sync_requested = Signal()
@@ -30,6 +34,7 @@ class VisitController(QObject):
         self.selected_friend_account_id: str | None = None
         self.snapshot: dict[str, object] = {}
         self._pending_refresh: set[str] = set()
+        self._pending_scene_ids: set[str] = set()
         self.transport.operation_succeeded.connect(self._on_success)
         self.transport.operation_failed.connect(self._on_failure)
         self.session.state_changed.connect(self._session_changed)
@@ -54,6 +59,23 @@ class VisitController(QObject):
             self.operation_failed.emit(str(exc))
             return False
         self.status_message.emit("正在刷新串门数据…")
+        return True
+
+    def load_scene(self, visit_id: str) -> bool:
+        value = visit_id.strip()
+        if not value or not self.session.connected or value in self._pending_scene_ids:
+            return False
+        self._pending_scene_ids.add(value)
+        try:
+            self.transport.request(
+                f"scene:{value}",
+                "GET",
+                f"/api/v1/visits/{value}/scene",
+            )
+        except (RuntimeError, ValueError) as exc:
+            self._pending_scene_ids.discard(value)
+            self.operation_failed.emit(str(exc))
+            return False
         return True
 
     def load_friend_pets(self, friend_account_id: str) -> None:
@@ -122,6 +144,18 @@ class VisitController(QObject):
             f"/api/v1/visits/{visit_id}/send-home",
         )
 
+    def interact_guest(self, visit_id: str, action: str) -> None:
+        normalized = action.strip().lower()
+        if normalized not in {"greet", "wave", "play", "sit_together"}:
+            self.operation_failed.emit("不支持的双宠互动动作")
+            return
+        self._mutate(
+            f"visit_interaction:{normalized}",
+            "POST",
+            f"/api/v1/visits/{visit_id}/interactions/{normalized}",
+            {"idempotency_key": f"desktop-visit-{normalized}-{uuid4()}"},
+        )
+
     def _mutate(
         self,
         operation: str,
@@ -145,6 +179,14 @@ class VisitController(QObject):
                 self.snapshot_changed.emit(dict(self.snapshot))
                 self.status_message.emit("串门数据已刷新")
             return
+        if operation.startswith("scene:"):
+            visit_id = operation.split(":", 1)[1]
+            self._pending_scene_ids.discard(visit_id)
+            if not isinstance(payload, dict) or payload.get("visit_id") != visit_id:
+                self.operation_failed.emit("串门场景响应无效")
+                return
+            self.scene_changed.emit(dict(payload))
+            return
         if operation == "friend_pets":
             self.snapshot[operation] = payload
             self.snapshot_changed.emit(dict(self.snapshot))
@@ -153,6 +195,15 @@ class VisitController(QObject):
         if not operation.startswith("mutation:"):
             return
         label = operation.removeprefix("mutation:")
+        if label.startswith("visit_interaction:"):
+            action = label.split(":", 1)[1]
+            visit_id = str(payload.get("visit_id") or "") if isinstance(payload, dict) else ""
+            if not visit_id:
+                self.operation_failed.emit("双宠互动响应缺少串门标识")
+                return
+            self.interaction_succeeded.emit(visit_id, action)
+            self.status_message.emit("双宠互动已同步")
+            return
         self.status_message.emit(
             {
                 "request_visit": "串门申请已发送",
@@ -169,6 +220,8 @@ class VisitController(QObject):
 
     def _on_failure(self, operation: str, _status: int, detail: str) -> None:
         self._pending_refresh.discard(operation)
+        if operation.startswith("scene:"):
+            self._pending_scene_ids.discard(operation.split(":", 1)[1])
         self.operation_failed.emit(detail)
 
     def _session_changed(self, state: str) -> None:
@@ -176,3 +229,4 @@ class VisitController(QObject):
             self.refresh(self.active_pet_id)
         elif state in {"offline", "disabled", "error"}:
             self._pending_refresh.clear()
+            self._pending_scene_ids.clear()
