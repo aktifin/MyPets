@@ -80,7 +80,19 @@ jobs:
         run: python -m pip install -q --upgrade pip && python -m pip install -q -e ".[dev]"
 
       - name: Run backend tests
-        run: python -m pytest -q --tb=short
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m pytest -q --tb=short 2>&1 | tee pytest-output.txt
+
+      - name: Upload backend pytest diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-pytest-output-${{ github.run_id }}
+          path: backend/pytest-output.txt
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Validate Web console JavaScript
         run: >-

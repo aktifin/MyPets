@@ -11,6 +11,7 @@ from mypets_backend import visit_models  # noqa: F401
 from mypets_backend import reminder_models  # noqa: F401
 from mypets_backend import asset_submission_models  # noqa: F401
 from mypets_backend import asset_production_models  # noqa: F401
+from mypets_backend import asset_deployment_models  # noqa: F401
 
 
 def test_alembic_metadata_tables_complete():
@@ -45,6 +46,9 @@ def test_alembic_metadata_tables_complete():
         "pet_asset_production_artifacts",
         "pet_asset_production_reference_images",
         "pet_asset_production_job_logs",
+        "pet_asset_deployment_reviews",
+        "pet_personal_asset_releases",
+        "pet_personal_asset_deployments",
     }
     for expected in expected_tables:
         assert expected in tables, f"表 {expected} 未在 Base.metadata 中声明"
