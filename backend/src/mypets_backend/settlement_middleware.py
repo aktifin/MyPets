@@ -1,4 +1,4 @@
-"""Lazy pet settlement middleware for authoritative pet snapshots.
+"""Lazy pet and visit settlement middleware for authoritative snapshots.
 
 Only read paths that return a complete pet snapshot are intercepted. Invalid, expired, or
 revoked credentials are ignored here and remain the responsibility of the normal API
@@ -18,8 +18,13 @@ from starlette.responses import Response
 from .models import Account, Device
 from .pet_state_service import settle_pets_for_account
 from .security import decode_access_token
+from .visit_service import settle_due_visits
 
-_SETTLEMENT_PATHS = {"/api/v1/pets", "/api/v1/sync/bootstrap"}
+_SETTLEMENT_PATHS = {
+    "/api/v1/pets",
+    "/api/v1/sync/bootstrap",
+    "/api/v1/portal/dashboard",
+}
 
 
 class PetSettlementMiddleware(BaseHTTPMiddleware):
@@ -56,10 +61,17 @@ class PetSettlementMiddleware(BaseHTTPMiddleware):
                     or device.credential_version != principal.device_version
                 ):
                     return
+            now = datetime.now(UTC)
+            settle_due_visits(session, now=now)
+            trigger = "pet_list"
+            if request.url.path.endswith("bootstrap"):
+                trigger = "bootstrap"
+            elif request.url.path.endswith("dashboard"):
+                trigger = "portal_dashboard"
             settle_pets_for_account(
                 session,
                 account_id=principal.account_id,
-                now=datetime.now(UTC),
-                trigger="bootstrap" if request.url.path.endswith("bootstrap") else "pet_list",
+                now=now,
+                trigger=trigger,
             )
             session.commit()
