@@ -25,6 +25,8 @@ class MessageCache:
                     account_id TEXT NOT NULL,
                     conversation_id TEXT NOT NULL,
                     kind TEXT NOT NULL,
+                    category TEXT NOT NULL DEFAULT 'direct',
+                    category_label TEXT NOT NULL DEFAULT '普通私聊',
                     title TEXT NOT NULL,
                     peer_account_id TEXT,
                     peer_username TEXT,
@@ -71,15 +73,36 @@ class MessageCache:
                 );
                 """
             )
+            columns = {
+                str(row[1])
+                for row in connection.execute("PRAGMA table_info(message_conversations)")
+            }
+            if "category" not in columns:
+                connection.execute(
+                    "ALTER TABLE message_conversations "
+                    "ADD COLUMN category TEXT NOT NULL DEFAULT 'direct'"
+                )
+            if "category_label" not in columns:
+                connection.execute(
+                    "ALTER TABLE message_conversations "
+                    "ADD COLUMN category_label TEXT NOT NULL DEFAULT '普通私聊'"
+                )
 
     def upsert_conversation(self, conversation: ConversationRecord) -> None:
         last = conversation.last_message
         with self.store.transaction() as connection:
             connection.execute(
                 """
-                INSERT INTO message_conversations VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                INSERT INTO message_conversations (
+                    account_id, conversation_id, kind, category, category_label, title,
+                    peer_account_id, peer_username, peer_display_name,
+                    last_message_id, last_message_preview, last_message_at,
+                    unread_count, updated_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(account_id, conversation_id) DO UPDATE SET
                     kind=excluded.kind,
+                    category=excluded.category,
+                    category_label=excluded.category_label,
                     title=excluded.title,
                     peer_account_id=excluded.peer_account_id,
                     peer_username=excluded.peer_username,
@@ -94,6 +117,8 @@ class MessageCache:
                     conversation.account_id,
                     conversation.conversation_id,
                     conversation.kind,
+                    conversation.category,
+                    conversation.category_label,
                     conversation.title,
                     conversation.peer_account_id,
                     conversation.peer_username,
@@ -122,14 +147,31 @@ class MessageCache:
         ).fetchone()
         return self._conversation(row) if row else None
 
-    def list_conversations(self, account_id: str, limit: int = 100) -> list[ConversationRecord]:
-        rows = self._connection.execute(
-            """
-            SELECT * FROM message_conversations
-            WHERE account_id=? ORDER BY updated_at DESC, conversation_id LIMIT ?
-            """,
-            (account_id, max(1, min(500, int(limit)))),
-        ).fetchall()
+    def list_conversations(
+        self,
+        account_id: str,
+        limit: int = 100,
+        *,
+        category: str | None = None,
+    ) -> list[ConversationRecord]:
+        normalized_limit = max(1, min(500, int(limit)))
+        if category:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM message_conversations
+                WHERE account_id=? AND category=?
+                ORDER BY updated_at DESC, conversation_id LIMIT ?
+                """,
+                (account_id, category, normalized_limit),
+            ).fetchall()
+        else:
+            rows = self._connection.execute(
+                """
+                SELECT * FROM message_conversations
+                WHERE account_id=? ORDER BY updated_at DESC, conversation_id LIMIT ?
+                """,
+                (account_id, normalized_limit),
+            ).fetchall()
         return [self._conversation(row) for row in rows]
 
     def _conversation(self, row: sqlite3.Row) -> ConversationRecord:
@@ -144,10 +186,17 @@ class MessageCache:
             ).fetchone()
             if last_row:
                 last = self._message(last_row)
+        keys = set(row.keys())
         return ConversationRecord(
             account_id=row["account_id"],
             conversation_id=row["conversation_id"],
             kind=row["kind"],
+            category=row["category"] if "category" in keys else "direct",
+            category_label=(
+                row["category_label"]
+                if "category_label" in keys
+                else "普通私聊"
+            ),
             title=row["title"],
             peer_account_id=row["peer_account_id"],
             peer_username=row["peer_username"],
