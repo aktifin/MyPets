@@ -6,6 +6,16 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Mapping
 
+MESSAGE_TYPES = {"text", "visit_message", "care_event", "growth_notice"}
+CONVERSATION_KINDS = {"direct", "system"}
+CONVERSATION_CATEGORIES = {
+    "direct",
+    "friend_pet",
+    "visit",
+    "shared_care",
+    "growth",
+}
+
 
 def _mapping(value: Any, field: str) -> Mapping[str, Any]:
     if not isinstance(value, dict):
@@ -54,7 +64,7 @@ class MessageRecord:
 
     @property
     def outgoing(self) -> bool:
-        return self.sender_account_id == self.account_id
+        return self.sender_account_id == self.account_id and self.message_type == "text"
 
 
 @dataclass(frozen=True)
@@ -71,6 +81,8 @@ class ConversationRecord:
     account_id: str
     conversation_id: str
     kind: str
+    category: str
+    category_label: str
     title: str
     peer_account_id: str | None
     peer_username: str | None
@@ -86,8 +98,8 @@ def parse_message(value: Any, *, account_id: str) -> MessageRecord:
     if sender_pet_id is not None:
         sender_pet_id = _string(sender_pet_id, "message.sender_pet_id")
     message_type = _string(data.get("message_type"), "message.message_type")
-    if message_type != "text":
-        raise ValueError("当前客户端只支持文本消息")
+    if message_type not in MESSAGE_TYPES:
+        raise ValueError("当前客户端不支持该消息类型")
     return MessageRecord(
         account_id=_string(account_id, "account_id"),
         message_id=_string(data.get("message_id"), "message.message_id"),
@@ -128,8 +140,11 @@ def parse_receipt(value: Any) -> MessageReceiptRecord:
 def parse_conversation(value: Any, *, account_id: str) -> ConversationRecord:
     data = _mapping(value, "conversation")
     kind = _string(data.get("kind"), "conversation.kind")
-    if kind != "direct":
-        raise ValueError("当前客户端只支持私聊会话")
+    if kind not in CONVERSATION_KINDS:
+        raise ValueError("当前客户端不支持该会话类型")
+    category = _string(data.get("category", "direct"), "conversation.category")
+    if category not in CONVERSATION_CATEGORIES:
+        raise ValueError("会话分类无效")
     peer_data = data.get("peer")
     peer_account_id = peer_username = peer_display_name = None
     if peer_data is not None:
@@ -151,6 +166,11 @@ def parse_conversation(value: Any, *, account_id: str) -> ConversationRecord:
             data.get("conversation_id"), "conversation.conversation_id"
         ),
         kind=kind,
+        category=category,
+        category_label=_string(
+            data.get("category_label", category),
+            "conversation.category_label",
+        ),
         title=_string(data.get("title"), "conversation.title"),
         peer_account_id=peer_account_id,
         peer_username=peer_username,
