@@ -1,9 +1,9 @@
 """Lazy pet and visit settlement middleware for authoritative snapshots.
 
-Only read paths that return a complete pet snapshot are intercepted. Invalid, expired, or
-revoked credentials are ignored here and remain the responsibility of the normal API
-authentication dependency; the middleware never turns an authentication failure into a
-successful response.
+Only read paths that return a complete pet snapshot and pet-care mutation paths are
+intercepted. Invalid, expired, or revoked credentials are ignored here and remain the
+responsibility of the normal API authentication dependency; the middleware never turns an
+authentication failure into a successful response.
 """
 
 from __future__ import annotations
@@ -33,7 +33,13 @@ class PetSettlementMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: RequestResponseEndpoint,
     ) -> Response:
-        if request.method == "GET" and request.url.path in _SETTLEMENT_PATHS:
+        should_settle = request.method == "GET" and request.url.path in _SETTLEMENT_PATHS
+        should_settle = should_settle or (
+            request.method == "POST"
+            and request.url.path.startswith("/api/v1/pets/")
+            and "/interactions/" in request.url.path
+        )
+        if should_settle:
             self._settle_if_authenticated(request)
         return await call_next(request)
 
@@ -63,7 +69,7 @@ class PetSettlementMiddleware(BaseHTTPMiddleware):
                     return
             now = datetime.now(UTC)
             settle_due_visits(session, now=now)
-            trigger = "pet_list"
+            trigger = "pet_care" if request.method == "POST" else "pet_list"
             if request.url.path.endswith("bootstrap"):
                 trigger = "bootstrap"
             elif request.url.path.endswith("dashboard"):
