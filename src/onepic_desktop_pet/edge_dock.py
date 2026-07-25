@@ -1,5 +1,5 @@
 """
-PC 桌面宠物左右边缘吸附与半隐藏控制器。
+PC 桌面宠物上下左右四向边缘吸附与半隐藏控制器。
 
 控制器通过事件过滤器附加到现有 PetWindow，不侵入动画和鼠标互动实现。吸附期间
 暂停自主跑动；用户拖离边缘后恢复原暂停状态。
@@ -26,12 +26,13 @@ from .edge_geometry import (
     EdgeSide,
     calculate_placement,
     choose_edge,
+    x_from_offset_ratio,
     y_from_offset_ratio,
 )
 
 
 class EdgeDockController(QObject):
-    """为任意顶层宠物 QWidget 提供低打扰边缘半隐藏能力。"""
+    """为任意顶层宠物 QWidget 提供低打扰四向边缘半隐藏能力。"""
 
     def __init__(self, window: QWidget, settings: PetSettings) -> None:
         super().__init__(window)
@@ -87,7 +88,7 @@ class EdgeDockController(QObject):
             self.detach(keep_position=True)
 
     def restore(self) -> None:
-        """应用启动后恢复上次屏幕、边缘和纵向位置。"""
+        """应用启动后恢复上次屏幕、边缘和相对位置。"""
 
         if not self.settings.edge_dock_enabled or not self.settings.edge_side:
             return
@@ -104,15 +105,28 @@ class EdgeDockController(QObject):
             return
         area = screen.availableGeometry()
         ratio = self.settings.edge_offset_ratio
-        y = y_from_offset_ratio(
-            area.top(),
-            area.bottom(),
-            self.window.height(),
-            0.5 if ratio is None else ratio,
-        )
+        effective_ratio = 0.5 if ratio is None else ratio
+
+        if side in (EdgeSide.LEFT, EdgeSide.RIGHT):
+            x = area.left() if side is EdgeSide.LEFT else area.right() - self.window.width() + 1
+            y = y_from_offset_ratio(
+                area.top(),
+                area.bottom(),
+                self.window.height(),
+                effective_ratio,
+            )
+        else:
+            y = area.top() if side is EdgeSide.TOP else area.bottom() - self.window.height() + 1
+            x = x_from_offset_ratio(
+                area.left(),
+                area.right(),
+                self.window.width(),
+                effective_ratio,
+            )
+
         self._set_attached_state(side, screen)
-        placement = self._placement(screen, y)
-        self.window.move(placement.expanded_x, placement.y)
+        placement = self._placement(screen, x, y)
+        self.window.move(placement.expanded_x, placement.expanded_y)
         self._store_placement(placement)
         self.schedule_hide()
 
@@ -123,10 +137,10 @@ class EdgeDockController(QObject):
         if screen is None:
             return
         self._set_attached_state(side, screen)
-        placement = self._placement(screen, self.window.y())
+        placement = self._placement(screen, self.window.x(), self.window.y())
         self._store_placement(placement)
         self._animate_to(
-            QPoint(placement.expanded_x, placement.y),
+            QPoint(placement.expanded_x, placement.expanded_y),
             self.settings.edge_animation_ms,
             self.schedule_hide,
         )
@@ -142,9 +156,13 @@ class EdgeDockController(QObject):
         area = screen.availableGeometry()
         side = choose_edge(
             self.window.x(),
+            self.window.y(),
             self.window.x() + self.window.width() - 1,
+            self.window.y() + self.window.height() - 1,
             area.left(),
+            area.top(),
             area.right(),
+            area.bottom(),
             self.settings.edge_snap_distance,
         )
         if side is not None:
@@ -163,11 +181,11 @@ class EdgeDockController(QObject):
         screen = self._attached_screen()
         if screen is None:
             return
-        placement = self._placement(screen, self.window.y())
+        placement = self._placement(screen, self.window.x(), self.window.y())
         self._store_placement(placement)
         self._hidden = True
         self._animate_to(
-            QPoint(placement.hidden_x, placement.y),
+            QPoint(placement.hidden_x, placement.hidden_y),
             self.settings.edge_animation_ms,
         )
 
@@ -180,11 +198,11 @@ class EdgeDockController(QObject):
         screen = self._attached_screen()
         if screen is None:
             return
-        placement = self._placement(screen, self.window.y())
+        placement = self._placement(screen, self.window.x(), self.window.y())
         self._store_placement(placement)
         self._hidden = False
         self._animate_to(
-            QPoint(placement.expanded_x, placement.y),
+            QPoint(placement.expanded_x, placement.expanded_y),
             0 if immediate else self.settings.edge_animation_ms,
         )
 
@@ -196,9 +214,9 @@ class EdgeDockController(QObject):
         self._hide_timer.stop()
         screen = self._attached_screen()
         if not keep_position and screen is not None:
-            placement = self._placement(screen, self.window.y())
+            placement = self._placement(screen, self.window.x(), self.window.y())
             self._animate_to(
-                QPoint(placement.expanded_x, placement.y),
+                QPoint(placement.expanded_x, placement.expanded_y),
                 self.settings.edge_animation_ms,
             )
         elif self._animation is not None:
@@ -220,9 +238,9 @@ class EdgeDockController(QObject):
         screen = self._attached_screen()
         if screen is None:
             return self.window.pos()
-        placement = self._placement(screen, self.window.y())
+        placement = self._placement(screen, self.window.x(), self.window.y())
         self._store_placement(placement)
-        return QPoint(placement.expanded_x, placement.y)
+        return QPoint(placement.expanded_x, placement.expanded_y)
 
     def _set_attached_state(self, side: EdgeSide, screen: QScreen) -> None:
         if self._paused_before_attach is None:
@@ -260,7 +278,7 @@ class EdgeDockController(QObject):
             return None
         return next((screen for screen in QApplication.screens() if screen.name() == name), None)
 
-    def _placement(self, screen: QScreen, current_y: int) -> EdgePlacement:
+    def _placement(self, screen: QScreen, current_x: int, current_y: int) -> EdgePlacement:
         if self._side is None:
             raise RuntimeError("宠物尚未吸附到边缘")
         area = screen.availableGeometry()
@@ -272,6 +290,7 @@ class EdgeDockController(QObject):
             area_bottom=area.bottom(),
             window_width=self.window.width(),
             window_height=self.window.height(),
+            current_x=current_x,
             current_y=current_y,
             visible_ratio=self.settings.edge_visible_ratio,
         )
@@ -313,3 +332,4 @@ class EdgeDockController(QObject):
         animation.finished.connect(on_finished)
         self._animation = animation
         animation.start()
+
