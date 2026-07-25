@@ -2,9 +2,9 @@
 
 This directory contains the runnable FastAPI modular monolith for MyPets.
 It owns account authentication, persistent device credentials, server-authoritative pet
-snapshots, account-pet relations, friendship and shared care, append-only semantic
-synchronization events, the user Web portal, administrator-reviewed pet asset publishing,
-administrator governance, and the administrator console.
+snapshots, account-pet relations, friendship, shared care, asynchronous visits, append-only
+semantic synchronization events, the user Web portal, administrator-reviewed pet asset
+publishing, administrator governance, and the administrator console.
 
 The desktop SQLite database remains a rebuildable offline cache. It must not be treated as
 the authority for pet growth, ownership, presence, or cross-device read state.
@@ -66,6 +66,28 @@ configuration changes publish the same semantic synchronization events used by t
 client.
 
 See `../docs/Web用户门户.md`.
+
+## Asynchronous pet visits
+
+Friend accounts can request a bounded visit between one self-managed visitor pet and one
+friend-visible host pet. The host accepts or rejects the request. An accepted visitor pet
+moves to `visiting`, cannot receive normal care actions, and returns to `home` when the visit
+expires, its owner recalls it, the accounts block each other, or friendship is removed.
+
+Visit settlement is lazy and server-authoritative. Pet list, bootstrap, portal dashboard,
+visit list, and care requests settle due visits before returning a snapshot or applying a
+mutation. Pending requests expire after 24 hours.
+
+```text
+POST /api/v1/visits
+GET  /api/v1/visits
+POST /api/v1/visits/{visit_id}/accept
+POST /api/v1/visits/{visit_id}/reject
+POST /api/v1/visits/{visit_id}/cancel
+POST /api/v1/visits/{visit_id}/recall
+```
+
+See `../docs/异步串门.md`.
 
 ## Administrator roles
 
