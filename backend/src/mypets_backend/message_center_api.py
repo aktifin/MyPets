@@ -15,7 +15,7 @@ from .models import Conversation, ConversationMember, Pet, SyncEvent
 from .security import Principal
 from .visit_models import PetVisit
 
-message_center_router = APIRouter(prefix="/api/v1/message-center", tags=["messaging"])
+message_center_router = APIRouter(prefix="/api/v1", tags=["messaging"])
 _PROJECTABLE_TYPES = {
     "pet_visit_updated",
     "caregiver_invitation_received",
@@ -37,7 +37,7 @@ def _string(value: object) -> str:
     return str(value).strip() if value is not None else ""
 
 
-def _project_visit(session: Session, event: SyncEvent, payload: dict[str, Any]) -> None:
+def _project_visit(session: Session, payload: dict[str, Any]) -> None:
     visit_data = payload.get("visit")
     if not isinstance(visit_data, dict) or visit_data.get("cause") != "visit_requested":
         return
@@ -71,6 +71,9 @@ def _project_caregiver(session: Session, payload: dict[str, Any]) -> None:
     pet = invitation.get("pet")
     if not all(isinstance(item, dict) for item in (invited_by, invited, pet)):
         return
+    assert isinstance(invited_by, dict)
+    assert isinstance(invited, dict)
+    assert isinstance(pet, dict)
     sender_account_id = _string(invited_by.get("id"))
     recipient_account_id = _string(invited.get("id"))
     pet_id = _string(pet.get("pet_id"))
@@ -135,7 +138,7 @@ def project_account_messages(session: Session, account_id: str) -> int:
         payload = _payload(event)
         try:
             if event.event_type == "pet_visit_updated":
-                _project_visit(session, event, payload)
+                _project_visit(session, payload)
             elif event.event_type == "caregiver_invitation_received":
                 _project_caregiver(session, payload)
             elif event.event_type in {
