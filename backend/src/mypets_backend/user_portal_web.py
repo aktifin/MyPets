@@ -67,6 +67,11 @@ def user_portal_script() -> FileResponse:
     return _asset("app.js", "text/javascript; charset=utf-8")
 
 
+@user_portal_web_router.get("/portal/phase1.js")
+def user_portal_phase1_script() -> FileResponse:
+    return _asset("phase1.js", "text/javascript; charset=utf-8")
+
+
 @user_portal_web_router.get("/portal/visits.js")
 def user_portal_visits_script() -> FileResponse:
     return _asset("visits.js", "text/javascript; charset=utf-8")
