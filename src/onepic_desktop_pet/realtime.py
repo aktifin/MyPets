@@ -157,7 +157,7 @@ class RealtimeSocket(QObject):
         if not isinstance(payload, dict):
             return
         event_type = payload.get("type")
-        if event_type == "events_available":
+        if event_type in {"hello", "events_available"}:
             cursor = payload.get("cursor")
             if isinstance(cursor, int) and cursor >= 0:
                 self.cursor_available.emit(cursor)
