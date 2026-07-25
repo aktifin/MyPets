@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 
 admin_web_router = APIRouter(include_in_schema=False)
 _WEB_ROOT = Path(__file__).with_name("admin_console_static")
@@ -21,22 +21,36 @@ _SECURITY_HEADERS = {
 }
 
 
-def _asset(name: str, media_type: str) -> FileResponse:
+def _path(name: str) -> Path:
     path = (_WEB_ROOT / name).resolve()
     if path.parent != _WEB_ROOT.resolve() or not path.is_file():
         raise HTTPException(status_code=404, detail="管理台资源不存在")
-    return FileResponse(path, media_type=media_type, headers=_SECURITY_HEADERS)
+    return path
+
+
+def _asset(name: str, media_type: str) -> FileResponse:
+    return FileResponse(_path(name), media_type=media_type, headers=_SECURITY_HEADERS)
 
 
 @admin_web_router.get("/admin")
 @admin_web_router.get("/admin/")
-def admin_console() -> FileResponse:
-    return _asset("index.html", "text/html; charset=utf-8")
+def admin_console() -> HTMLResponse:
+    html = _path("index.html").read_text(encoding="utf-8")
+    marker = "</body>"
+    script = '<script src="/admin/asset-submissions.js" defer></script>'
+    if script not in html:
+        html = html.replace(marker, f"  {script}\n{marker}", 1)
+    return HTMLResponse(html, headers=_SECURITY_HEADERS)
 
 
 @admin_web_router.get("/admin/app.js")
 def admin_console_script() -> FileResponse:
     return _asset("app.js", "text/javascript; charset=utf-8")
+
+
+@admin_web_router.get("/admin/asset-submissions.js")
+def admin_asset_submission_script() -> FileResponse:
+    return _asset("asset-submissions.js", "text/javascript; charset=utf-8")
 
 
 @admin_web_router.get("/admin/styles.css")
