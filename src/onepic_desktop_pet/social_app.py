@@ -19,6 +19,8 @@ class SocialDesktopPetApplication(ManagedReminderDesktopPetApplication):
             parent=self.qt_app,
         )
         self._social_dialog: SocialDialog | None = None
+        self._known_friend_request_ids: set[str] = set()
+        self._known_caregiver_invitation_ids: set[str] = set()
         self.social_action = QAction("好友与共同照料…", self.tray_menu)
         self.social_action.triggered.connect(self.open_social_dialog)
         self.tray_menu.insertAction(self.reminder_manager_action, self.social_action)
@@ -95,6 +97,38 @@ class SocialDesktopPetApplication(ManagedReminderDesktopPetApplication):
     def _social_snapshot_changed(self, snapshot: object) -> None:
         if self._social_dialog is not None:
             self._social_dialog.apply_snapshot(snapshot)
+        if not isinstance(snapshot, dict):
+            return
+        requests = snapshot.get("requests")
+        invitations = snapshot.get("invitations")
+        incoming_requests = requests.get("incoming", []) if isinstance(requests, dict) else []
+        incoming_invitations = (
+            invitations.get("incoming", []) if isinstance(invitations, dict) else []
+        )
+        request_ids = {
+            str(item.get("request_id"))
+            for item in incoming_requests
+            if isinstance(item, dict) and item.get("request_id")
+        }
+        invitation_ids = {
+            str(item.get("invitation_id"))
+            for item in incoming_invitations
+            if isinstance(item, dict) and item.get("invitation_id")
+        }
+        new_requests = request_ids - self._known_friend_request_ids
+        new_invitations = invitation_ids - self._known_caregiver_invitation_ids
+        self._known_friend_request_ids = request_ids
+        self._known_caregiver_invitation_ids = invitation_ids
+        if new_requests:
+            self.tray.showMessage(
+                "MyPets 好友",
+                f"收到 {len(new_requests)} 个新的好友申请，可在托盘菜单中处理。",
+            )
+        if new_invitations:
+            self.tray.showMessage(
+                "MyPets 共同照料",
+                f"收到 {len(new_invitations)} 个新的共同照料邀请。",
+            )
 
     def _social_status(self, message: str) -> None:
         if self._social_dialog is not None:
