@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 
 user_portal_web_router = APIRouter(include_in_schema=False)
@@ -34,24 +34,16 @@ def _asset(name: str, media_type: str) -> FileResponse:
     return FileResponse(_path(name), media_type=media_type, headers=_SECURITY_HEADERS)
 
 
-def _require_pet_review(request: Request) -> None:
-    if not request.app.state.settings.pet_review_enabled:
-        raise HTTPException(status_code=404, detail="用户门户资源不存在")
-
-
 @user_portal_web_router.get("/portal")
 @user_portal_web_router.get("/portal/")
-def user_portal(request: Request) -> HTMLResponse:
+def user_portal() -> HTMLResponse:
     html = _path("index.html").read_text(encoding="utf-8")
     marker = "</head>"
-    scripts = ['<script src="/portal/realtime.js" defer></script>']
-    if request.app.state.settings.pet_review_enabled:
-        scripts.extend(
-            [
-                '<script src="/portal/asset-submissions.js" defer></script>',
-                '<script src="/portal/asset-production.js" defer></script>',
-            ]
-        )
+    scripts = (
+        '<script src="/portal/realtime.js" defer></script>',
+        '<script src="/portal/asset-submissions.js" defer></script>',
+        '<script src="/portal/asset-production.js" defer></script>',
+    )
     for script in scripts:
         if script not in html:
             html = html.replace(marker, f"  {script}\n{marker}", 1)
@@ -74,14 +66,12 @@ def user_portal_realtime_script() -> FileResponse:
 
 
 @user_portal_web_router.get("/portal/asset-submissions.js")
-def user_portal_asset_submissions_script(request: Request) -> FileResponse:
-    _require_pet_review(request)
+def user_portal_asset_submissions_script() -> FileResponse:
     return _asset("asset-submissions.js", "text/javascript; charset=utf-8")
 
 
 @user_portal_web_router.get("/portal/asset-production.js")
-def user_portal_asset_production_script(request: Request) -> FileResponse:
-    _require_pet_review(request)
+def user_portal_asset_production_script() -> FileResponse:
     return _asset("asset-production.js", "text/javascript; charset=utf-8")
 
 
