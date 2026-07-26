@@ -1,6 +1,6 @@
 """initial schema
 
-Revision ID: 20260726_0001
+Revision ID: 001_initial_schema
 Revises: 
 Create Date: 2026-07-26 00:49:27.077766
 """
@@ -13,7 +13,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = '20260726_0001'
+revision: str = '001_initial_schema'
 down_revision: str | Sequence[str] | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
