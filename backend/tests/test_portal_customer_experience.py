@@ -65,7 +65,8 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     assert "/growth-experience?limit=30" in growth_script.text
     assert "下一步成长目标" in growth_script.text
     assert "成长纪念册" in growth_script.text
-    assert "next_stage_exp_remaining" in growth_script.text
+    assert "next_stage_target_level" in growth_script.text
+    assert "stage_progress_percent" in growth_script.text
     assert "growth_exp_remaining" in growth_script.text
 
     assert "style=" not in script.text
