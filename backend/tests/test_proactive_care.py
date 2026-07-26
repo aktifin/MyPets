@@ -82,7 +82,7 @@ def test_preferences_default_patch_and_device_visibility(
     assert visible.json() == updated.json()
 
 
-def test_low_state_notice_is_delivered_once_then_rate_limited(
+def test_low_state_notice_restores_on_same_surface_but_other_surface_is_rate_limited(
     client: TestClient,
     account_auth: dict[str, str],
 ) -> None:
@@ -110,14 +110,33 @@ def test_low_state_notice_is_delivered_once_then_rate_limited(
     assert notice["action_label"] == "去投喂"
     assert "有点饿" in notice["title"]
 
-    second = client.post(
+    restored = client.post(
+        "/api/v1/portal/proactive-care/evaluate",
+        headers=account_auth,
+        json={"surface": "web", "pet_id": pet_id, "timezone_offset_minutes": -480},
+    )
+    assert restored.status_code == 200
+    assert restored.json()["notice"]["notice_key"] == notice["notice_key"]
+    assert restored.json()["notice"]["delivered_at"] == notice["delivered_at"]
+
+    other_surface = client.post(
         "/api/v1/portal/proactive-care/evaluate",
         headers=account_auth,
         json={"surface": "desktop", "pet_id": pet_id, "timezone_offset_minutes": -480},
     )
-    assert second.status_code == 200
-    assert second.json()["notice"] is None
-    assert "上一条" in second.json()["suppression_reason"]
+    assert other_surface.status_code == 200
+    assert other_surface.json()["notice"] is None
+    assert "上一条" in other_surface.json()["suppression_reason"]
+
+    with client.app.state.session_factory() as session:
+        deliveries = list(
+            session.scalars(
+                select(SyncEvent).where(
+                    SyncEvent.event_type == "proactive_care_notice_delivered"
+                )
+            )
+        )
+        assert len(deliveries) == 1
 
 
 def test_quiet_hours_and_global_disable_suppress_evaluation(
@@ -183,7 +202,8 @@ def test_dismiss_today_survives_delivery_interval_expiry(
         json={"notice_key": notice_key, "outcome": "dismissed_today", "timezone_offset_minutes": 0},
     )
     assert ack.status_code == 200
-    assert ack.json()["suppress_until"] > datetime.now(UTC).isoformat()
+    suppress_until = datetime.fromisoformat(ack.json()["suppress_until"].replace("Z", "+00:00"))
+    assert suppress_until > datetime.now(UTC)
 
     with client.app.state.session_factory() as session:
         delivered = session.scalar(
