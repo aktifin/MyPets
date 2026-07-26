@@ -36,7 +36,12 @@ def _asset(name: str, media_type: str) -> FileResponse:
 @admin_web_router.get("/admin/")
 def admin_console() -> HTMLResponse:
     html = _path("index.html").read_text(encoding="utf-8")
-    marker = "</body>"
+    head_marker = "</head>"
+    governance_style = '<link rel="stylesheet" href="/admin/governance-deployment.css">'
+    if governance_style not in html:
+        html = html.replace(head_marker, f"  {governance_style}\n{head_marker}", 1)
+
+    body_marker = "</body>"
     scripts = (
         '<script src="/admin/asset-submissions.js" defer></script>',
         '<script src="/admin/asset-production.js" defer></script>',
@@ -44,7 +49,7 @@ def admin_console() -> HTMLResponse:
     )
     for script in scripts:
         if script not in html:
-            html = html.replace(marker, f"  {script}\n{marker}", 1)
+            html = html.replace(body_marker, f"  {script}\n{body_marker}", 1)
     return HTMLResponse(html, headers=_SECURITY_HEADERS)
 
 
@@ -72,6 +77,11 @@ def admin_asset_production_script() -> FileResponse:
 @admin_web_router.get("/admin/governance-deployment.js")
 def admin_governance_deployment_script() -> FileResponse:
     return _asset("governance-deployment.js", "text/javascript; charset=utf-8")
+
+
+@admin_web_router.get("/admin/governance-deployment.css")
+def admin_governance_deployment_styles() -> FileResponse:
+    return _asset("governance-deployment.css", "text/css; charset=utf-8")
 
 
 @admin_web_router.get("/admin/styles.css")
