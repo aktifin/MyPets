@@ -133,6 +133,40 @@ class SystemTrayMenuController:
         self._replace_optional_alias("social_action", self.social_action)
         self._replace_optional_alias("visit_action", self.visit_action)
 
+        self.proactive_menu = self.menu.addMenu("主动关怀")
+        self.proactive_status_action = self._disabled_action(
+            "状态：读取中", self.proactive_menu
+        )
+        self.proactive_menu.addAction(self.proactive_status_action)
+        self.proactive_enabled_action = self._add_action(
+            self.proactive_menu,
+            "启用主动关怀",
+            self._set_proactive_enabled,
+            checkable=True,
+        )
+        self.proactive_menu.addSeparator()
+        self.proactive_open_action = self._optional_action(
+            self.proactive_menu,
+            "处理当前提示",
+            "open_current_proactive_notice",
+        )
+        self.proactive_snooze_action = self._optional_action(
+            self.proactive_menu,
+            "稍后 2 小时再提示",
+            "snooze_current_proactive_notice",
+        )
+        self.proactive_dismiss_action = self._optional_action(
+            self.proactive_menu,
+            "今天不再提示此条",
+            "dismiss_current_proactive_notice_today",
+        )
+        self.proactive_menu.addSeparator()
+        self.proactive_settings_action = self._optional_action(
+            self.proactive_menu,
+            "主动关怀设置…",
+            "open_proactive_care_settings",
+        )
+
         desktop_menu = self.menu.addMenu("桌面行为")
         self.pause_action = self._add_action(
             desktop_menu,
@@ -268,6 +302,32 @@ class SystemTrayMenuController:
             action.setEnabled(identity_value is not None and cloud_pet)
         self.reminder_action.setEnabled(identity_value is not None)
 
+        enabled_method = getattr(self.app, "proactive_care_is_enabled", None)
+        proactive_enabled = bool(enabled_method()) if callable(enabled_method) else False
+        notice_method = getattr(self.app, "proactive_notice", None)
+        notice = notice_method() if callable(notice_method) else None
+        self.proactive_enabled_action.setChecked(proactive_enabled)
+        self.proactive_status_action.setText(
+            f"当前：{notice.get('title')}" if isinstance(notice, dict) else (
+                "状态：已开启，暂无提示" if proactive_enabled else "状态：已关闭"
+            )
+        )
+        self.proactive_menu.setTitle(
+            "主动关怀（有新提示）" if isinstance(notice, dict) else "主动关怀"
+        )
+        has_notice = isinstance(notice, dict)
+        for action in (
+            self.proactive_open_action,
+            self.proactive_snooze_action,
+            self.proactive_dismiss_action,
+        ):
+            action.setEnabled(has_notice)
+        if has_notice:
+            label = str(notice.get("action_label") or "处理")
+            self.proactive_open_action.setText(label)
+        else:
+            self.proactive_open_action.setText("处理当前提示")
+
         self.rebuild_pet_menu()
 
     def rebuild_pet_menu(self) -> None:
@@ -334,6 +394,12 @@ class SystemTrayMenuController:
 
     def _set_paused(self, checked: bool) -> None:
         self.app.window.set_paused(bool(checked))
+        self.refresh()
+
+    def _set_proactive_enabled(self, checked: bool) -> None:
+        method = getattr(self.app, "set_proactive_care_enabled", None)
+        if callable(method):
+            method(bool(checked))
         self.refresh()
 
     def _attach(self, side: EdgeSide) -> None:
