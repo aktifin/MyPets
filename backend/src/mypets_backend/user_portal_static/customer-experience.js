@@ -78,6 +78,7 @@ function installPetSwitcher() {
 
   const wrap = experienceNode("label", "portal-pet-switcher-wrap");
   wrap.id = "portal-pet-switcher-wrap";
+  wrap.hidden = true;
   wrap.append(experienceNode("span", "portal-switcher-label", "当前宠物"));
   const select = document.createElement("select");
   select.id = "portal-pet-switcher";
@@ -87,6 +88,7 @@ function installPetSwitcher() {
   const addButton = experienceNode("button", "secondary portal-add-pet", "添加宠物");
   addButton.id = "portal-add-pet";
   addButton.type = "button";
+  addButton.hidden = true;
   addButton.addEventListener("click", () => openPetOnboarding(true));
 
   select.addEventListener("change", async () => {
@@ -278,6 +280,10 @@ function populateOnboardingPersonalities() {
 }
 
 async function openPetOnboarding(addingPet) {
+  if (!accessToken || !dashboard) {
+    setStatus(authStatus, "请先登录后再添加宠物。", "error");
+    return;
+  }
   portalExperienceState.addingPet = addingPet;
   portalExperienceState.selectedPresetId = "";
   $("pet-onboarding-title").textContent = addingPet ? "添加一只宠物" : "领养第一只宠物";
@@ -346,7 +352,15 @@ async function createPetFromOnboarding(event) {
 function renderPetSwitcher() {
   const wrap = $("portal-pet-switcher-wrap");
   const select = $("portal-pet-switcher");
-  if (!wrap || !select || !dashboard) return;
+  const addButton = $("portal-add-pet");
+  if (!wrap || !select || !addButton) return;
+  const authenticated = Boolean(accessToken && dashboard);
+  addButton.hidden = !authenticated;
+  if (!authenticated) {
+    wrap.hidden = true;
+    select.replaceChildren();
+    return;
+  }
   wrap.hidden = dashboard.pets.length === 0;
   select.replaceChildren();
   dashboard.pets.forEach((item) => {
@@ -487,6 +501,15 @@ const baseRenderPortalPhase1ForCustomerExperience = renderPortalPhase1;
 renderPortalPhase1 = function renderPortalPhase1WithCustomerExperience() {
   baseRenderPortalPhase1ForCustomerExperience();
   renderCustomerExperience();
+};
+
+const baseLogoutForCustomerExperience = logout;
+logout = function logoutWithCustomerExperience(message = "", kind = "") {
+  const dialog = $("pet-onboarding-dialog");
+  if (dialog?.open) dialog.close();
+  portalExperienceState.autoOpened = false;
+  baseLogoutForCustomerExperience(message, kind);
+  renderPetSwitcher();
 };
 
 if (dashboard) renderCustomerExperience();
