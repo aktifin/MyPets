@@ -2,6 +2,11 @@
 .badge.pending { background: #fff1c7; color: #8a5a00; }
 .badge.verified { background: #dff7e8; color: #177445; }
 .badge.revoked, .badge.rejected { background: #ffe3e1; color: #a3312d; }
+.badge.revocation-pending, .badge.revocation-unreviewed { background: #fff1c7; color: #8a5a00; }
+.badge.revocation-failed, .badge.revocation-attention { background: #ffe3e1; color: #a3312d; }
+.badge.revocation-completed, .badge.revocation-resolved { background: #dff7e8; color: #177445; }
+.badge.revocation-investigating { background: #e8edff; color: #3b4f9d; }
+.badge.revocation-waived { background: #eef2f8; color: #59667a; }
 
 .inline-actions { margin: 0; align-items: center; }
 .inline-actions select { min-width: 150px; }
@@ -24,12 +29,14 @@
   gap: 12px;
 }
 
-#rightEvidenceDialog {
+#rightEvidenceDialog,
+#revocationFollowUpDialog {
   width: min(860px, calc(100vw - 32px));
   max-height: calc(100vh - 40px);
 }
 
-#rightEvidenceDialog form {
+#rightEvidenceDialog form,
+#revocationFollowUpDialog form {
   max-height: calc(100vh - 72px);
   overflow-y: auto;
 }
@@ -87,6 +94,59 @@
 .evidence-row code { margin-top: 6px; overflow-wrap: anywhere; font-size: .7rem; }
 .history-row p { margin: 7px 0 0; }
 
+.revocation-summary { margin: 16px 0; }
+.revocation-group-list,
+.revocation-device-list { display: grid; gap: 12px; }
+.revocation-device-heading { margin-top: 22px; }
+
+.revocation-group-card,
+.revocation-device-row {
+  border: 1px solid var(--border, #dce3ee);
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: var(--surface-soft, #f8fafc);
+}
+
+.revocation-group-main,
+.revocation-device-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.revocation-group-main strong,
+.revocation-group-main small,
+.revocation-device-title h4,
+.revocation-device-title small { display: block; }
+.revocation-group-main small,
+.revocation-device-title small { margin-top: 5px; color: var(--muted, #64748b); }
+.revocation-device-title h4 { margin: 8px 0 0; }
+.revocation-group-card p,
+.revocation-device-row p { margin: 9px 0 0; }
+.revocation-group-card code { font-size: .7rem; }
+
+.revocation-progress {
+  height: 8px;
+  margin-top: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e4e9f1;
+}
+.revocation-progress span { display: block; height: 100%; border-radius: inherit; background: #3f7a5a; }
+.revocation-group-metrics,
+.revocation-device-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 10px;
+  color: var(--muted, #64748b);
+  font-size: .78rem;
+}
+.revocation-device-row.needs-attention { border-left: 4px solid #c94b43; }
+.revocation-device-row.closed { border-left: 4px solid #3f7a5a; }
+.revocation-device-row .button-row { margin-top: 0; }
+
 @media (max-width: 980px) {
   .sidebar nav { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
 }
@@ -98,4 +158,6 @@
   .field-grid.two-column { grid-template-columns: 1fr; }
   .evidence-row, .history-row { align-items: stretch; flex-direction: column; }
   .evidence-row button { align-self: flex-start; }
+  .revocation-group-main, .revocation-device-title { flex-direction: column; }
+  .revocation-device-title .button-row { width: 100%; }
 }
