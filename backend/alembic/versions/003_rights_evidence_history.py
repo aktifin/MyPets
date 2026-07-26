@@ -31,6 +31,12 @@ def upgrade() -> None:
         batch_op.create_index(
             "ix_pet_asset_rights_validity", ["valid_from", "valid_until"], unique=False
         )
+        batch_op.alter_column(
+            "review_comment",
+            existing_type=sa.Text(),
+            nullable=False,
+            server_default=None,
+        )
 
     op.create_table(
         "pet_asset_right_evidence",
