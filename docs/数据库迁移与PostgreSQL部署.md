@@ -1,6 +1,6 @@
 # MyPets 数据库迁移与 PostgreSQL 部署
 
-MyPets 后端从 Revision `20260726_0001` 起使用 Alembic 管理正式数据库结构。生产环境不得依赖应用启动时的 `Base.metadata.create_all`。
+MyPets 后端从 Revision `001_initial_schema` 起使用 Alembic 管理正式数据库结构。该标识沿用仓库已有基线，避免已经 stamp 的历史数据库失去版本连续性；基线实现已冻结为显式 DDL，不再在迁移执行时调用 `Base.metadata.create_all`。生产环境不得依赖应用启动时的自动建表。
 
 ## 一、适用范围
 
@@ -44,7 +44,7 @@ alembic check
 `alembic current` 应显示：
 
 ```text
-20260726_0001 (head)
+001_initial_schema (head)
 ```
 
 `alembic check` 应显示没有新的升级操作。若检测到模型漂移，不得直接启动生产服务，应先生成和评审新的增量 Revision。
@@ -116,7 +116,7 @@ alembic current
 alembic check
 ```
 
-`stamp` 只写入 Alembic 版本标记，不创建、删除或修改业务表。
+`stamp` 只写入 Alembic 版本标记，不创建、删除或修改业务表。已经标记为 `001_initial_schema` 的数据库保持原版本标识，无需重新 stamp。
 
 ## 五、回退验证
 
