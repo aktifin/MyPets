@@ -86,6 +86,12 @@ class EnhancedAssetRightView(BaseModel):
     updated_at: datetime
 
 
+class EnhancedRightRevocationView(BaseModel):
+    right: EnhancedAssetRightView
+    affected_release_ids: list[str]
+    notified_account_ids: list[str]
+
+
 def _right_or_404(session: Session, right_id: str) -> PetAssetRight:
     right = session.get(PetAssetRight, right_id)
     if right is None:
@@ -270,14 +276,14 @@ def verify_asset_right_enhanced(
 
 @rights_enhanced_router.post(
     "/rights/{right_id}/revoke",
-    response_model=EnhancedAssetRightView,
+    response_model=EnhancedRightRevocationView,
 )
 def revoke_asset_right_enhanced(
     right_id: str,
     body: EnhancedRightRevokeRequest,
     principal: Annotated[Principal, Depends(require_admin)],
     session: Annotated[Session, Depends(get_session)],
-) -> EnhancedAssetRightView:
+) -> EnhancedRightRevocationView:
     right = _right_or_404(session, right_id)
     if right.status == "revoked":
         raise HTTPException(status_code=409, detail="版权存证已经撤销")
@@ -320,6 +326,8 @@ def revoke_asset_right_enhanced(
                 },
             )
             notified.add(account_id)
+    affected_release_ids = [release.id for release in releases]
+    notified_account_ids = sorted(notified)
     record_right_history(
         session,
         right=right,
@@ -327,8 +335,8 @@ def revoke_asset_right_enhanced(
         event_type="revoked",
         comment=body.reason,
         details={
-            "affected_release_ids": [release.id for release in releases],
-            "notified_account_ids": sorted(notified),
+            "affected_release_ids": affected_release_ids,
+            "notified_account_ids": notified_account_ids,
         },
     )
     _audit(
@@ -340,9 +348,13 @@ def revoke_asset_right_enhanced(
         details={
             "artifact_id": right.artifact_id,
             "reason": body.reason,
-            "affected_release_ids": [release.id for release in releases],
-            "notified_account_ids": sorted(notified),
+            "affected_release_ids": affected_release_ids,
+            "notified_account_ids": notified_account_ids,
         },
     )
     session.commit()
-    return _view(session, right)
+    return EnhancedRightRevocationView(
+        right=_view(session, right),
+        affected_release_ids=affected_release_ids,
+        notified_account_ids=notified_account_ids,
+    )
