@@ -6,6 +6,7 @@ import hashlib
 import json
 import shutil
 import stat
+import sys
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path, PurePosixPath
