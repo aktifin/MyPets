@@ -39,7 +39,8 @@ def test_admin_console_restores_operational_shell_and_governance_assets(
     assert "FormData" in evidence_script.text
     assert "/api/v1/admin/governance/revocation-operations" in operations_script.text
     assert "/api/v1/admin/governance/revocation-follow-ups" in operations_script.text
-    assert "attention_only" not in operations_script.text
+    assert "<progress" in operations_script.text
+    assert "style=" not in operations_script.text
     assert "sessionStorage" not in governance_script.text
     assert "sessionStorage" not in evidence_script.text
     assert "sessionStorage" not in operations_script.text
