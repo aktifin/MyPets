@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from PySide6.QtCore import QPoint, QTimer, Qt, Signal
 from PySide6.QtWidgets import (
     QApplication,
@@ -42,7 +44,7 @@ class PetBubbleMenu(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setMinimumWidth(390)
-        self.setMaximumWidth(430)
+        self.setMaximumWidth(440)
 
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(24)
@@ -58,7 +60,7 @@ class PetBubbleMenu(QWidget):
 
         root = QVBoxLayout(card)
         root.setContentsMargins(18, 16, 18, 16)
-        root.setSpacing(11)
+        root.setSpacing(10)
 
         header = QHBoxLayout()
         identity = QVBoxLayout()
@@ -82,7 +84,7 @@ class PetBubbleMenu(QWidget):
         root.addWidget(self.status_label)
 
         progress_row = QHBoxLayout()
-        self.daily_label = QLabel("今日照料 0 / 3")
+        self.daily_label = QLabel("今日任务 0 / 3 · 连续 0 天")
         self.daily_label.setObjectName("petQuickDaily")
         self.daily_progress = QProgressBar()
         self.daily_progress.setObjectName("petQuickProgress")
@@ -92,6 +94,11 @@ class PetBubbleMenu(QWidget):
         progress_row.addWidget(self.daily_label)
         progress_row.addWidget(self.daily_progress, 1)
         root.addLayout(progress_row)
+
+        self.task_label = QLabel("○ 3 次照料  ·  ○ 2 种方式  ·  ○ 1 次陪伴")
+        self.task_label.setObjectName("petQuickTasks")
+        self.task_label.setWordWrap(True)
+        root.addWidget(self.task_label)
 
         self.recommendation_button = QPushButton("现在建议：摸摸它")
         self.recommendation_button.setObjectName("petQuickRecommendation")
@@ -128,7 +135,7 @@ class PetBubbleMenu(QWidget):
             secondary.addWidget(button)
         root.addLayout(secondary)
 
-        self.hint_label = QLabel("点击完成常用照料；完整功能可从托盘菜单进入。")
+        self.hint_label = QLabel("完成全部任务可点亮今日陪伴徽章。")
         self.hint_label.setObjectName("petQuickHint")
         self.hint_label.setWordWrap(True)
         root.addWidget(self.hint_label)
@@ -138,6 +145,8 @@ class PetBubbleMenu(QWidget):
             "border-radius: 18px; }"
             "QLabel#petQuickName { font-size: 18px; font-weight: 800; color: #263238; }"
             "QLabel#petQuickMeta, QLabel#petQuickDaily, QLabel#petQuickHint { color: #667085; }"
+            "QLabel#petQuickTasks { color: #475467; background: #f8f4f1; border-radius: 9px; "
+            "padding: 7px 9px; }"
             "QLabel#petQuickPresence { background: #edf8f1; color: #256447; border-radius: 9px; "
             "padding: 5px 9px; font-weight: 700; }"
             "QLabel#petQuickStatus { background: white; border-radius: 10px; padding: 9px 11px; "
@@ -151,12 +160,13 @@ class PetBubbleMenu(QWidget):
             "QPushButton:disabled { color: #98a2b3; background: #f2f4f7; border-color: #eaecf0; }"
             "QPushButton#petQuickRecommendation { min-height: 38px; background: #e66b84; color: white; "
             "border: 0; font-weight: 800; text-align: left; padding-left: 14px; }"
+            "QPushButton#petQuickRecommendation:disabled { background: #e5d5d8; color: #7c6870; }"
             "QPushButton#petQuickCare { font-weight: 700; }"
             "QPushButton#petQuickSecondary { color: #475467; }"
         )
 
         self._auto_close_timer = QTimer(self)
-        self._auto_close_timer.setInterval(9000)
+        self._auto_close_timer.setInterval(12000)
         self._auto_close_timer.setSingleShot(True)
         self._auto_close_timer.timeout.connect(self.hide)
 
@@ -173,26 +183,51 @@ class PetBubbleMenu(QWidget):
         daily_count: int,
         daily_goal: int,
         can_care: bool,
+        streak_days: int = 0,
+        task_text: str = "",
+        reward_text: str = "",
+        action_states: Mapping[str, tuple[bool, str]] | None = None,
     ) -> None:
         self.name_label.setText(pet_name)
         self.level_label.setText(level_text)
         self.presence_label.setText(presence_text)
         self.status_label.setText(status_text)
         self._recommended_action = recommendation_action or ""
-        self.recommendation_button.setText(f"现在建议：{recommendation_text}")
-        self.recommendation_button.setToolTip(recommendation_detail)
-        self.recommendation_button.setEnabled(bool(recommendation_action and can_care))
+        normalized_states = dict(action_states or {})
+        recommendation_state = normalized_states.get(self._recommended_action)
+        recommendation_available = (
+            recommendation_state[0] if recommendation_state is not None else can_care
+        )
+        recommendation_reason = (
+            recommendation_state[1] if recommendation_state is not None else recommendation_detail
+        )
+        if recommendation_state is not None and not recommendation_available:
+            self.recommendation_button.setText(recommendation_reason)
+        else:
+            self.recommendation_button.setText(f"现在建议：{recommendation_text}")
+        self.recommendation_button.setToolTip(recommendation_reason)
+        self.recommendation_button.setEnabled(
+            bool(recommendation_action and can_care and recommendation_available)
+        )
         safe_goal = max(1, int(daily_goal))
         safe_count = max(0, min(safe_goal, int(daily_count)))
-        self.daily_label.setText(f"今日照料 {safe_count} / {safe_goal}")
+        self.daily_label.setText(
+            f"今日任务 {safe_count} / {safe_goal} · 连续 {max(0, int(streak_days))} 天"
+        )
         self.daily_progress.setRange(0, safe_goal)
         self.daily_progress.setValue(safe_count)
-        for button in self.action_buttons.values():
-            button.setEnabled(can_care)
+        self.task_label.setText(task_text or "○ 3 次照料  ·  ○ 2 种方式  ·  ○ 1 次陪伴")
+        for button_code, button in self.action_buttons.items():
+            action = "pet" if button_code == "touch" else button_code
+            state = normalized_states.get(action)
+            enabled = can_care and (state[0] if state is not None else True)
+            reason = state[1] if state is not None else recommendation_detail
+            button.setEnabled(enabled)
+            button.setToolTip(reason)
         self.hint_label.setText(
             recommendation_detail
             if not can_care
-            else "点击即可完成常用照料；完整状态和更多功能在下方入口。"
+            else (reward_text or "完成全部任务可点亮今日陪伴徽章。")
         )
 
     def popup_at(self, global_pos: QPoint) -> None:
@@ -214,7 +249,8 @@ class PetBubbleMenu(QWidget):
 
     def _run_recommendation(self) -> None:
         if self._recommended_action:
-            self._on_btn_clicked(self._recommended_action)
+            code = "touch" if self._recommended_action == "pet" else self._recommended_action
+            self._on_btn_clicked(code)
 
     def _on_btn_clicked(self, action_code: str) -> None:
         self.action_triggered.emit(action_code)
