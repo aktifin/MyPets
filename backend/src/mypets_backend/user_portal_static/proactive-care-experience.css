@@ -1,0 +1,94 @@
+.proactive-care-banner {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+  border-color: #eadcb4;
+  background: linear-gradient(135deg, #fff9e8, #f2f8f4);
+}
+
+.proactive-care-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  background: #fff0bd;
+  font-size: 1.5rem;
+}
+
+.proactive-care-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.proactive-care-copy strong { font-size: 1.05rem; }
+.proactive-care-copy small { color: var(--muted, #64748b); }
+
+.proactive-care-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.proactive-care-settings {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.proactive-care-settings-form {
+  display: grid;
+  gap: 18px;
+}
+
+.proactive-setting-switches {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--surface-soft, #f8fafc);
+}
+
+.proactive-setting-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-items: end;
+}
+
+.proactive-quiet-toggle {
+  min-height: 42px;
+  align-self: end;
+}
+
+.proactive-settings-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.proactive-settings-footer p { margin: 0; }
+
+@media (max-width: 900px) {
+  .proactive-care-banner { grid-template-columns: auto minmax(0, 1fr); }
+  .proactive-care-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  .proactive-setting-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 620px) {
+  .proactive-care-banner { grid-template-columns: 1fr; }
+  .proactive-care-icon { display: none; }
+  .proactive-care-actions { display: grid; grid-template-columns: 1fr; }
+  .proactive-care-actions button { width: 100%; }
+  .proactive-setting-switches,
+  .proactive-setting-grid { grid-template-columns: 1fr; }
+  .proactive-settings-footer { align-items: stretch; flex-direction: column; }
+  .proactive-settings-footer button { width: 100%; }
+}

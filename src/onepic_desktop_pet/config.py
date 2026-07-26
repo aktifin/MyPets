@@ -50,6 +50,19 @@ class PetSettings:
     cloud_sync_interval_ms: int = 15000
     device_public_id: str = ""
 
+    # Device-level fallback used for bundled local pets and before cloud preferences load.
+    proactive_care_enabled: bool = True
+    proactive_quiet_hours_enabled: bool = True
+    proactive_quiet_start: str = "22:00"
+    proactive_quiet_end: str = "08:00"
+    proactive_min_interval_minutes: int = 120
+    proactive_max_daily_notices: int = 3
+    proactive_last_notice_at: str = ""
+    proactive_notice_date: str = ""
+    proactive_notice_count: int = 0
+    proactive_suppressed_until: str = ""
+    proactive_suppressed_notice_key: str = ""
+
     # Incremented only when a materially new customer onboarding flow is completed.
     desktop_experience_version: int = 0
 
@@ -80,6 +93,16 @@ def _read_json(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"配置文件必须包含 JSON 对象：{path}")
     return value
+
+
+def _clock(value: object, fallback: str) -> str:
+    try:
+        hour_text, minute_text = str(value).strip().split(":", 1)
+        hour, minute = int(hour_text), int(minute_text)
+    except (ValueError, AttributeError):
+        hour_text, minute_text = fallback.split(":", 1)
+        hour, minute = int(hour_text), int(minute_text)
+    return f"{max(0, min(23, hour)):02d}:{max(0, min(59, minute)):02d}"
 
 
 def _validated(data: dict[str, Any]) -> PetSettings:
@@ -126,6 +149,24 @@ def _validated(data: dict[str, Any]) -> PetSettings:
     )
     device_public_id = str(settings.device_public_id).strip()
     settings.device_public_id = device_public_id if len(device_public_id) >= 8 else str(uuid4())
+
+    settings.proactive_care_enabled = bool(settings.proactive_care_enabled)
+    settings.proactive_quiet_hours_enabled = bool(settings.proactive_quiet_hours_enabled)
+    settings.proactive_quiet_start = _clock(settings.proactive_quiet_start, "22:00")
+    settings.proactive_quiet_end = _clock(settings.proactive_quiet_end, "08:00")
+    settings.proactive_min_interval_minutes = min(
+        1440, max(15, int(settings.proactive_min_interval_minutes))
+    )
+    settings.proactive_max_daily_notices = min(
+        12, max(1, int(settings.proactive_max_daily_notices))
+    )
+    settings.proactive_notice_count = max(0, int(settings.proactive_notice_count))
+    settings.proactive_last_notice_at = str(settings.proactive_last_notice_at or "")[:64]
+    settings.proactive_notice_date = str(settings.proactive_notice_date or "")[:16]
+    settings.proactive_suppressed_until = str(settings.proactive_suppressed_until or "")[:64]
+    settings.proactive_suppressed_notice_key = str(
+        settings.proactive_suppressed_notice_key or ""
+    )[:200]
     settings.desktop_experience_version = max(0, int(settings.desktop_experience_version))
     return settings
 
@@ -142,6 +183,17 @@ _PERSISTED_FIELDS = {
     "cloud_sync_enabled",
     "cloud_sync_interval_ms",
     "device_public_id",
+    "proactive_care_enabled",
+    "proactive_quiet_hours_enabled",
+    "proactive_quiet_start",
+    "proactive_quiet_end",
+    "proactive_min_interval_minutes",
+    "proactive_max_daily_notices",
+    "proactive_last_notice_at",
+    "proactive_notice_date",
+    "proactive_notice_count",
+    "proactive_suppressed_until",
+    "proactive_suppressed_notice_key",
     "desktop_experience_version",
 }
 
@@ -181,6 +233,17 @@ def save_settings(settings: PetSettings, path: Path | None = None) -> Path:
         "cloud_sync_enabled": settings.cloud_sync_enabled,
         "cloud_sync_interval_ms": settings.cloud_sync_interval_ms,
         "device_public_id": settings.device_public_id,
+        "proactive_care_enabled": settings.proactive_care_enabled,
+        "proactive_quiet_hours_enabled": settings.proactive_quiet_hours_enabled,
+        "proactive_quiet_start": settings.proactive_quiet_start,
+        "proactive_quiet_end": settings.proactive_quiet_end,
+        "proactive_min_interval_minutes": settings.proactive_min_interval_minutes,
+        "proactive_max_daily_notices": settings.proactive_max_daily_notices,
+        "proactive_last_notice_at": settings.proactive_last_notice_at,
+        "proactive_notice_date": settings.proactive_notice_date,
+        "proactive_notice_count": settings.proactive_notice_count,
+        "proactive_suppressed_until": settings.proactive_suppressed_until,
+        "proactive_suppressed_notice_key": settings.proactive_suppressed_notice_key,
         "desktop_experience_version": settings.desktop_experience_version,
     }
     temporary.write_text(

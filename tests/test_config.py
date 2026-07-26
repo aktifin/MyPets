@@ -120,11 +120,42 @@ def test_invalid_or_missing_device_id_is_regenerated(tmp_path) -> None:
     assert settings.cloud_base_url == "http://127.0.0.1:8000"
 
 
+def test_proactive_care_settings_are_normalized_to_safe_ranges(tmp_path) -> None:
+    default_path = tmp_path / "default.json"
+    default_path.write_text(
+        json.dumps(
+            {
+                "proactive_quiet_start": "99:90",
+                "proactive_quiet_end": "bad",
+                "proactive_min_interval_minutes": 1,
+                "proactive_max_daily_notices": 999,
+                "proactive_notice_count": -5,
+                "proactive_suppressed_notice_key": "x" * 500,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(default_path, tmp_path / "missing.json")
+
+    assert settings.proactive_quiet_start == "23:59"
+    assert settings.proactive_quiet_end == "08:00"
+    assert settings.proactive_min_interval_minutes == 15
+    assert settings.proactive_max_daily_notices == 12
+    assert settings.proactive_notice_count == 0
+    assert len(settings.proactive_suppressed_notice_key) == 200
+
+
 def test_default_inactivity_uses_five_and_ten_minutes() -> None:
     settings = PetSettings()
     assert settings.inactive_sit_ms == 300000
     assert settings.inactive_sleep_ms == 600000
     assert settings.desktop_experience_version == 0
+    assert settings.proactive_care_enabled is True
+    assert settings.proactive_quiet_start == "22:00"
+    assert settings.proactive_quiet_end == "08:00"
+    assert settings.proactive_min_interval_minutes == 120
+    assert settings.proactive_max_daily_notices == 3
 
 
 def test_save_settings_writes_json_without_credentials(tmp_path) -> None:
@@ -140,6 +171,17 @@ def test_save_settings_writes_json_without_credentials(tmp_path) -> None:
             cloud_sync_enabled=True,
             cloud_sync_interval_ms=20000,
             device_public_id="desktop-public-id",
+            proactive_care_enabled=False,
+            proactive_quiet_hours_enabled=True,
+            proactive_quiet_start="21:30",
+            proactive_quiet_end="07:15",
+            proactive_min_interval_minutes=180,
+            proactive_max_daily_notices=2,
+            proactive_last_notice_at="2026-07-26T10:00:00+00:00",
+            proactive_notice_date="2026-07-26",
+            proactive_notice_count=1,
+            proactive_suppressed_until="2026-07-26T12:00:00+00:00",
+            proactive_suppressed_notice_key="pet:1:low:hunger",
             desktop_experience_version=1,
         ),
         path,
@@ -155,6 +197,12 @@ def test_save_settings_writes_json_without_credentials(tmp_path) -> None:
     assert data["cloud_sync_enabled"] is True
     assert data["cloud_sync_interval_ms"] == 20000
     assert data["device_public_id"] == "desktop-public-id"
+    assert data["proactive_care_enabled"] is False
+    assert data["proactive_quiet_start"] == "21:30"
+    assert data["proactive_min_interval_minutes"] == 180
+    assert data["proactive_max_daily_notices"] == 2
+    assert data["proactive_notice_count"] == 1
+    assert data["proactive_suppressed_notice_key"] == "pet:1:low:hunger"
     assert data["desktop_experience_version"] == 1
     assert set(data) == {
         "display_height",
@@ -168,6 +216,17 @@ def test_save_settings_writes_json_without_credentials(tmp_path) -> None:
         "cloud_sync_enabled",
         "cloud_sync_interval_ms",
         "device_public_id",
+        "proactive_care_enabled",
+        "proactive_quiet_hours_enabled",
+        "proactive_quiet_start",
+        "proactive_quiet_end",
+        "proactive_min_interval_minutes",
+        "proactive_max_daily_notices",
+        "proactive_last_notice_at",
+        "proactive_notice_date",
+        "proactive_notice_count",
+        "proactive_suppressed_until",
+        "proactive_suppressed_notice_key",
         "desktop_experience_version",
     }
     assert "device_secret" not in data

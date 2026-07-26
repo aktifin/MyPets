@@ -161,6 +161,8 @@ class FakeApplication:
         self.tray_menu = None
         self.switched: list[str] = []
         self.calls: list[str] = []
+        self._proactive_enabled = True
+        self._proactive_notice = None
 
     def show_window(self) -> None:
         self.window.visible = True
@@ -193,6 +195,28 @@ class FakeApplication:
     def open_cloud_login(self) -> None:
         self.calls.append("login")
 
+    def proactive_care_is_enabled(self) -> bool:
+        return self._proactive_enabled
+
+    def proactive_notice(self):
+        return self._proactive_notice
+
+    def set_proactive_care_enabled(self, enabled: bool) -> None:
+        self._proactive_enabled = enabled
+        self.calls.append(f"proactive:{enabled}")
+
+    def open_current_proactive_notice(self) -> None:
+        self.calls.append("proactive_open")
+
+    def snooze_current_proactive_notice(self) -> None:
+        self.calls.append("proactive_snooze")
+
+    def dismiss_current_proactive_notice_today(self) -> None:
+        self.calls.append("proactive_dismiss")
+
+    def open_proactive_care_settings(self) -> None:
+        self.calls.append("proactive_settings")
+
     def quit(self) -> None:
         self.calls.append("quit")
 
@@ -219,6 +243,7 @@ def test_tray_menu_is_grouped_and_keeps_primary_actions_visible() -> None:
     assert "宠物互动" in titles
     assert "宠物管理（2）" in titles
     assert "社交、提醒与健康" in titles
+    assert "主动关怀" in titles
     assert "桌面行为" in titles
     assert "云端账户（已连接）" in titles
     assert titles[-1] == "退出 MyPets"
@@ -258,6 +283,41 @@ def test_tray_menu_refreshes_visibility_pause_edge_cloud_and_unread_state() -> N
     assert controller.cloud_status_action.text() == "状态：离线 · 测试用户"
 
 
+def test_proactive_care_menu_shows_current_notice_and_exposes_controls() -> None:
+    app = FakeApplication()
+    controller = install_system_tray_menu(app)
+
+    assert controller.proactive_enabled_action.isChecked()
+    assert controller.proactive_status_action.text() == "状态：已开启，暂无提示"
+    assert not controller.proactive_open_action.isEnabled()
+    assert not controller.proactive_snooze_action.isEnabled()
+    assert not controller.proactive_dismiss_action.isEnabled()
+
+    app._proactive_notice = {
+        "title": "云朵有点饿了",
+        "action_label": "去投喂",
+    }
+    controller.refresh()
+    assert controller.proactive_menu.title() == "主动关怀（有新提示）"
+    assert controller.proactive_status_action.text() == "当前：云朵有点饿了"
+    assert controller.proactive_open_action.text() == "去投喂"
+    assert controller.proactive_open_action.isEnabled()
+    controller.proactive_open_action.trigger()
+    controller.proactive_snooze_action.trigger()
+    controller.proactive_dismiss_action.trigger()
+    controller.proactive_settings_action.trigger()
+    assert app.calls[-4:] == [
+        "proactive_open",
+        "proactive_snooze",
+        "proactive_dismiss",
+        "proactive_settings",
+    ]
+
+    controller.proactive_enabled_action.trigger()
+    assert app._proactive_enabled is False
+    assert "proactive:False" in app.calls
+
+
 def test_pet_switch_menu_groups_cloud_and_local_pets_and_marks_fallback() -> None:
     app = FakeApplication()
     controller = install_system_tray_menu(app)
@@ -288,3 +348,5 @@ def test_signed_out_local_mode_disables_account_dependent_entries() -> None:
     assert not controller.reminder_action.isEnabled()
     assert not controller.social_action.isEnabled()
     assert not controller.visit_action.isEnabled()
+    assert controller.proactive_enabled_action.isEnabled()
+    assert controller.proactive_settings_action.isEnabled()

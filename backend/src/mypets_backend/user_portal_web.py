@@ -50,6 +50,7 @@ def user_portal() -> HTMLResponse:
     for stylesheet in (
         '<link rel="stylesheet" href="/portal/customer-experience.css">',
         '<link rel="stylesheet" href="/portal/daily-care-experience.css">',
+        '<link rel="stylesheet" href="/portal/proactive-care-experience.css">',
     ):
         if stylesheet not in html:
             html = html.replace("</head>", f"  {stylesheet}\n</head>", 1)
@@ -69,6 +70,7 @@ def user_portal() -> HTMLResponse:
         '<script src="/portal/asset-production.js" defer></script>',
         '<script src="/portal/customer-experience.js" defer></script>',
         '<script src="/portal/daily-care-experience.js" defer></script>',
+        '<script src="/portal/proactive-care-experience.js" defer></script>',
     )
     for script in scripts:
         if script not in html:
@@ -141,6 +143,16 @@ def user_portal_daily_care_experience_script() -> FileResponse:
 @user_portal_web_router.get("/portal/daily-care-experience.css")
 def user_portal_daily_care_experience_styles() -> FileResponse:
     return _asset("daily-care-experience.css", "text/css; charset=utf-8")
+
+
+@user_portal_web_router.get("/portal/proactive-care-experience.js")
+def user_portal_proactive_care_experience_script() -> FileResponse:
+    return _asset("proactive-care-experience.js", "text/javascript; charset=utf-8")
+
+
+@user_portal_web_router.get("/portal/proactive-care-experience.css")
+def user_portal_proactive_care_experience_styles() -> FileResponse:
+    return _asset("proactive-care-experience.css", "text/css; charset=utf-8")
 
 
 @user_portal_web_router.get("/portal/styles.css")

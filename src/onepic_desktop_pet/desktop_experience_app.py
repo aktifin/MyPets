@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import math
-from datetime import UTC, datetime
+import webbrowser
+from datetime import UTC, datetime, timedelta
 
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QAction
@@ -23,6 +24,8 @@ from .desktop_experience import (
 from .desktop_feedback import DesktopFeedbackToast
 from .first_run_dialog import FirstRunDialog
 from .pet_registry import LOCAL_ACCOUNT_ID
+from .proactive_care import build_local_proactive_notice, is_quiet_time
+from .proactive_care_client import ProactiveCareCloudClient
 from .tray_app import TrayDesktopPetApplication
 
 
@@ -42,13 +45,16 @@ _PRESENCE_LABELS = {
 
 
 class DesktopExperienceApplication(TrayDesktopPetApplication):
-    """Add first-run guidance and a cross-device daily care experience."""
+    """Add first-run, daily-care and rate-limited proactive care experiences."""
 
     def __init__(self, *args, **kwargs) -> None:
         self._pending_care_before: dict[str, dict[str, int]] = {}
         self._first_run_dialog: FirstRunDialog | None = None
         self._cloud_daily_summary: dict[str, object] | None = None
         self._cloud_daily_pet_id = ""
+        self._proactive_preferences: dict[str, object] = {}
+        self._current_proactive_notice: dict[str, object] | None = None
+        self._proactive_next_check_at = datetime.min.replace(tzinfo=UTC)
         super().__init__(*args, **kwargs)
         self._feedback_toast = DesktopFeedbackToast()
         self.daily_care_client = DailyCareCloudClient(
@@ -57,12 +63,28 @@ class DesktopExperienceApplication(TrayDesktopPetApplication):
         )
         self.daily_care_client.summary_received.connect(self._daily_care_received)
         self.daily_care_client.request_failed.connect(self._daily_care_failed)
+        self.proactive_care_client = ProactiveCareCloudClient(
+            self.cloud_api,
+            parent=self.qt_app,
+        )
+        self.proactive_care_client.preferences_received.connect(
+            self._proactive_preferences_received
+        )
+        self.proactive_care_client.evaluation_received.connect(
+            self._proactive_evaluation_received
+        )
+        self.proactive_care_client.request_failed.connect(self._proactive_request_failed)
+        self.cloud_session.state_changed.connect(self._proactive_cloud_state_changed)
         self.bubble_menu.about_to_show.connect(self._quick_panel_opening)
 
         self._daily_refresh_timer = QTimer(self.qt_app)
         self._daily_refresh_timer.setInterval(1000)
         self._daily_refresh_timer.timeout.connect(self._refresh_visible_quick_panel)
         self._daily_refresh_timer.start()
+
+        self._proactive_timer = QTimer(self.qt_app)
+        self._proactive_timer.setInterval(15 * 60 * 1000)
+        self._proactive_timer.timeout.connect(self._request_proactive_evaluation)
 
         self.guide_action = QAction("重新查看新手引导…", self.system_tray_menu.pets_root_menu)
         self.guide_action.triggered.connect(self.open_first_run_dialog)
@@ -84,6 +106,18 @@ class DesktopExperienceApplication(TrayDesktopPetApplication):
     def _timezone_offset_minutes() -> int:
         offset = datetime.now().astimezone().utcoffset()
         return -round((offset.total_seconds() if offset else 0) / 60)
+
+    @staticmethod
+    def _parse_datetime(value: object) -> datetime | None:
+        if not value:
+            return None
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
 
     def _quick_panel_opening(self) -> None:
         self._refresh_quick_panel()
@@ -286,6 +320,13 @@ class DesktopExperienceApplication(TrayDesktopPetApplication):
                 QSystemTrayIcon.MessageIcon.Information,
                 3000,
             )
+        notice = self._current_proactive_notice
+        if (
+            notice
+            and notice.get("pet_id") == self.active_pet.identity.pet_id
+            and notice.get("care_action") == action
+        ):
+            self._acknowledge_current_proactive("acted")
         self._refresh_quick_panel()
         self._request_cloud_daily_summary()
 
@@ -300,6 +341,235 @@ class DesktopExperienceApplication(TrayDesktopPetApplication):
             error=True,
         )
         self._refresh_quick_panel()
+
+    # Proactive care -----------------------------------------------------
+
+    def proactive_care_is_enabled(self) -> bool:
+        if self._proactive_preferences:
+            return bool(self._proactive_preferences.get("enabled", True))
+        return bool(self.settings.proactive_care_enabled)
+
+    def proactive_notice(self) -> dict[str, object] | None:
+        return self._current_proactive_notice
+
+    def set_proactive_care_enabled(self, enabled: bool) -> None:
+        value = bool(enabled)
+        self.settings.proactive_care_enabled = value
+        try:
+            save_settings(self.settings)
+        except OSError:
+            pass
+        if self.cloud_session.connected:
+            self.proactive_care_client.update_preferences({"enabled": value})
+        if not value:
+            self._clear_proactive_notice()
+        else:
+            self._proactive_next_check_at = datetime.min.replace(tzinfo=UTC)
+            QTimer.singleShot(0, lambda: self._request_proactive_evaluation(force=True))
+        self.system_tray_menu.refresh()
+
+    def snooze_current_proactive_notice(self) -> None:
+        self._acknowledge_current_proactive("snoozed")
+
+    def dismiss_current_proactive_notice_today(self) -> None:
+        self._acknowledge_current_proactive("dismissed_today")
+
+    def open_current_proactive_notice(self) -> None:
+        notice = self._current_proactive_notice
+        if not notice:
+            return
+        action = str(notice.get("care_action") or "")
+        if action in CARE_ACTION_LABELS:
+            self._request_pet_care(action)
+            return
+        if notice.get("kind") == "reminder_due" and hasattr(self, "open_reminder_manager"):
+            self.open_reminder_manager()
+        else:
+            self.open_pet_care_panel()
+        self._acknowledge_current_proactive("opened")
+
+    def open_proactive_care_settings(self) -> None:
+        if not self.cloud_session.connected:
+            self.open_cloud_login()
+            return
+        webbrowser.open(f"{self.settings.cloud_base_url}/portal", new=2)
+
+    def _proactive_cloud_state_changed(self, state: str) -> None:
+        if state != "connected":
+            return
+        QTimer.singleShot(500, self.proactive_care_client.fetch_preferences)
+        QTimer.singleShot(1200, lambda: self._request_proactive_evaluation(force=True))
+
+    def _proactive_preferences_received(self, payload: object) -> None:
+        if not isinstance(payload, dict):
+            return
+        self._proactive_preferences = dict(payload)
+        self.settings.proactive_care_enabled = bool(payload.get("enabled", True))
+        self.settings.proactive_quiet_hours_enabled = bool(
+            payload.get("quiet_hours_enabled", True)
+        )
+        self.settings.proactive_quiet_start = str(payload.get("quiet_start") or "22:00")
+        self.settings.proactive_quiet_end = str(payload.get("quiet_end") or "08:00")
+        self.settings.proactive_min_interval_minutes = int(
+            payload.get("min_interval_minutes") or 120
+        )
+        self.settings.proactive_max_daily_notices = int(
+            payload.get("max_daily_notices") or 3
+        )
+        try:
+            save_settings(self.settings)
+        except OSError:
+            pass
+        if not self.proactive_care_is_enabled():
+            self._clear_proactive_notice()
+        self.system_tray_menu.refresh()
+
+    def _request_proactive_evaluation(self, force: bool = False) -> None:
+        if not self.proactive_care_is_enabled():
+            return
+        now = datetime.now(UTC)
+        if not force and now < self._proactive_next_check_at:
+            return
+        if self.active_pet.identity.primary_owner_account_id == LOCAL_ACCOUNT_ID:
+            self._evaluate_local_proactive(now.astimezone())
+            return
+        if not self.cloud_session.connected:
+            return
+        self.proactive_care_client.evaluate(
+            pet_id=self.active_pet.identity.pet_id,
+            timezone_offset_minutes=self._timezone_offset_minutes(),
+        )
+
+    def _evaluate_local_proactive(self, now: datetime) -> None:
+        settings = self.settings
+        interval = timedelta(minutes=settings.proactive_min_interval_minutes)
+        if settings.proactive_quiet_hours_enabled and is_quiet_time(
+            now,
+            settings.proactive_quiet_start,
+            settings.proactive_quiet_end,
+        ):
+            self._proactive_next_check_at = datetime.now(UTC) + timedelta(minutes=30)
+            return
+        today = now.date().isoformat()
+        if settings.proactive_notice_date != today:
+            settings.proactive_notice_date = today
+            settings.proactive_notice_count = 0
+        if settings.proactive_notice_count >= settings.proactive_max_daily_notices:
+            self._proactive_next_check_at = datetime.now(UTC) + timedelta(hours=2)
+            return
+        last = self._parse_datetime(settings.proactive_last_notice_at)
+        if last is not None and datetime.now(UTC) - last < interval:
+            self._proactive_next_check_at = last + interval
+            return
+        records = self.local_store.list_interaction_records(
+            self.active_pet.identity.pet_id,
+            limit=1000,
+        )
+        notice = build_local_proactive_notice(self.active_pet, records, now=now)
+        if notice is None:
+            self._proactive_next_check_at = datetime.now(UTC) + timedelta(minutes=30)
+            return
+        suppressed_until = self._parse_datetime(settings.proactive_suppressed_until)
+        if (
+            suppressed_until is not None
+            and suppressed_until > datetime.now(UTC)
+            and settings.proactive_suppressed_notice_key == notice.get("notice_key")
+        ):
+            self._proactive_next_check_at = suppressed_until
+            return
+        settings.proactive_last_notice_at = datetime.now(UTC).isoformat()
+        settings.proactive_notice_count += 1
+        self._proactive_next_check_at = datetime.now(UTC) + interval
+        try:
+            save_settings(settings)
+        except OSError:
+            pass
+        self._show_proactive_notice(notice)
+
+    def _proactive_evaluation_received(self, payload: object) -> None:
+        if not isinstance(payload, dict):
+            return
+        preferences = payload.get("preferences")
+        if isinstance(preferences, dict):
+            self._proactive_preferences_received(preferences)
+        next_check = self._parse_datetime(payload.get("next_check_at"))
+        self._proactive_next_check_at = next_check or (
+            datetime.now(UTC) + timedelta(minutes=30)
+        )
+        notice = payload.get("notice")
+        if isinstance(notice, dict):
+            self._show_proactive_notice(dict(notice))
+
+    def _proactive_request_failed(self, _operation: str, _message: str) -> None:
+        self._proactive_next_check_at = datetime.now(UTC) + timedelta(minutes=15)
+
+    def _show_proactive_notice(self, notice: dict[str, object]) -> None:
+        if (
+            self._current_proactive_notice
+            and self._current_proactive_notice.get("notice_key") == notice.get("notice_key")
+        ):
+            return
+        self._current_proactive_notice = notice
+        title = str(notice.get("title") or "宠物想和你打个招呼")
+        detail = str(notice.get("detail") or "有空时看看它就好。")
+        self._feedback_toast.show_near(
+            self.window,
+            title,
+            detail,
+            duration_ms=8000,
+        )
+        if QSystemTrayIcon.isSystemTrayAvailable():
+            self.tray.showMessage(
+                title,
+                detail,
+                QSystemTrayIcon.MessageIcon.Information,
+                6000,
+            )
+        self.system_tray_menu.refresh()
+
+    def _acknowledge_current_proactive(self, outcome: str) -> None:
+        notice = self._current_proactive_notice
+        if not notice:
+            return
+        key = str(notice.get("notice_key") or "")
+        if self.active_pet.identity.primary_owner_account_id != LOCAL_ACCOUNT_ID:
+            if self.cloud_session.connected:
+                self.proactive_care_client.acknowledge(
+                    key,
+                    outcome,
+                    timezone_offset_minutes=self._timezone_offset_minutes(),
+                    snooze_minutes=120,
+                )
+        else:
+            now = datetime.now(UTC)
+            if outcome == "dismissed_today":
+                local = datetime.now().astimezone()
+                tomorrow = datetime.combine(
+                    local.date() + timedelta(days=1),
+                    datetime.min.time(),
+                    tzinfo=local.tzinfo,
+                )
+                until = tomorrow.astimezone(UTC)
+            elif outcome == "snoozed":
+                until = now + timedelta(hours=2)
+            elif outcome == "acted":
+                until = now + timedelta(hours=6)
+            else:
+                until = now + timedelta(minutes=30)
+            self.settings.proactive_suppressed_until = until.isoformat()
+            self.settings.proactive_suppressed_notice_key = key
+            try:
+                save_settings(self.settings)
+            except OSError:
+                pass
+        self._proactive_next_check_at = datetime.now(UTC) + timedelta(minutes=30)
+        self._clear_proactive_notice()
+
+    def _clear_proactive_notice(self) -> None:
+        self._current_proactive_notice = None
+        self.system_tray_menu.refresh()
+
+    # First-run ----------------------------------------------------------
 
     def open_first_run_dialog(self) -> None:
         if self._first_run_dialog is None:
@@ -327,6 +597,10 @@ class DesktopExperienceApplication(TrayDesktopPetApplication):
         if self.active_pet.identity.pet_id != previous_id:
             self._cloud_daily_pet_id = ""
             self._cloud_daily_summary = None
+            notice = self._current_proactive_notice
+            if notice and notice.get("pet_id") not in {None, self.active_pet.identity.pet_id}:
+                self._clear_proactive_notice()
+            self._proactive_next_check_at = datetime.min.replace(tzinfo=UTC)
         if self._first_run_dialog is not None:
             self._first_run_dialog.set_pet_name(self.active_pet.identity.name)
         if self.bubble_menu.isVisible():
@@ -334,17 +608,18 @@ class DesktopExperienceApplication(TrayDesktopPetApplication):
             self._request_cloud_daily_summary()
 
     def start(self, smoke_test_ms: int | None = None) -> int:
-        if (
-            smoke_test_ms is None
-            and self.settings.desktop_experience_version < DESKTOP_EXPERIENCE_VERSION
-        ):
-            QTimer.singleShot(450, self.open_first_run_dialog)
+        if smoke_test_ms is None:
+            self._proactive_timer.start()
+            QTimer.singleShot(2500, lambda: self._request_proactive_evaluation(force=True))
+            if self.settings.desktop_experience_version < DESKTOP_EXPERIENCE_VERSION:
+                QTimer.singleShot(450, self.open_first_run_dialog)
         return super().start(smoke_test_ms=smoke_test_ms)
 
     def quit(self) -> None:
         if self._quitting:
             return
         self._daily_refresh_timer.stop()
+        self._proactive_timer.stop()
         if self._first_run_dialog is not None:
             self._first_run_dialog.close()
         self._feedback_toast.close()

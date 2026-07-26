@@ -12,19 +12,26 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     assert "/portal/customer-experience.js" in page.text
     assert "/portal/daily-care-experience.css" in page.text
     assert "/portal/daily-care-experience.js" in page.text
+    assert "/portal/proactive-care-experience.css" in page.text
+    assert "/portal/proactive-care-experience.js" in page.text
 
     script = client.get("/portal/customer-experience.js")
     styles = client.get("/portal/customer-experience.css")
     daily_script = client.get("/portal/daily-care-experience.js")
     daily_styles = client.get("/portal/daily-care-experience.css")
-    assert script.status_code == 200
-    assert styles.status_code == 200
-    assert daily_script.status_code == 200
-    assert daily_styles.status_code == 200
-    assert script.headers["cache-control"] == "no-store"
-    assert styles.headers["cache-control"] == "no-store"
-    assert daily_script.headers["cache-control"] == "no-store"
-    assert daily_styles.headers["cache-control"] == "no-store"
+    proactive_script = client.get("/portal/proactive-care-experience.js")
+    proactive_styles = client.get("/portal/proactive-care-experience.css")
+    for response in (
+        script,
+        styles,
+        daily_script,
+        daily_styles,
+        proactive_script,
+        proactive_styles,
+    ):
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "no-store"
+
     assert "/api/v1/portal/pet-presets" in script.text
     assert "pet-onboarding-dialog" in script.text
     assert "legacyForm.hidden = true" in script.text
@@ -33,13 +40,25 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     assert "addButton.hidden = true" in script.text
     assert "logoutWithCustomerExperience" in script.text
     assert "请先登录后再添加宠物" in script.text
+
     assert "/daily-care?timezone_offset_minutes=" in daily_script.text
     assert "今天还需要做什么" in daily_script.text
     assert "今日陪伴徽章" in daily_script.text
     assert "remaining_seconds" in daily_script.text
     assert "daily_limit_reached" in daily_script.text
+
+    assert "/api/v1/portal/proactive-care/preferences" in proactive_script.text
+    assert "/api/v1/portal/proactive-care/evaluate" in proactive_script.text
+    assert "/api/v1/portal/proactive-care/acknowledge" in proactive_script.text
+    assert "主动关怀与免打扰" in proactive_script.text
+    assert "今天不再提示" in proactive_script.text
+    assert "稍后提醒" in proactive_script.text
+    assert "不会替你自动操作" in proactive_script.text
+    assert "ensureProactiveSelectValue" in proactive_script.text
+
     assert "style=" not in script.text
     assert "style=" not in daily_script.text
+    assert "style=" not in proactive_script.text
 
 
 def test_pet_presets_hide_internal_version_selection_from_customers(client: TestClient) -> None:
