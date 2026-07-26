@@ -6,6 +6,7 @@ import hashlib
 import json
 import shutil
 import stat
+import sys
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path, PurePosixPath
@@ -18,7 +19,7 @@ from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequ
 
 from .cloud_types import normalize_base_url
 from .domain import PetProfile
-from .pet_assets import PetAssetCatalog, PetAssetIdentity
+from .pet_assets import PetAssetCatalog, PetAssetIdentity, _slug
 
 
 @dataclass(frozen=True)
@@ -279,3 +280,29 @@ class AssetPackageDownloadController(QObject):
         except (OSError, ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             self._pending.discard(identity.key)
             self.download_failed.emit(identity.template_id, str(exc))
+
+
+def _idempotent_evict_identity_cache(cache_root: Path, identity: PetAssetIdentity) -> bool:
+    root = Path(cache_root).resolve()
+    destination = (
+        root
+        / _slug(identity.template_id)
+        / _slug(identity.identity_version)
+        / _slug(identity.asset_version)
+    ).resolve()
+    if root not in destination.parents:
+        raise ValueError("撤销素材缓存路径逃逸")
+    existed = destination.exists()
+    if existed:
+        shutil.rmtree(destination)
+    shutil.rmtree(destination.with_name(destination.name + ".installing"), ignore_errors=True)
+    shutil.rmtree(destination.with_name(destination.name + ".previous"), ignore_errors=True)
+    return existed
+
+
+from . import asset_revocation as _asset_revocation
+from .asset_revocation_snapshot import install_asset_revocation_snapshot_runtime
+
+_asset_revocation.evict_identity_cache = _idempotent_evict_identity_cache
+_asset_revocation.install_asset_revocation_runtime(sys.modules[__name__], PetAssetCatalog)
+install_asset_revocation_snapshot_runtime()

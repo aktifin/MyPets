@@ -25,6 +25,7 @@ from .asset_production_api import (
     admin_asset_production_router,
     asset_production_router,
 )
+from .asset_revocation_api import admin_asset_revocation_router, asset_revocation_router
 from .asset_submission_api import (
     admin_asset_submission_router,
     asset_submission_router,
@@ -95,9 +96,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "asynchronous pet visits, desktop dual-pet visit interactions, lazy settlement, "
             "categorized messaging, resume-safe reminders, safe user pet-image submissions, "
             "controlled pet asset production work orders, independently reviewed personal asset "
-            "releases and per-pet rollback, realtime cursor notifications, external reminder "
-            "providers, synchronization, pet asset publishing, administrator governance, and "
-            "console API."
+            "releases and per-pet rollback, revoked-asset device acknowledgements, realtime cursor "
+            "notifications, external reminder providers, synchronization, pet asset publishing, "
+            "administrator governance, and console API."
         ),
     )
     app.state.settings = resolved
@@ -114,6 +115,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(governance_api_router)
     app.include_router(asset_submission_router)
     app.include_router(asset_production_router)
+    app.include_router(asset_revocation_router)
     # Governance wrappers must precede compatibility routes with the same path.
     app.include_router(governed_asset_deployment_router)
     app.include_router(asset_deployment_router)
@@ -133,6 +135,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_asset_submission_router)
     app.include_router(admin_asset_production_router)
     app.include_router(admin_asset_deployment_console_router)
+    app.include_router(admin_asset_revocation_router)
     app.include_router(admin_governed_asset_deployment_router)
     app.include_router(admin_asset_deployment_router)
     app.include_router(admin_router)
