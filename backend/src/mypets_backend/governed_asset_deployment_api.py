@@ -1,18 +1,13 @@
 """Governance-enforced wrappers for personal asset approval, publishing, and download.
 
-These routes are registered before the compatibility deployment routes. They reuse the
-existing D3 state machine while adding two missing invariants:
-- the latest rights record for an artifact must be independently verified before approval
-  or publishing;
-- a revoked or newly pending rights record stops subsequent package distribution.
-
-Historical D3 artifacts created before the rights ledger existed are migrated lazily from
-an already approved source-image submission. This creates an explicit verified ledger row
-using the original owner as declarer and the original submission reviewer as verifier.
+The latest rights record must be independently verified and inside its validity window.
+Revoked, pending, scheduled, or expired authorization stops approval, publishing, and
+subsequent private package distribution.
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import uuid4
 
@@ -40,6 +35,7 @@ from .asset_deployment_models import (
 )
 from .asset_production_models import PetAssetProductionArtifact
 from .asset_submission_models import UserPetAssetSubmission
+from .governance_history import validity_state
 from .governance_models import PetAssetRight
 from .security import Principal
 
@@ -87,6 +83,7 @@ def _materialize_legacy_verified_right(
     ):
         return None
 
+    now = datetime.now(UTC)
     right = PetAssetRight(
         id=str(uuid4()),
         artifact_id=artifact.id,
@@ -98,6 +95,8 @@ def _materialize_legacy_verified_right(
         status="verified",
         declared_by_account_id=submission.account_id,
         verified_by_account_id=submission.reviewed_by_account_id,
+        review_comment=submission.review_comment,
+        verified_at=now,
     )
     session.add(right)
     session.flush()
@@ -137,6 +136,11 @@ def _require_verified_right(
         if right.status == "pending":
             detail = "版权存证尚未完成独立复核"
         raise HTTPException(status_code=409, detail=detail)
+    current_validity = validity_state(right)
+    if current_validity == "scheduled":
+        raise HTTPException(status_code=409, detail="版权授权尚未到生效时间")
+    if current_validity == "expired":
+        raise HTTPException(status_code=409, detail="版权授权有效期已经结束")
     return right
 
 
@@ -153,8 +157,6 @@ def approve_governed_deployment_review(
     review = session.get(PetAssetDeploymentReview, review_id)
     if review is None:
         raise HTTPException(status_code=404, detail="专属素材部署审核不存在")
-    # Preserve the original D3 validation contract: incomplete reviewer attestations
-    # return 422 before any rights-ledger lookup or migration occurs.
     if not body.rights_verified or not body.visual_identity_verified:
         raise HTTPException(status_code=422, detail="权利状态和视觉身份必须全部核验通过")
     _require_verified_right(
@@ -203,8 +205,6 @@ def publish_governed_personal_asset_release(
         and deployment is not None
         and deployment.active_release_id == release.id
     ):
-        # A repeated publish request is an idempotent read of the current deployment.
-        # It must not increment pet.state_version or emit duplicate events/audit rows.
         return _deployment_view(session, deployment)
 
     return publish_personal_asset_release(
@@ -225,8 +225,6 @@ def download_governed_personal_asset_release(
     principal: Annotated[Principal, Depends(require_account)],
     session: Annotated[Session, Depends(get_session)],
 ) -> FileResponse:
-    # Run the original authorization and object-existence checks first so an unrelated
-    # account cannot use governance status to discover private release identifiers.
     response = download_personal_asset_release(
         release_id=release_id,
         request=request,
@@ -236,9 +234,11 @@ def download_governed_personal_asset_release(
     release = session.get(PetPersonalAssetRelease, release_id)
     assert release is not None
     right = _latest_right(session, release.artifact_id)
-    if right is not None and right.status != "verified":
+    if right is not None and (
+        right.status != "verified" or validity_state(right) != "active"
+    ):
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
-            detail="该专属素材的权利状态已失效，服务端已停止分发",
+            detail="该专属素材的权利状态或授权有效期已失效，服务端已停止分发",
         )
     return response
