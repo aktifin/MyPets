@@ -46,7 +46,8 @@
 
 ### 数据库迁移与 PostgreSQL 基线
 
-- [x] 建立正式 `alembic/versions` 版本链，初始 Revision 为 `20260726_0001`。
+- [x] 建立正式 `alembic/versions` 版本链，保留兼容性初始 Revision `001_initial_schema`。
+- [x] 将旧版运行时 `create_all` 基线替换为冻结的显式建表、约束、索引和降级 DDL。
 - [x] 纳入全部 35 张服务端业务表，包括视觉身份和版权治理模型。
 - [x] 提供历史 `Base.metadata.create_all` 数据库结构比对和安全 stamp 工具。
 - [x] 完成 SQLite 新建、降级、再升级和模型漂移检查。
