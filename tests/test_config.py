@@ -21,6 +21,7 @@ def test_load_settings_merges_position_and_user_selected_size(tmp_path) -> None:
                 "start_y": 40,
                 "edge_side": "right",
                 "edge_offset_ratio": 0.7,
+                "desktop_experience_version": 1,
                 "unknown": 1,
             }
         ),
@@ -35,6 +36,7 @@ def test_load_settings_merges_position_and_user_selected_size(tmp_path) -> None:
     assert settings.start_y == 40
     assert settings.edge_side == "right"
     assert settings.edge_offset_ratio == 0.7
+    assert settings.desktop_experience_version == 1
     assert not hasattr(settings, "unknown")
 
 
@@ -77,7 +79,7 @@ def test_edge_settings_are_limited_to_safe_ranges(tmp_path) -> None:
     assert settings.edge_hide_delay_ms == 100
     assert settings.edge_animation_ms == 0
     assert settings.edge_visible_ratio == 0.80
-    assert settings.edge_side is None
+    assert settings.edge_side == "bottom"
     assert settings.edge_offset_ratio == 1.0
 
 
@@ -122,6 +124,7 @@ def test_default_inactivity_uses_five_and_ten_minutes() -> None:
     settings = PetSettings()
     assert settings.inactive_sit_ms == 300000
     assert settings.inactive_sleep_ms == 600000
+    assert settings.desktop_experience_version == 0
 
 
 def test_save_settings_writes_json_without_credentials(tmp_path) -> None:
@@ -137,6 +140,7 @@ def test_save_settings_writes_json_without_credentials(tmp_path) -> None:
             cloud_sync_enabled=True,
             cloud_sync_interval_ms=20000,
             device_public_id="desktop-public-id",
+            desktop_experience_version=1,
         ),
         path,
     )
@@ -151,6 +155,7 @@ def test_save_settings_writes_json_without_credentials(tmp_path) -> None:
     assert data["cloud_sync_enabled"] is True
     assert data["cloud_sync_interval_ms"] == 20000
     assert data["device_public_id"] == "desktop-public-id"
+    assert data["desktop_experience_version"] == 1
     assert set(data) == {
         "display_height",
         "start_x",
@@ -163,6 +168,7 @@ def test_save_settings_writes_json_without_credentials(tmp_path) -> None:
         "cloud_sync_enabled",
         "cloud_sync_interval_ms",
         "device_public_id",
+        "desktop_experience_version",
     }
     assert "device_secret" not in data
     assert "access_token" not in data
