@@ -10,13 +10,21 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     assert page.status_code == 200
     assert "/portal/customer-experience.css" in page.text
     assert "/portal/customer-experience.js" in page.text
+    assert "/portal/daily-care-experience.css" in page.text
+    assert "/portal/daily-care-experience.js" in page.text
 
     script = client.get("/portal/customer-experience.js")
     styles = client.get("/portal/customer-experience.css")
+    daily_script = client.get("/portal/daily-care-experience.js")
+    daily_styles = client.get("/portal/daily-care-experience.css")
     assert script.status_code == 200
     assert styles.status_code == 200
+    assert daily_script.status_code == 200
+    assert daily_styles.status_code == 200
     assert script.headers["cache-control"] == "no-store"
     assert styles.headers["cache-control"] == "no-store"
+    assert daily_script.headers["cache-control"] == "no-store"
+    assert daily_styles.headers["cache-control"] == "no-store"
     assert "/api/v1/portal/pet-presets" in script.text
     assert "pet-onboarding-dialog" in script.text
     assert "legacyForm.hidden = true" in script.text
@@ -25,7 +33,13 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     assert "addButton.hidden = true" in script.text
     assert "logoutWithCustomerExperience" in script.text
     assert "请先登录后再添加宠物" in script.text
+    assert "/daily-care?timezone_offset_minutes=" in daily_script.text
+    assert "今天还需要做什么" in daily_script.text
+    assert "今日陪伴徽章" in daily_script.text
+    assert "remaining_seconds" in daily_script.text
+    assert "daily_limit_reached" in daily_script.text
     assert "style=" not in script.text
+    assert "style=" not in daily_script.text
 
 
 def test_pet_presets_hide_internal_version_selection_from_customers(client: TestClient) -> None:

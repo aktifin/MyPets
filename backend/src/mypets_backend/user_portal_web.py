@@ -47,12 +47,12 @@ def user_portal() -> HTMLResponse:
             '  <link rel="stylesheet" href="/portal/styles.css">',
             1,
         )
-    if "customer-experience.css" not in html:
-        html = html.replace(
-            "</head>",
-            '  <link rel="stylesheet" href="/portal/customer-experience.css">\n</head>',
-            1,
-        )
+    for stylesheet in (
+        '<link rel="stylesheet" href="/portal/customer-experience.css">',
+        '<link rel="stylesheet" href="/portal/daily-care-experience.css">',
+    ):
+        if stylesheet not in html:
+            html = html.replace("</head>", f"  {stylesheet}\n</head>", 1)
     if 'id="section-pet-status"' not in html:
         html = html.replace(
             "</body>",
@@ -68,6 +68,7 @@ def user_portal() -> HTMLResponse:
         '<script src="/portal/asset-submissions.js" defer></script>',
         '<script src="/portal/asset-production.js" defer></script>',
         '<script src="/portal/customer-experience.js" defer></script>',
+        '<script src="/portal/daily-care-experience.js" defer></script>',
     )
     for script in scripts:
         if script not in html:
@@ -130,6 +131,16 @@ def user_portal_customer_experience_script() -> FileResponse:
 @user_portal_web_router.get("/portal/customer-experience.css")
 def user_portal_customer_experience_styles() -> FileResponse:
     return _asset("customer-experience.css", "text/css; charset=utf-8")
+
+
+@user_portal_web_router.get("/portal/daily-care-experience.js")
+def user_portal_daily_care_experience_script() -> FileResponse:
+    return _asset("daily-care-experience.js", "text/javascript; charset=utf-8")
+
+
+@user_portal_web_router.get("/portal/daily-care-experience.css")
+def user_portal_daily_care_experience_styles() -> FileResponse:
+    return _asset("daily-care-experience.css", "text/css; charset=utf-8")
 
 
 @user_portal_web_router.get("/portal/styles.css")

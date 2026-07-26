@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QApplication
 from onepic_desktop_pet.bubble_menu import PetBubbleMenu
 from onepic_desktop_pet.desktop_experience import (
     apply_local_demo_care,
+    build_local_daily_care_summary,
     daily_care_progress,
     format_care_result,
     plain_status_summary,
@@ -106,7 +107,27 @@ def test_daily_progress_counts_only_today_care_actions() -> None:
     assert daily_care_progress(records, now=now) == (2, 3)
 
 
-def test_quick_panel_exposes_context_recommendation_and_direct_actions() -> None:
+def test_local_daily_summary_matches_three_task_model_and_streak() -> None:
+    now = datetime(2026, 7, 26, 18, 0, tzinfo=UTC)
+    records: list[dict[str, str]] = []
+    for days_ago in (0, 1, 2):
+        created = now - timedelta(days=days_ago)
+        for action in ("feed", "play", "clean"):
+            records.append({"action_type": action, "created_at": created.isoformat()})
+
+    summary = build_local_daily_care_summary(records, now=now)
+
+    assert summary["completed_tasks"] == 3
+    assert summary["all_tasks_completed"] is True
+    assert summary["streak_days"] == 3
+    assert summary["reward_title"] == "今日陪伴徽章"
+    actions = {item["action"]: item for item in summary["actions"]}
+    assert actions["feed"]["available"] is False
+    assert "秒后" in actions["feed"]["reason"]
+    assert actions["pet"]["available"] is True
+
+
+def test_quick_panel_exposes_tasks_streak_and_action_cooldown() -> None:
     panel = PetBubbleMenu()
     emitted: list[str] = []
     panel.action_triggered.connect(emitted.append)
@@ -122,13 +143,24 @@ def test_quick_panel_exposes_context_recommendation_and_direct_actions() -> None
         daily_count=2,
         daily_goal=3,
         can_care=True,
+        streak_days=4,
+        task_text="✓ 3 次照料 · 1/2 2 种方式 · ✓ 1 次陪伴",
+        reward_text="还剩 1 项任务。",
+        action_states={
+            "feed": (False, "投喂刚刚完成，3 秒后可再次操作。"),
+            "play": (True, "现在可以操作。"),
+        },
     )
 
     assert panel.name_label.text() == "团子"
-    assert panel.daily_label.text() == "今日照料 2 / 3"
-    assert panel.recommendation_button.text() == "现在建议：该投喂了"
-    panel.recommendation_button.click()
-    assert emitted == ["feed"]
+    assert panel.daily_label.text() == "今日任务 2 / 3 · 连续 4 天"
+    assert "1/2 2 种方式" in panel.task_label.text()
+    assert panel.recommendation_button.isEnabled() is False
+    assert panel.recommendation_button.text() == "投喂刚刚完成，3 秒后可再次操作。"
+    assert panel.action_buttons["feed"].isEnabled() is False
+    assert panel.action_buttons["play"].isEnabled() is True
+    panel.action_buttons["play"].click()
+    assert emitted == ["play"]
     panel.close()
 
 

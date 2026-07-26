@@ -32,6 +32,7 @@ from .asset_submission_api import (
     asset_submission_router,
 )
 from .config import Settings
+from .daily_care_api import daily_care_router
 from .database import Base, create_database_engine, create_session_factory
 from .governance_api import governance_api_router
 from .governance_compat_api import governance_compat_router
@@ -102,8 +103,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "controlled pet asset production work orders, independently reviewed personal asset "
             "releases and per-pet rollback, rights evidence and immutable review history, revoked-"
             "asset device acknowledgements and operations follow-up, customer-ready onboarding, "
-            "realtime cursor notifications, external reminder providers, synchronization, pet "
-            "asset publishing, administrator governance, and console API."
+            "daily care tasks and streaks, realtime cursor notifications, external reminder "
+            "providers, synchronization, pet asset publishing, administrator governance, and "
+            "console API."
         ),
     )
     app.state.settings = resolved
@@ -128,6 +130,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(governed_asset_deployment_router)
     app.include_router(asset_deployment_router)
     app.include_router(pet_care_router)
+    app.include_router(daily_care_router)
     app.include_router(social_router)
     app.include_router(visit_scene_router)
     app.include_router(visit_router)

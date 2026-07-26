@@ -1,15 +1,17 @@
 """Pure customer-experience rules for the desktop pet.
 
-These helpers translate server-authoritative pet snapshots into plain-language
-recommendations and result summaries. The module deliberately has no Qt or network
-dependency so that product logic can be tested independently from presentation.
+These helpers translate server-authoritative pet snapshots and local interaction
+records into plain-language recommendations, daily tasks, streaks, cooldowns, and
+result summaries without depending on Qt or network code.
 """
 
 from __future__ import annotations
 
+import math
+from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Iterable, Mapping
 
 from .domain import PetProfile, PresenceStatus
@@ -154,17 +156,15 @@ def format_care_result(
     return CareResultSummary(f"{pet_name} · {label}完成", detail)
 
 
-def daily_care_progress(
+def _record_values(
     records: Iterable[Mapping[str, str]],
     *,
-    now: datetime | None = None,
-    goal: int = 3,
-) -> tuple[int, int]:
-    local_now = now or datetime.now().astimezone()
-    today = local_now.date()
-    count = 0
+    local_now: datetime,
+) -> tuple[dict[object, list[str]], dict[str, datetime]]:
+    by_date: dict[object, list[str]] = defaultdict(list)
+    latest: dict[str, datetime] = {}
     for record in records:
-        action = str(record.get("action_type") or "")
+        action = str(record.get("action_type") or record.get("action") or "")
         if action not in CARE_ACTION_LABELS:
             continue
         raw = str(record.get("created_at") or "")
@@ -172,8 +172,127 @@ def daily_care_progress(
             created = datetime.fromisoformat(raw.replace("Z", "+00:00"))
         except ValueError:
             continue
-        if created.astimezone(local_now.tzinfo).date() == today:
-            count += 1
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=local_now.tzinfo)
+        local_created = created.astimezone(local_now.tzinfo)
+        by_date[local_created.date()].append(action)
+        previous = latest.get(action)
+        if previous is None or local_created > previous:
+            latest[action] = local_created
+    return by_date, latest
+
+
+def _task_rows(actions: list[str]) -> list[dict[str, object]]:
+    distinct = len(set(actions))
+    bond_count = sum(action in {"play", "pet"} for action in actions)
+    return [
+        {
+            "task_id": "care-three-times",
+            "title": "3 次照料",
+            "current": min(len(actions), 3),
+            "target": 3,
+            "completed": len(actions) >= 3,
+        },
+        {
+            "task_id": "care-two-types",
+            "title": "2 种方式",
+            "current": min(distinct, 2),
+            "target": 2,
+            "completed": distinct >= 2,
+        },
+        {
+            "task_id": "bond-once",
+            "title": "1 次陪伴",
+            "current": min(bond_count, 1),
+            "target": 1,
+            "completed": bond_count >= 1,
+        },
+    ]
+
+
+def _day_completed(actions: list[str]) -> bool:
+    return all(bool(task["completed"]) for task in _task_rows(actions))
+
+
+def build_local_daily_care_summary(
+    records: Iterable[Mapping[str, str]],
+    *,
+    now: datetime | None = None,
+    cooldown_seconds: int = 5,
+    daily_limit: int = 50,
+) -> dict[str, object]:
+    local_now = now or datetime.now().astimezone()
+    if local_now.tzinfo is None:
+        local_now = local_now.astimezone()
+    by_date, latest = _record_values(records, local_now=local_now)
+    today = local_now.date()
+    today_actions = by_date.get(today, [])
+    tasks = _task_rows(today_actions)
+    completed_tasks = sum(bool(task["completed"]) for task in tasks)
+    completed_dates = {day for day, actions in by_date.items() if _day_completed(actions)}
+    cursor = today if today in completed_dates else today - timedelta(days=1)
+    streak = 0
+    while cursor in completed_dates:
+        streak += 1
+        cursor -= timedelta(days=1)
+
+    safe_limit = max(1, int(daily_limit))
+    limit_reached = len(today_actions) >= safe_limit
+    safe_cooldown = max(0, int(cooldown_seconds))
+    actions: list[dict[str, object]] = []
+    for action, label in CARE_ACTION_LABELS.items():
+        remaining = 0
+        previous = latest.get(action)
+        if previous is not None and safe_cooldown:
+            remaining = max(
+                0,
+                math.ceil(safe_cooldown - (local_now - previous).total_seconds()),
+            )
+        if limit_reached:
+            reason = f"今天已完成 {safe_limit} 次照料，明天可以继续。"
+        elif remaining:
+            reason = f"{label}刚刚完成，{remaining} 秒后可再次操作。"
+        else:
+            reason = "现在可以操作。"
+        actions.append(
+            {
+                "action": action,
+                "label": label,
+                "available": not limit_reached and remaining <= 0,
+                "remaining_seconds": remaining,
+                "reason": reason,
+            }
+        )
+
+    all_completed = completed_tasks == len(tasks)
+    return {
+        "tasks": tasks,
+        "completed_tasks": completed_tasks,
+        "total_tasks": len(tasks),
+        "all_tasks_completed": all_completed,
+        "streak_days": streak,
+        "reward_title": "今日陪伴徽章" if all_completed else "完成全部任务可点亮陪伴徽章",
+        "reward_detail": (
+            f"今天的任务已完成，连续陪伴 {streak} 天。"
+            if all_completed
+            else f"还剩 {len(tasks) - completed_tasks} 项任务。"
+        ),
+        "care_count": len(today_actions),
+        "daily_limit": safe_limit,
+        "daily_remaining": max(0, safe_limit - len(today_actions)),
+        "daily_limit_reached": limit_reached,
+        "actions": actions,
+    }
+
+
+def daily_care_progress(
+    records: Iterable[Mapping[str, str]],
+    *,
+    now: datetime | None = None,
+    goal: int = 3,
+) -> tuple[int, int]:
+    summary = build_local_daily_care_summary(records, now=now)
+    count = int(summary["care_count"])
     safe_goal = max(1, int(goal))
     return min(count, safe_goal), safe_goal
 
