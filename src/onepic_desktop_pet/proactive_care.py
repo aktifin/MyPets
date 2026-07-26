@@ -50,6 +50,15 @@ def _latest_interaction(
     return latest
 
 
+def _pet_baseline(pet: PetProfile, now: datetime) -> datetime:
+    cached = pet.updated_at
+    if cached is None:
+        return now
+    if cached.tzinfo is None:
+        cached = cached.replace(tzinfo=now.tzinfo)
+    return cached.astimezone(now.tzinfo)
+
+
 def build_local_proactive_notice(
     pet: PetProfile,
     records: Iterable[Mapping[str, str]],
@@ -94,7 +103,7 @@ def build_local_proactive_notice(
 
     if inactivity_enabled:
         latest = _latest_interaction(records, now=current)
-        baseline = latest or pet.created_at.astimezone(current.tzinfo)
+        baseline = latest or _pet_baseline(pet, current)
         if current - baseline >= timedelta(hours=12):
             return {
                 "notice_key": f"pet:{pet.identity.pet_id}:inactive",
