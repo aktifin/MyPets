@@ -22,6 +22,10 @@ from onepic_desktop_pet.desktop_experience import (
 from onepic_desktop_pet.domain import PetIdentity, PetProfile, PetStats, PresenceStatus
 from onepic_desktop_pet.first_run_dialog import FirstRunDialog
 from onepic_desktop_pet.pet_registry import LOCAL_ACCOUNT_ID
+from onepic_desktop_pet.proactive_care import (
+    build_local_proactive_notice,
+    is_quiet_time,
+)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -125,6 +129,48 @@ def test_local_daily_summary_matches_three_task_model_and_streak() -> None:
     assert actions["feed"]["available"] is False
     assert "秒后" in actions["feed"]["reason"]
     assert actions["pet"]["available"] is True
+
+
+def test_local_proactive_notice_prefers_low_state_and_stays_gentle() -> None:
+    now = datetime(2026, 7, 26, 18, 0, tzinfo=UTC)
+    pet = _pet(hunger=20, energy=90, cleanliness=90, mood=90, health=100, boredom=0)
+    pet.updated_at = now - timedelta(days=1)
+
+    notice = build_local_proactive_notice(pet, [], now=now)
+
+    assert notice is not None
+    assert notice["kind"] == "low_state"
+    assert notice["care_action"] == "feed"
+    assert notice["action_label"] == "去投喂"
+    assert "有点饿" in str(notice["title"])
+    assert "危险" not in str(notice)
+
+
+def test_local_proactive_notice_uses_inactivity_only_after_twelve_hours() -> None:
+    now = datetime(2026, 7, 26, 18, 0, tzinfo=UTC)
+    pet = _pet()
+    pet.updated_at = now - timedelta(hours=13)
+
+    notice = build_local_proactive_notice(pet, [], now=now)
+
+    assert notice is not None
+    assert notice["kind"] == "inactivity"
+    assert notice["care_action"] == "pet"
+
+    recent = [{"action_type": "play", "created_at": (now - timedelta(hours=2)).isoformat()}]
+    assert build_local_proactive_notice(pet, recent, now=now) is None
+
+
+def test_local_proactive_notice_skips_visiting_pets_and_respects_quiet_time() -> None:
+    now = datetime(2026, 7, 26, 23, 0, tzinfo=UTC)
+    pet = _pet(hunger=10)
+    pet.presence = PresenceStatus.VISITING
+    pet.updated_at = now - timedelta(days=1)
+
+    assert build_local_proactive_notice(pet, [], now=now) is None
+    assert is_quiet_time(now, "22:00", "08:00") is True
+    assert is_quiet_time(now, "08:00", "22:00") is False
+    assert is_quiet_time(now, "00:00", "00:00") is True
 
 
 def test_quick_panel_exposes_tasks_streak_and_action_cooldown() -> None:
