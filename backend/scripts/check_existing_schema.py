@@ -18,6 +18,7 @@ from sqlalchemy import create_engine
 from mypets_backend.database import Base
 from mypets_backend import asset_deployment_models  # noqa: F401
 from mypets_backend import asset_production_models  # noqa: F401
+from mypets_backend import asset_revocation_models  # noqa: F401
 from mypets_backend import asset_submission_models  # noqa: F401
 from mypets_backend import governance_models  # noqa: F401
 from mypets_backend import models  # noqa: F401
