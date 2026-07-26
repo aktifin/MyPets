@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from .admin_api import require_admin
 from .api import get_session, get_principal, require_device
+from .asset_deployment_api import _release_view
 from .asset_deployment_models import PetPersonalAssetRelease
 from .asset_revocation_models import PetAssetRevocationAcknowledgement
 from .governance_models import PetAssetRight
@@ -25,6 +26,23 @@ admin_asset_revocation_router = APIRouter(
 )
 
 AckStatus = Literal["completed", "failed"]
+
+
+class RevokedAssetIdentityView(BaseModel):
+    template_id: str
+    identity_version: str
+    asset_version: str
+
+
+class AssetRevocationNoticeView(BaseModel):
+    right_id: str
+    artifact_id: str
+    release_id: str
+    pet_id: str
+    reason: str
+    action: Literal["evict_cache_and_fallback"] = "evict_cache_and_fallback"
+    asset_identity: RevokedAssetIdentityView
+    revoked_at: datetime
 
 
 class AssetRevocationAcknowledgeRequest(BaseModel):
@@ -93,6 +111,19 @@ def _view(item: PetAssetRevocationAcknowledgement) -> AssetRevocationAcknowledge
     )
 
 
+def _latest_right(session: Session, artifact_id: str) -> PetAssetRight | None:
+    return session.scalar(
+        select(PetAssetRight)
+        .where(PetAssetRight.artifact_id == artifact_id)
+        .order_by(
+            PetAssetRight.updated_at.desc(),
+            PetAssetRight.created_at.desc(),
+            PetAssetRight.id.desc(),
+        )
+        .limit(1)
+    )
+
+
 def _validate_scope(
     session: Session,
     *,
@@ -115,6 +146,56 @@ def _validate_scope(
     if relation is None:
         raise HTTPException(status_code=404, detail="撤销回执目标宠物不存在")
     return right, release
+
+
+@asset_revocation_router.get(
+    "/asset-revocations",
+    response_model=list[AssetRevocationNoticeView],
+)
+def list_current_asset_revocations(
+    principal: Annotated[Principal, Depends(require_device)],
+    session: Annotated[Session, Depends(get_session)],
+    limit: int = Query(default=200, ge=1, le=500),
+) -> list[AssetRevocationNoticeView]:
+    pet_ids = list(
+        session.scalars(
+            select(AccountPetRelation.pet_id).where(
+                AccountPetRelation.account_id == principal.account_id
+            )
+        )
+    )
+    if not pet_ids:
+        return []
+    releases = list(
+        session.scalars(
+            select(PetPersonalAssetRelease)
+            .where(PetPersonalAssetRelease.pet_id.in_(pet_ids))
+            .order_by(PetPersonalAssetRelease.created_at.desc(), PetPersonalAssetRelease.id)
+            .limit(limit)
+        )
+    )
+    notices: list[AssetRevocationNoticeView] = []
+    for release in releases:
+        right = _latest_right(session, release.artifact_id)
+        if right is None or right.status != "revoked":
+            continue
+        release_data = _release_view(session, release)
+        notices.append(
+            AssetRevocationNoticeView(
+                right_id=right.id,
+                artifact_id=release.artifact_id,
+                release_id=release.id,
+                pet_id=release.pet_id,
+                reason=right.revoked_reason or "版权授权已撤销，停止使用该专属素材。",
+                asset_identity=RevokedAssetIdentityView(
+                    template_id=release_data.template_code,
+                    identity_version=release_data.identity_version,
+                    asset_version=release_data.asset_version,
+                ),
+                revoked_at=_aware(right.updated_at),
+            )
+        )
+    return notices
 
 
 @asset_revocation_router.post(
