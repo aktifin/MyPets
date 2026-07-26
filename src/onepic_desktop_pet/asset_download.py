@@ -301,6 +301,8 @@ def _idempotent_evict_identity_cache(cache_root: Path, identity: PetAssetIdentit
 
 
 from . import asset_revocation as _asset_revocation
+from .asset_revocation_snapshot import install_asset_revocation_snapshot_runtime
 
 _asset_revocation.evict_identity_cache = _idempotent_evict_identity_cache
 _asset_revocation.install_asset_revocation_runtime(sys.modules[__name__], PetAssetCatalog)
+install_asset_revocation_snapshot_runtime()
