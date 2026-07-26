@@ -115,8 +115,11 @@ class DesktopExperienceApplication(TrayDesktopPetApplication):
         except (OSError, RuntimeError, ValueError) as exc:
             self._pet_care_failed(normalized, str(exc))
 
-    def _pet_care_succeeded(self, action: str, payload: object) -> None:
-        super()._pet_care_succeeded(action, payload)
+    def _pet_care_succeeded(self, action: str, _payload: object) -> None:
+        active = self.pet_registry.active_pet()
+        if active is not None:
+            self.active_pet = active
+        self._refresh_active_pet_ui()
         self._present_enhanced_care_success(action)
 
     def _present_enhanced_care_success(self, action: str) -> None:
