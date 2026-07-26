@@ -1,87 +1,220 @@
-"""桌面桌宠快捷环形/弧形气泡交互菜单模块。
-
-本模块提供点击桌面宠物身旁时弹出的卡哇伊快捷气泡菜单（PetBubbleMenu），
-包含摸摸、喂食、聊天、打卡、状态 5 个圆钮快捷操作，并支持自动优雅淡出。
-"""
+"""Contextual quick-care panel shown when the desktop pet is clicked."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, QPropertyAnimation, QTimer, Qt, Signal
-from PySide6.QtWidgets import QGraphicsDropShadowEffect, QHBoxLayout, QPushButton, QWidget
+from PySide6.QtCore import QPoint, QTimer, Qt, Signal
+from PySide6.QtWidgets import (
+    QApplication,
+    QFrame,
+    QGraphicsDropShadowEffect,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QProgressBar,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 
 class PetBubbleMenu(QWidget):
-    """卡哇伊桌面快捷气泡交互菜单。"""
+    """A compact customer-facing home panel anchored beside the pet."""
 
-    # 信号：动作指令 'touch' / 'feed' / 'chat' / 'checkin' / 'stats'
     action_triggered = Signal(str)
+    about_to_show = Signal()
+
+    CARE_BUTTONS = (
+        ("🍖", "投喂", "feed"),
+        ("🎾", "玩耍", "play"),
+        ("🫧", "清洁", "clean"),
+        ("🖐️", "摸摸", "touch"),
+        ("🌙", "休息", "rest"),
+    )
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-
+        self._recommended_action = "pet"
+        self.setObjectName("petQuickPanel")
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.Tool
             | Qt.WindowType.WindowStaysOnTopHint
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.resize(260, 60)
+        self.setMinimumWidth(390)
+        self.setMaximumWidth(430)
 
-        # 阴影效果
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(16)
+        shadow.setBlurRadius(24)
         shadow.setColor(Qt.GlobalColor.darkGray)
-        shadow.setOffset(0, 4)
+        shadow.setOffset(0, 6)
         self.setGraphicsEffect(shadow)
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(8)
+        card = QFrame(self)
+        card.setObjectName("petQuickCard")
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(12, 12, 12, 12)
+        outer.addWidget(card)
 
-        # 5 大快捷圆钮
-        buttons_info = [
-            ("🖐️", "摸摸", "touch"),
-            ("🍖", "喂食", "feed"),
-            ("💬", "聊天", "chat"),
-            ("🍵", "打卡", "checkin"),
-            ("📊", "状态", "stats"),
-        ]
+        root = QVBoxLayout(card)
+        root.setContentsMargins(18, 16, 18, 16)
+        root.setSpacing(11)
 
-        for emoji, tooltip, action_code in buttons_info:
-            btn = QPushButton(emoji, self)
-            btn.setToolTip(tooltip)
-            btn.setFixedSize(40, 40)
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #FFFFFF;
-                    border: 2px solid #FFB6C1;
-                    border-radius: 20px;
-                    font-size: 16px;
-                }
-                QPushButton:hover {
-                    background-color: #FFE4EC;
-                    border: 2.5px solid #FF4081;
-                }
-                QPushButton:pressed {
-                    background-color: #FFC0CB;
-                }
-            """)
-            btn.clicked.connect(lambda _, code=action_code: self._on_btn_clicked(code))
-            layout.addWidget(btn)
+        header = QHBoxLayout()
+        identity = QVBoxLayout()
+        identity.setSpacing(2)
+        self.name_label = QLabel("我的宠物")
+        self.name_label.setObjectName("petQuickName")
+        self.level_label = QLabel("Lv.1 · 初生期")
+        self.level_label.setObjectName("petQuickMeta")
+        identity.addWidget(self.name_label)
+        identity.addWidget(self.level_label)
+        self.presence_label = QLabel("在家")
+        self.presence_label.setObjectName("petQuickPresence")
+        self.presence_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header.addLayout(identity, 1)
+        header.addWidget(self.presence_label)
+        root.addLayout(header)
 
-        # 3 秒无操作自动关闭定时器
+        self.status_label = QLabel("状态良好，可以轻松互动")
+        self.status_label.setObjectName("petQuickStatus")
+        self.status_label.setWordWrap(True)
+        root.addWidget(self.status_label)
+
+        progress_row = QHBoxLayout()
+        self.daily_label = QLabel("今日照料 0 / 3")
+        self.daily_label.setObjectName("petQuickDaily")
+        self.daily_progress = QProgressBar()
+        self.daily_progress.setObjectName("petQuickProgress")
+        self.daily_progress.setRange(0, 3)
+        self.daily_progress.setValue(0)
+        self.daily_progress.setTextVisible(False)
+        progress_row.addWidget(self.daily_label)
+        progress_row.addWidget(self.daily_progress, 1)
+        root.addLayout(progress_row)
+
+        self.recommendation_button = QPushButton("现在建议：摸摸它")
+        self.recommendation_button.setObjectName("petQuickRecommendation")
+        self.recommendation_button.clicked.connect(self._run_recommendation)
+        root.addWidget(self.recommendation_button)
+
+        care_grid = QGridLayout()
+        care_grid.setHorizontalSpacing(7)
+        care_grid.setVerticalSpacing(7)
+        self.action_buttons: dict[str, QPushButton] = {}
+        for column, (emoji, label, action_code) in enumerate(self.CARE_BUTTONS):
+            button = QPushButton(f"{emoji}\n{label}")
+            button.setObjectName("petQuickCare")
+            button.setToolTip(label)
+            button.setMinimumSize(60, 54)
+            button.clicked.connect(
+                lambda _checked=False, code=action_code: self._on_btn_clicked(code)
+            )
+            care_grid.addWidget(button, 0, column)
+            self.action_buttons[action_code] = button
+        root.addLayout(care_grid)
+
+        secondary = QHBoxLayout()
+        for label, action_code in (
+            ("💬 聊天", "chat"),
+            ("🍵 健康打卡", "checkin"),
+            ("📊 完整状态", "stats"),
+        ):
+            button = QPushButton(label)
+            button.setObjectName("petQuickSecondary")
+            button.clicked.connect(
+                lambda _checked=False, code=action_code: self._on_btn_clicked(code)
+            )
+            secondary.addWidget(button)
+        root.addLayout(secondary)
+
+        self.hint_label = QLabel("点击完成常用照料；完整功能可从托盘菜单进入。")
+        self.hint_label.setObjectName("petQuickHint")
+        self.hint_label.setWordWrap(True)
+        root.addWidget(self.hint_label)
+
+        self.setStyleSheet(
+            "QFrame#petQuickCard { background: rgba(255,250,246,248); border: 1px solid #f0d8dd; "
+            "border-radius: 18px; }"
+            "QLabel#petQuickName { font-size: 18px; font-weight: 800; color: #263238; }"
+            "QLabel#petQuickMeta, QLabel#petQuickDaily, QLabel#petQuickHint { color: #667085; }"
+            "QLabel#petQuickPresence { background: #edf8f1; color: #256447; border-radius: 9px; "
+            "padding: 5px 9px; font-weight: 700; }"
+            "QLabel#petQuickStatus { background: white; border-radius: 10px; padding: 9px 11px; "
+            "color: #344054; }"
+            "QProgressBar#petQuickProgress { min-height: 8px; max-height: 8px; border: 0; "
+            "border-radius: 4px; background: #f0e7e8; }"
+            "QProgressBar#petQuickProgress::chunk { border-radius: 4px; background: #e66b84; }"
+            "QPushButton { border: 1px solid #ead4d9; border-radius: 10px; background: white; "
+            "padding: 7px 10px; color: #344054; }"
+            "QPushButton:hover { background: #fff0f3; border-color: #e7a9b5; }"
+            "QPushButton:disabled { color: #98a2b3; background: #f2f4f7; border-color: #eaecf0; }"
+            "QPushButton#petQuickRecommendation { min-height: 38px; background: #e66b84; color: white; "
+            "border: 0; font-weight: 800; text-align: left; padding-left: 14px; }"
+            "QPushButton#petQuickCare { font-weight: 700; }"
+            "QPushButton#petQuickSecondary { color: #475467; }"
+        )
+
         self._auto_close_timer = QTimer(self)
-        self._auto_close_timer.setInterval(3000)
+        self._auto_close_timer.setInterval(9000)
         self._auto_close_timer.setSingleShot(True)
         self._auto_close_timer.timeout.connect(self.hide)
 
+    def set_context(
+        self,
+        *,
+        pet_name: str,
+        level_text: str,
+        presence_text: str,
+        status_text: str,
+        recommendation_action: str | None,
+        recommendation_text: str,
+        recommendation_detail: str,
+        daily_count: int,
+        daily_goal: int,
+        can_care: bool,
+    ) -> None:
+        self.name_label.setText(pet_name)
+        self.level_label.setText(level_text)
+        self.presence_label.setText(presence_text)
+        self.status_label.setText(status_text)
+        self._recommended_action = recommendation_action or ""
+        self.recommendation_button.setText(f"现在建议：{recommendation_text}")
+        self.recommendation_button.setToolTip(recommendation_detail)
+        self.recommendation_button.setEnabled(bool(recommendation_action and can_care))
+        safe_goal = max(1, int(daily_goal))
+        safe_count = max(0, min(safe_goal, int(daily_count)))
+        self.daily_label.setText(f"今日照料 {safe_count} / {safe_goal}")
+        self.daily_progress.setRange(0, safe_goal)
+        self.daily_progress.setValue(safe_count)
+        for button in self.action_buttons.values():
+            button.setEnabled(can_care)
+        self.hint_label.setText(
+            recommendation_detail
+            if not can_care
+            else "点击即可完成常用照料；完整状态和更多功能在下方入口。"
+        )
+
     def popup_at(self, global_pos: QPoint) -> None:
-        """在坐标处优雅显示气泡菜单。"""
-        self.move(global_pos.x() - self.width() // 2, global_pos.y() - self.height() - 10)
+        self.about_to_show.emit()
+        self.adjustSize()
+        screen = QApplication.screenAt(global_pos) or QApplication.primaryScreen()
+        area = screen.availableGeometry() if screen is not None else None
+        x = global_pos.x() - self.width() // 2
+        y = global_pos.y() - self.height() - 10
+        if area is not None:
+            x = min(max(x, area.left()), area.right() - self.width() + 1)
+            if y < area.top():
+                y = min(area.bottom() - self.height() + 1, global_pos.y() + 10)
+        self.move(x, y)
         self.show()
         self.raise_()
         self.activateWindow()
         self._auto_close_timer.start()
+
+    def _run_recommendation(self) -> None:
+        if self._recommended_action:
+            self._on_btn_clicked(self._recommended_action)
 
     def _on_btn_clicked(self, action_code: str) -> None:
         self.action_triggered.emit(action_code)
