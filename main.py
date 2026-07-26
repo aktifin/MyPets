@@ -3,7 +3,7 @@
 
 职责范围：
 - 解析可选的 `--smoke-test-ms` 自动退出参数；
-- 调用 visit_app.run() 启动包含串门、好友、共同照料、提醒和消息功能的 Qt 应用；
+- 调用 tray_app.run() 启动包含优化系统托盘、串门、好友、共同照料、提醒和消息功能的 Qt 应用；
 - 不包含窗口、行为或配置业务逻辑。
 
 使用示例：
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import argparse
 
-from onepic_desktop_pet.visit_app import run
+from onepic_desktop_pet.tray_app import run
 
 
 def parse_args() -> argparse.Namespace:
