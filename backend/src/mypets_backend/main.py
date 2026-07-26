@@ -42,6 +42,7 @@ from .governed_asset_deployment_api import (
     admin_governed_asset_deployment_router,
     governed_asset_deployment_router,
 )
+from .growth_experience_api import growth_experience_router
 from .message_center_api import message_center_router
 from .messaging_api import messaging_router
 from .models import Account
@@ -104,9 +105,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "controlled pet asset production work orders, independently reviewed personal asset "
             "releases and per-pet rollback, rights evidence and immutable review history, revoked-"
             "asset device acknowledgements and operations follow-up, customer-ready onboarding, "
-            "daily care tasks, streaks and rate-limited proactive care, realtime cursor "
-            "notifications, external reminder providers, synchronization, pet asset publishing, "
-            "administrator governance, and console API."
+            "daily care tasks, streaks, growth goals, milestone memories and rate-limited proactive "
+            "care, realtime cursor notifications, external reminder providers, synchronization, "
+            "pet asset publishing, administrator governance, and console API."
         ),
     )
     app.state.settings = resolved
@@ -132,6 +133,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(governed_asset_deployment_router)
     app.include_router(asset_deployment_router)
     app.include_router(pet_care_router)
+    app.include_router(growth_experience_router)
     app.include_router(daily_care_router)
     app.include_router(social_router)
     app.include_router(visit_scene_router)
