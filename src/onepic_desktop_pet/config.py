@@ -50,6 +50,9 @@ class PetSettings:
     cloud_sync_interval_ms: int = 15000
     device_public_id: str = ""
 
+    # Incremented only when a materially new customer onboarding flow is completed.
+    desktop_experience_version: int = 0
+
 
 def user_data_dir() -> Path:
     """返回当前用户的 MyPets 可写数据目录。"""
@@ -105,7 +108,7 @@ def _validated(data: dict[str, Any]) -> PetSettings:
     settings.edge_hide_delay_ms = min(10000, max(100, int(settings.edge_hide_delay_ms)))
     settings.edge_animation_ms = min(2000, max(0, int(settings.edge_animation_ms)))
     settings.edge_visible_ratio = min(0.80, max(0.10, float(settings.edge_visible_ratio)))
-    if settings.edge_side not in {None, "left", "right"}:
+    if settings.edge_side not in {None, "left", "right", "top", "bottom"}:
         settings.edge_side = None
     if settings.edge_screen_name is not None:
         settings.edge_screen_name = str(settings.edge_screen_name).strip() or None
@@ -123,6 +126,7 @@ def _validated(data: dict[str, Any]) -> PetSettings:
     )
     device_public_id = str(settings.device_public_id).strip()
     settings.device_public_id = device_public_id if len(device_public_id) >= 8 else str(uuid4())
+    settings.desktop_experience_version = max(0, int(settings.desktop_experience_version))
     return settings
 
 
@@ -138,6 +142,7 @@ _PERSISTED_FIELDS = {
     "cloud_sync_enabled",
     "cloud_sync_interval_ms",
     "device_public_id",
+    "desktop_experience_version",
 }
 
 
@@ -176,6 +181,7 @@ def save_settings(settings: PetSettings, path: Path | None = None) -> Path:
         "cloud_sync_enabled": settings.cloud_sync_enabled,
         "cloud_sync_interval_ms": settings.cloud_sync_interval_ms,
         "device_public_id": settings.device_public_id,
+        "desktop_experience_version": settings.desktop_experience_version,
     }
     temporary.write_text(
         json.dumps(state, ensure_ascii=False, indent=2) + "\n",
