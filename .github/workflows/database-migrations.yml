@@ -41,7 +41,7 @@ jobs:
           rm -f /tmp/mypets-migration-fresh.sqlite3
           cd backend
           alembic upgrade head
-          alembic current | grep "20260726_0001 (head)"
+          alembic current | grep "001_initial_schema (head)"
           alembic check
           python - <<'PY'
           import os
@@ -88,7 +88,7 @@ jobs:
           cd backend
           python scripts/check_existing_schema.py
           alembic stamp head
-          alembic current | grep "20260726_0001 (head)"
+          alembic current | grep "001_initial_schema (head)"
           alembic check
 
   postgres-migrations:
@@ -128,7 +128,7 @@ jobs:
         run: |
           cd backend
           alembic upgrade head
-          alembic current | grep "20260726_0001 (head)"
+          alembic current | grep "001_initial_schema (head)"
           alembic check
           python - <<'PY'
           import os
