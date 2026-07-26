@@ -47,7 +47,7 @@ jobs:
 
       - name: Commit generated baseline
         run: |
-          if git diff --quiet -- backend/alembic/versions; then
+          if [ -z "$(git status --porcelain -- backend/alembic/versions)" ]; then
             echo "No generated migration changes."
             exit 0
           fi
