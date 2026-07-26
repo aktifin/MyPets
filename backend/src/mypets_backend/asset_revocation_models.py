@@ -1,4 +1,4 @@
-"""Per-device acknowledgements for revoked personal pet asset cleanup."""
+"""Per-device acknowledgements and administrator follow-up for revoked pet assets."""
 
 from __future__ import annotations
 
@@ -67,3 +67,53 @@ class PetAssetRevocationAcknowledgement(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
+
+
+class PetAssetRevocationFollowUp(Base):
+    """Immutable administrator follow-up history for an expected device cleanup."""
+
+    __tablename__ = "pet_asset_revocation_follow_ups"
+    __table_args__ = (
+        Index(
+            "ix_pet_asset_revocation_follow_up_target",
+            "right_id",
+            "release_id",
+            "device_id",
+            "created_at",
+        ),
+        Index(
+            "ix_pet_asset_revocation_follow_up_status",
+            "status",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    right_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("pet_asset_rights.id", ondelete="RESTRICT"), nullable=False
+    )
+    release_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("pet_personal_asset_releases.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    pet_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("pets.id", ondelete="RESTRICT"), nullable=False
+    )
+    account_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=False
+    )
+    device_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("devices.id", ondelete="RESTRICT"), nullable=False
+    )
+    acknowledgement_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("pet_asset_revocation_acknowledgements.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+    actor_account_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("accounts.id", ondelete="RESTRICT"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

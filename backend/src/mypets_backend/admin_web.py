@@ -47,6 +47,7 @@ def admin_console() -> HTMLResponse:
         '<script src="/admin/asset-production.js" defer></script>',
         '<script src="/admin/governance-deployment.js" defer></script>',
         '<script src="/admin/rights-evidence.js" defer></script>',
+        '<script src="/admin/revocation-operations.js" defer></script>',
     )
     for script in scripts:
         if script not in html:
@@ -83,6 +84,11 @@ def admin_governance_deployment_script() -> FileResponse:
 @admin_web_router.get("/admin/rights-evidence.js")
 def admin_rights_evidence_script() -> FileResponse:
     return _asset("rights-evidence.js", "text/javascript; charset=utf-8")
+
+
+@admin_web_router.get("/admin/revocation-operations.js")
+def admin_revocation_operations_script() -> FileResponse:
+    return _asset("revocation-operations.js", "text/javascript; charset=utf-8")
 
 
 @admin_web_router.get("/admin/governance-deployment.css")
