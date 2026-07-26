@@ -123,7 +123,7 @@ function renderRevocationOperations() {
       return `<div class="revocation-group-card">
         <div class="revocation-group-main"><div><strong>${escapeHtml(item.pet_name)}</strong><small>撤销 ${formatDate(item.revoked_at)} · Release <code>${escapeHtml(item.release_id)}</code></small></div>${item.attention_device_count ? revocationBadge("attention", `${item.attention_device_count} 台需跟进`) : revocationBadge("resolved", "设备已闭环")}</div>
         <p>${escapeHtml(item.revoked_reason)}</p>
-        <div class="revocation-progress"><span style="width:${rate}%"></span></div>
+        <progress class="revocation-progress" value="${rate}" max="100">${rate.toFixed(1)}%</progress>
         <div class="revocation-group-metrics"><span>完成 ${item.completed_device_count}/${item.expected_device_count}</span><span>未回执 ${item.pending_device_count}</span><span>失败 ${item.failed_device_count}</span><span>处理中 ${item.investigating_device_count}</span><span>${rate.toFixed(1)}%</span></div>
       </div>`;
     }).join("")
