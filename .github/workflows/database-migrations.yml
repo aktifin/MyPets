@@ -50,11 +50,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
-          file="backend/alembic/versions/20260726_0001_initial_schema.py"
-          if [ ! -f "$file" ]; then
-            echo "No generated migration file to persist."
-            exit 0
+          mapfile -t files < <(find backend/alembic/versions -maxdepth 1 -type f -name '*.py' -print)
+          if [ "${#files[@]}" -ne 1 ]; then
+            echo "Expected exactly one generated migration, found ${#files[@]}."
+            printf '%s\n' "${files[@]}"
+            exit 1
           fi
+          file="${files[0]}"
+          echo "Persisting $file"
           content="$(base64 -w 0 "$file")"
           gh api \
             --method PUT \
