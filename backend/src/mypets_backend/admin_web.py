@@ -40,6 +40,7 @@ def admin_console() -> HTMLResponse:
     scripts = (
         '<script src="/admin/asset-submissions.js" defer></script>',
         '<script src="/admin/asset-production.js" defer></script>',
+        '<script src="/admin/governance-deployment.js" defer></script>',
     )
     for script in scripts:
         if script not in html:
@@ -66,6 +67,11 @@ def admin_asset_submission_script() -> FileResponse:
 @admin_web_router.get("/admin/asset-production.js")
 def admin_asset_production_script() -> FileResponse:
     return _asset("asset-production.js", "text/javascript; charset=utf-8")
+
+
+@admin_web_router.get("/admin/governance-deployment.js")
+def admin_governance_deployment_script() -> FileResponse:
+    return _asset("governance-deployment.js", "text/javascript; charset=utf-8")
 
 
 @admin_web_router.get("/admin/styles.css")
