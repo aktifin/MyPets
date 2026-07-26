@@ -59,6 +59,10 @@ def _required_permission(method: str, path: str) -> str:
             return "edit"
         if path == "/api/v1/admin/governance/rights":
             return "edit"
+        if re.fullmatch(
+            r"/api/v1/admin/governance/rights/[^/]+/(terms|evidence)", path
+        ):
+            return "edit"
         if re.fullmatch(r"/api/v1/admin/governance/rights/[^/]+/verify", path):
             return "review"
         if path == "/api/v1/admin/governance/rights/revoke" or re.fullmatch(
