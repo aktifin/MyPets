@@ -31,41 +31,34 @@ jobs:
       - name: Install backend
         run: python -m pip install -e "backend[dev]" >/dev/null
 
-      - name: Generate deterministic initial revision
+      - name: Regenerate deterministic initial revision
         env:
           MYPETS_DATABASE_URL: sqlite:////tmp/mypets-alembic-empty.sqlite3
         run: |
-          mapfile -t existing < <(find backend/alembic/versions -maxdepth 1 -type f -name '*.py' ! -name '__init__.py' -print 2>/dev/null || true)
-          if [ "${#existing[@]}" -gt 0 ]; then
-            echo "A committed Alembic revision already exists:"
-            printf '%s\n' "${existing[@]}"
-            exit 0
-          fi
+          rm -rf backend/alembic/versions
           mkdir -p backend/alembic/versions
           cd backend
           alembic revision --autogenerate --rev-id 20260726_0001 -m "initial schema" >/tmp/alembic-generate.log
           python -m compileall -q alembic
           grep -q "op.create_table" alembic/versions/*.py
 
-      - name: Persist generated baseline
+      - name: Commit generated baseline
         env:
           HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
-          mapfile -t files < <(find backend/alembic/versions -maxdepth 1 -type f -name '*.py' ! -name '__init__.py' -print)
+          mapfile -t files < <(find backend/alembic/versions -maxdepth 1 -type f -name '*.py' -print)
           if [ "${#files[@]}" -ne 1 ]; then
-            echo "Expected exactly one migration, found ${#files[@]}."
+            echo "Expected exactly one generated migration, found ${#files[@]}."
             printf '%s\n' "${files[@]}"
             exit 1
           fi
-          file="${files[0]}"
-          if git ls-files --error-unmatch "$file" >/dev/null 2>&1; then
-            echo "$file is already committed."
-            exit 0
-          fi
-          echo "Committing $file"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f "$file"
+          git add -A -f backend/alembic/versions
+          if git diff --cached --quiet; then
+            echo "Generated revision already matches the committed baseline."
+            exit 0
+          fi
           git diff --cached --stat
           git commit -m "Add generated Alembic initial schema"
           git push origin "HEAD:$HEAD_BRANCH"
