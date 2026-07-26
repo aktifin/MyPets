@@ -41,7 +41,7 @@ jobs:
           rm -f /tmp/mypets-migration-fresh.sqlite3
           cd backend
           alembic upgrade head
-          alembic current | grep "001_initial_schema (head)"
+          alembic current | grep "002_asset_revocation_ack (head)"
           alembic check
           python - <<'PY'
           import os
@@ -49,6 +49,16 @@ jobs:
 
           tables = set(inspect(create_engine(os.environ["MYPETS_DATABASE_URL"])).get_table_names())
           assert "alembic_version" in tables
+          assert "pet_asset_revocation_acknowledgements" in tables
+          assert len(tables - {"alembic_version"}) == 36, sorted(tables)
+          PY
+          alembic downgrade 001_initial_schema
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, inspect
+
+          tables = set(inspect(create_engine(os.environ["MYPETS_DATABASE_URL"])).get_table_names())
+          assert "pet_asset_revocation_acknowledgements" not in tables
           assert len(tables - {"alembic_version"}) == 35, sorted(tables)
           PY
           alembic downgrade base
@@ -74,6 +84,7 @@ jobs:
           from mypets_backend.database import Base
           from mypets_backend import asset_deployment_models  # noqa: F401
           from mypets_backend import asset_production_models  # noqa: F401
+          from mypets_backend import asset_revocation_models  # noqa: F401
           from mypets_backend import asset_submission_models  # noqa: F401
           from mypets_backend import governance_models  # noqa: F401
           from mypets_backend import models  # noqa: F401
@@ -88,7 +99,7 @@ jobs:
           cd backend
           python scripts/check_existing_schema.py
           alembic stamp head
-          alembic current | grep "001_initial_schema (head)"
+          alembic current | grep "002_asset_revocation_ack (head)"
           alembic check
 
   postgres-migrations:
@@ -128,7 +139,7 @@ jobs:
         run: |
           cd backend
           alembic upgrade head
-          alembic current | grep "001_initial_schema (head)"
+          alembic current | grep "002_asset_revocation_ack (head)"
           alembic check
           python - <<'PY'
           import os
@@ -136,6 +147,16 @@ jobs:
 
           tables = set(inspect(create_engine(os.environ["MYPETS_DATABASE_URL"])).get_table_names())
           assert "alembic_version" in tables
+          assert "pet_asset_revocation_acknowledgements" in tables
+          assert len(tables - {"alembic_version"}) == 36, sorted(tables)
+          PY
+          alembic downgrade 001_initial_schema
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, inspect
+
+          tables = set(inspect(create_engine(os.environ["MYPETS_DATABASE_URL"])).get_table_names())
+          assert "pet_asset_revocation_acknowledgements" not in tables
           assert len(tables - {"alembic_version"}) == 35, sorted(tables)
           PY
           alembic downgrade base
