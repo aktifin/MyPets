@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 from mypets_backend.database import Base
 from mypets_backend import asset_deployment_models  # noqa: F401,E402
 from mypets_backend import asset_production_models  # noqa: F401,E402
+from mypets_backend import asset_revocation_models  # noqa: F401,E402
 from mypets_backend import asset_submission_models  # noqa: F401,E402
 from mypets_backend import governance_models  # noqa: F401,E402
 from mypets_backend import models  # noqa: F401,E402
