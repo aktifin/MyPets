@@ -13,6 +13,7 @@ os.environ.setdefault("ONEPIC_USE_DEMO_ASSETS", "1")
 import pytest
 from PIL import Image
 
+from onepic_desktop_pet import asset_download as _asset_download  # noqa: F401
 from onepic_desktop_pet.asset_revocation import (
     AssetRevocationTaskStore,
     is_identity_revoked,
