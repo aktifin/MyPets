@@ -160,7 +160,7 @@ class DesktopExperienceApplication(TrayDesktopPetApplication):
             if remaining > 0:
                 label = str(raw.get("label") or CARE_ACTION_LABELS.get(action, "照料"))
                 return False, f"{label}刚刚完成，{remaining} 秒后可再次操作。"
-            return bool(raw.get("available", True)) or remaining <= 0, str(
+            return bool(raw.get("available", True)), str(
                 raw.get("reason") or "现在可以操作。"
             )
         return True, "现在可以操作。"
