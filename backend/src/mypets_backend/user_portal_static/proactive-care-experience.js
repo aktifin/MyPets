@@ -78,6 +78,7 @@ function installProactiveCareExperience() {
             <option value="30">30 分钟</option>
             <option value="60">1 小时</option>
             <option value="120">2 小时</option>
+            <option value="180">3 小时</option>
             <option value="240">4 小时</option>
             <option value="480">8 小时</option>
           </select>
@@ -106,6 +107,18 @@ function installProactiveCareExperience() {
   }
 }
 
+function ensureProactiveSelectValue(select, rawValue, suffix) {
+  if (!select) return;
+  const value = String(rawValue);
+  if (![...select.options].some((option) => option.value === value)) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = `${value} ${suffix}`;
+    select.append(option);
+  }
+  select.value = value;
+}
+
 function renderProactiveCarePreferences() {
   const value = portalProactiveCareState.preferences;
   if (!value || !$("proactive-care-settings-form")) return;
@@ -116,8 +129,8 @@ function renderProactiveCarePreferences() {
   $("proactive-quiet-enabled").checked = Boolean(value.quiet_hours_enabled);
   $("proactive-quiet-start").value = value.quiet_start || "22:00";
   $("proactive-quiet-end").value = value.quiet_end || "08:00";
-  $("proactive-min-interval").value = String(value.min_interval_minutes || 120);
-  $("proactive-max-daily").value = String(value.max_daily_notices || 3);
+  ensureProactiveSelectValue($("proactive-min-interval"), value.min_interval_minutes || 120, "分钟");
+  ensureProactiveSelectValue($("proactive-max-daily"), value.max_daily_notices || 3, "次");
   $("proactive-care-setting-status").textContent = value.enabled ? "已开启" : "已关闭";
   syncProactivePreferenceControls();
 }
