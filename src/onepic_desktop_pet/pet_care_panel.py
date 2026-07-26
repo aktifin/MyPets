@@ -1,16 +1,13 @@
-"""紧凑型桌面照料与日常互动状态面板模块。
-
-本模块提供权威状态展示与一键照料请求控制，并在操作成功时
-自动记录互动履历至本地 SQLite 数据库。
-"""
+"""紧凑型桌面照料、成长目标与日常互动状态面板。"""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Mapping, Sequence
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QDialog,
+    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -26,11 +23,7 @@ if TYPE_CHECKING:
 
 
 class PetCarePanel(QDialog):
-    """显示宠物状态与照料操作控制面板。
-
-    面板不直接在本地篡改 PetProfile 状态，按钮在等待服务器响应时禁用，
-    操作成功后更新 UI 并记录日常互动履历。
-    """
+    """显示权威状态、一键照料、下一成长目标和可回看的成长纪念。"""
 
     action_requested = Signal(str)
 
@@ -60,19 +53,42 @@ class PetCarePanel(QDialog):
         self.store = store
         self.pet_id = pet_id
         self._last_action: tuple[str, str] | None = None
+        self._memory_widgets: list[QFrame] = []
 
-        self.setWindowTitle("宠物状态与照料")
+        self.setWindowTitle("宠物状态、成长与照料")
         self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
-        self.setMinimumWidth(390)
+        self.setMinimumWidth(430)
 
         root = QVBoxLayout(self)
+        root.setSpacing(10)
         self.name_label = QLabel("尚未选择宠物")
         self.name_label.setStyleSheet("font-size: 18px; font-weight: 700;")
         self.growth_label = QLabel("—")
         self.growth_label.setStyleSheet("color: #667085;")
         root.addWidget(self.name_label)
         root.addWidget(self.growth_label)
+
+        self.growth_goal_label = QLabel("正在读取下一步成长目标…")
+        self.growth_goal_label.setWordWrap(True)
+        self.growth_goal_label.setStyleSheet(
+            "background: #fff7ed; border: 1px solid #fed7aa; border-radius: 9px; "
+            "padding: 9px 11px; color: #7c4a1d;"
+        )
+        root.addWidget(self.growth_goal_label)
+
+        growth_grid = QGridLayout()
+        growth_grid.addWidget(QLabel("成长等级"), 0, 0)
+        self.growth_progress = QProgressBar()
+        self.growth_progress.setRange(0, 100)
+        self.growth_progress.setFormat("%v / %m")
+        growth_grid.addWidget(self.growth_progress, 0, 1)
+        growth_grid.addWidget(QLabel("羁绊等级"), 1, 0)
+        self.bond_progress = QProgressBar()
+        self.bond_progress.setRange(0, 80)
+        self.bond_progress.setFormat("%v / %m")
+        growth_grid.addWidget(self.bond_progress, 1, 1)
+        root.addLayout(growth_grid)
 
         stats_layout = QGridLayout()
         self.stat_bars: dict[str, QProgressBar] = {}
@@ -95,6 +111,18 @@ class PetCarePanel(QDialog):
             actions.addWidget(button)
             self.action_buttons[action] = button
         root.addLayout(actions)
+
+        memory_heading = QHBoxLayout()
+        memory_heading.addWidget(QLabel("成长纪念册"))
+        memory_hint = QLabel("最近 5 条")
+        memory_hint.setStyleSheet("color: #98a2b3;")
+        memory_heading.addStretch(1)
+        memory_heading.addWidget(memory_hint)
+        root.addLayout(memory_heading)
+        self.memory_layout = QVBoxLayout()
+        self.memory_layout.setSpacing(6)
+        root.addLayout(self.memory_layout)
+        self._render_memories([])
 
         self.status_label = QLabel("状态来自本地同步缓存，操作成功后由服务端更新。")
         self.status_label.setWordWrap(True)
@@ -120,13 +148,91 @@ class PetCarePanel(QDialog):
             "adult": "成熟期",
             "bond": "羁绊期",
         }
+        stage_value = getattr(stats.growth_stage, "value", str(stats.growth_stage))
         self.growth_label.setText(
-            f"{stage_names.get(stats.growth_stage.value, stats.growth_stage.value)} · "
-            f"等级 {stats.growth_level} · 成长经验 {stats.growth_exp} · "
-            f"羁绊 {stats.bond_level} 级"
+            f"{stage_names.get(stage_value, stage_value)} · "
+            f"成长 Lv.{stats.growth_level} · 羁绊 Lv.{stats.bond_level}"
         )
         for field, bar in self.stat_bars.items():
             bar.setValue(int(getattr(stats, field)))
+
+    def set_growth_experience(
+        self,
+        progress: Mapping[str, object] | None,
+        memories: Sequence[Mapping[str, object]] | None,
+    ) -> None:
+        value = dict(progress or {})
+        if value:
+            headline = str(value.get("headline") or "继续陪伴即可成长")
+            detail = str(value.get("detail") or "不同照料方式都会积累成长经验。")
+            estimated = max(0, int(value.get("estimated_actions") or 0))
+            estimate_text = f" 按玩耍积累速度约 {estimated} 次。" if estimated else ""
+            self.growth_goal_label.setText(f"{headline}。{detail}{estimate_text}")
+            growth_target = max(1, int(value.get("growth_level_target") or 100))
+            self.growth_progress.setRange(0, growth_target)
+            self.growth_progress.setValue(
+                max(0, min(growth_target, int(value.get("growth_level_current") or 0)))
+            )
+            self.growth_progress.setFormat(
+                f"%v / %m · 还差 {max(0, int(value.get('growth_exp_remaining') or 0))}"
+            )
+            bond_target = max(1, int(value.get("bond_level_target") or 80))
+            self.bond_progress.setRange(0, bond_target)
+            self.bond_progress.setValue(
+                max(0, min(bond_target, int(value.get("bond_level_current") or 0)))
+            )
+            self.bond_progress.setFormat(
+                f"%v / %m · 还差 {max(0, int(value.get('bond_exp_remaining') or 0))}"
+            )
+        else:
+            self.growth_goal_label.setText("成长目标暂时不可用，照料功能仍可正常使用。")
+            self.growth_progress.setValue(0)
+            self.bond_progress.setValue(0)
+        self._render_memories(list(memories or []))
+
+    def _render_memories(self, memories: list[Mapping[str, object]]) -> None:
+        for widget in self._memory_widgets:
+            self.memory_layout.removeWidget(widget)
+            widget.deleteLater()
+        self._memory_widgets.clear()
+
+        values = memories[:5]
+        if not values:
+            values = [{
+                "icon": "🐾",
+                "title": "还没有成长纪念",
+                "detail": "升级、羁绊和成长阶段变化会显示在这里。",
+                "source_label": "",
+            }]
+        for memory in values:
+            frame = QFrame()
+            frame.setStyleSheet(
+                "QFrame { background: #f8fafc; border: 1px solid #eaecf0; "
+                "border-radius: 8px; padding: 5px; }"
+            )
+            row = QHBoxLayout(frame)
+            row.setContentsMargins(8, 6, 8, 6)
+            icon = QLabel(str(memory.get("icon") or "🐾"))
+            icon.setFixedWidth(26)
+            copy = QVBoxLayout()
+            title = QLabel(str(memory.get("title") or "成长纪念"))
+            title.setStyleSheet("font-weight: 700; color: #344054;")
+            detail = QLabel(str(memory.get("detail") or ""))
+            detail.setWordWrap(True)
+            detail.setStyleSheet("color: #667085;")
+            source = str(memory.get("source_label") or "")
+            occurred = memory.get("occurred_at")
+            meta_text = " · ".join(part for part in (str(occurred or "")[:10], source) if part)
+            meta = QLabel(meta_text)
+            meta.setStyleSheet("color: #98a2b3; font-size: 11px;")
+            copy.addWidget(title)
+            copy.addWidget(detail)
+            if meta_text:
+                copy.addWidget(meta)
+            row.addWidget(icon)
+            row.addLayout(copy, 1)
+            self.memory_layout.addWidget(frame)
+            self._memory_widgets.append(frame)
 
     def set_busy(self, busy: bool, message: str = "") -> None:
         for button in self.action_buttons.values():
