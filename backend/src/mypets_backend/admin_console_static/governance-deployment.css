@@ -1,0 +1,28 @@
+.badge.none { background: #eef2f8; color: #59667a; }
+.badge.pending { background: #fff1c7; color: #8a5a00; }
+.badge.verified { background: #dff7e8; color: #177445; }
+.badge.revoked, .badge.rejected { background: #ffe3e1; color: #a3312d; }
+
+.inline-actions { margin: 0; align-items: center; }
+.inline-actions select { min-width: 150px; }
+.check-row { display: flex; grid-template-columns: auto 1fr; align-items: center; gap: 9px; font-weight: 600; }
+.check-row input { width: auto; }
+.check-grid { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.check-pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 5px 9px; font-size: .74rem; font-weight: 700; }
+.check-pill.passed { background: #e3f5ea; color: #1d6a42; }
+.check-pill.failed { background: #ffe3e1; color: #a3312d; }
+
+#assetGovernanceView .review-card code,
+#assetGovernanceView .deployment-card code { font-size: .72rem; }
+#assetGovernanceView .review-card > .button-row { align-content: flex-start; justify-content: flex-end; margin-top: 0; }
+#assetGovernanceView .panel-heading select { width: auto; min-width: 150px; }
+
+@media (max-width: 980px) {
+  .sidebar nav { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
+}
+
+@media (max-width: 620px) {
+  .inline-actions { width: 100%; }
+  .inline-actions select, #assetGovernanceView .panel-heading select { width: 100%; }
+  #assetGovernanceView .panel-heading { align-items: stretch; flex-direction: column; }
+}
