@@ -14,6 +14,8 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     assert "/portal/daily-care-experience.js" in page.text
     assert "/portal/proactive-care-experience.css" in page.text
     assert "/portal/proactive-care-experience.js" in page.text
+    assert "/portal/growth-experience.css" in page.text
+    assert "/portal/growth-experience.js" in page.text
 
     script = client.get("/portal/customer-experience.js")
     styles = client.get("/portal/customer-experience.css")
@@ -21,6 +23,8 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     daily_styles = client.get("/portal/daily-care-experience.css")
     proactive_script = client.get("/portal/proactive-care-experience.js")
     proactive_styles = client.get("/portal/proactive-care-experience.css")
+    growth_script = client.get("/portal/growth-experience.js")
+    growth_styles = client.get("/portal/growth-experience.css")
     for response in (
         script,
         styles,
@@ -28,6 +32,8 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
         daily_styles,
         proactive_script,
         proactive_styles,
+        growth_script,
+        growth_styles,
     ):
         assert response.status_code == 200
         assert response.headers["cache-control"] == "no-store"
@@ -56,9 +62,17 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     assert "不会替你自动操作" in proactive_script.text
     assert "ensureProactiveSelectValue" in proactive_script.text
 
+    assert "/growth-experience?limit=30" in growth_script.text
+    assert "下一步成长目标" in growth_script.text
+    assert "成长纪念册" in growth_script.text
+    assert "next_stage_target_level" in growth_script.text
+    assert "stage_progress_percent" in growth_script.text
+    assert "growth_exp_remaining" in growth_script.text
+
     assert "style=" not in script.text
     assert "style=" not in daily_script.text
     assert "style=" not in proactive_script.text
+    assert "style=" not in growth_script.text
 
 
 def test_pet_presets_hide_internal_version_selection_from_customers(client: TestClient) -> None:

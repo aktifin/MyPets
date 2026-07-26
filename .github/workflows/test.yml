@@ -55,6 +55,7 @@ jobs:
           tests/test_pet_assets.py
           tests/test_asset_download.py
           tests/test_desktop_experience.py
+          tests/test_growth_experience.py
           tests/test_tray_menu.py
 
       - name: Compile desktop package
@@ -112,6 +113,7 @@ jobs:
           && node --check src/mypets_backend/user_portal_static/customer-experience.js
           && node --check src/mypets_backend/user_portal_static/daily-care-experience.js
           && node --check src/mypets_backend/user_portal_static/proactive-care-experience.js
+          && node --check src/mypets_backend/user_portal_static/growth-experience.js
 
       - name: Compile backend package
         run: python -m compileall -q src
