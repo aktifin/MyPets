@@ -15,6 +15,7 @@ from .admin_api import _audit, require_admin
 from .api import get_session
 from .asset_deployment_models import PetPersonalAssetRelease
 from .asset_production_models import PetAssetProductionArtifact
+from .asset_submission_models import UserPetAssetSubmission
 from .governance_history import aware, record_right_history, require_validity_window, validity_state
 from .governance_models import PetAssetRight, PetAssetRightEvidence
 from .models import AccountPetRelation
@@ -149,6 +150,49 @@ def _view(session: Session, right: PetAssetRight) -> EnhancedAssetRightView:
     )
 
 
+def _link_approved_submission_evidence(
+    session: Session,
+    *,
+    artifact: PetAssetProductionArtifact,
+    right: PetAssetRight,
+    principal: Principal,
+) -> None:
+    submission = session.get(UserPetAssetSubmission, artifact.submission_id)
+    if (
+        submission is None
+        or submission.status != "approved"
+        or submission.rights_confirmed_at is None
+        or not submission.image_object_key
+        or not submission.image_sha256
+        or submission.image_size <= 0
+    ):
+        return
+    evidence = PetAssetRightEvidence(
+        id=str(uuid4()),
+        right_id=right.id,
+        original_filename=submission.original_filename,
+        media_type=submission.image_media_type,
+        object_key=submission.image_object_key,
+        sha256=submission.image_sha256,
+        size_bytes=submission.image_size,
+        uploaded_by_account_id=principal.account_id,
+    )
+    session.add(evidence)
+    session.flush()
+    record_right_history(
+        session,
+        right=right,
+        principal=principal,
+        event_type="source_evidence_linked",
+        comment=submission.original_filename,
+        details={
+            "submission_id": submission.id,
+            "evidence_id": evidence.id,
+            "sha256": evidence.sha256,
+        },
+    )
+
+
 @rights_enhanced_router.get("/rights", response_model=list[EnhancedAssetRightView])
 def list_asset_rights_enhanced(
     _principal: Annotated[Principal, Depends(require_admin)],
@@ -180,7 +224,7 @@ def declare_asset_right_enhanced(
     principal: Annotated[Principal, Depends(require_admin)],
     session: Annotated[Session, Depends(get_session)],
 ) -> EnhancedAssetRightView:
-    _artifact_or_404(session, body.artifact_id)
+    artifact = _artifact_or_404(session, body.artifact_id)
     latest = _latest_right(session, body.artifact_id)
     if latest is not None and latest.status in {"pending", "verified"}:
         raise HTTPException(status_code=409, detail="该制作产物已有有效或待复核的版权存证")
@@ -213,6 +257,12 @@ def declare_asset_right_enhanced(
             "valid_from": aware(right.valid_from).isoformat() if right.valid_from else None,
             "valid_until": aware(right.valid_until).isoformat() if right.valid_until else None,
         },
+    )
+    _link_approved_submission_evidence(
+        session,
+        artifact=artifact,
+        right=right,
+        principal=principal,
     )
     _audit(
         session,
