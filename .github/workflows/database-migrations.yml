@@ -45,14 +45,20 @@ jobs:
           python -m compileall alembic
           grep -R "op.create_table" alembic/versions/*.py
 
-      - name: Commit generated baseline
+      - name: Persist generated baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
-          if [ -z "$(git status --porcelain -- backend/alembic/versions)" ]; then
-            echo "No generated migration changes."
+          file="backend/alembic/versions/20260726_0001_initial_schema.py"
+          if [ ! -f "$file" ]; then
+            echo "No generated migration file to persist."
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add backend/alembic/versions
-          git commit -m "Add generated Alembic initial schema"
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          content="$(base64 -w 0 "$file")"
+          gh api \
+            --method PUT \
+            "repos/${{ github.repository }}/contents/$file" \
+            -f message="Add generated Alembic initial schema" \
+            -f content="$content" \
+            -f branch="$HEAD_BRANCH"
