@@ -29,39 +29,43 @@ jobs:
           cache-dependency-path: backend/pyproject.toml
 
       - name: Install backend
-        run: python -m pip install -e "backend[dev]"
+        run: python -m pip install -e "backend[dev]" >/dev/null
 
       - name: Generate deterministic initial revision
         env:
           MYPETS_DATABASE_URL: sqlite:////tmp/mypets-alembic-empty.sqlite3
         run: |
-          if compgen -G "backend/alembic/versions/*.py" > /dev/null; then
-            echo "A committed Alembic revision already exists."
+          mapfile -t existing < <(find backend/alembic/versions -maxdepth 1 -type f -name '*.py' ! -name '__init__.py' -print 2>/dev/null || true)
+          if [ "${#existing[@]}" -gt 0 ]; then
+            echo "A committed Alembic revision already exists:"
+            printf '%s\n' "${existing[@]}"
             exit 0
           fi
           mkdir -p backend/alembic/versions
           cd backend
-          alembic revision --autogenerate --rev-id 20260726_0001 -m "initial schema"
-          python -m compileall alembic
-          grep -R "op.create_table" alembic/versions/*.py
+          alembic revision --autogenerate --rev-id 20260726_0001 -m "initial schema" >/tmp/alembic-generate.log
+          python -m compileall -q alembic
+          grep -q "op.create_table" alembic/versions/*.py
 
       - name: Persist generated baseline
         env:
-          GH_TOKEN: ${{ github.token }}
           HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
-          mapfile -t files < <(find backend/alembic/versions -maxdepth 1 -type f -name '*.py' -print)
+          mapfile -t files < <(find backend/alembic/versions -maxdepth 1 -type f -name '*.py' ! -name '__init__.py' -print)
           if [ "${#files[@]}" -ne 1 ]; then
-            echo "Expected exactly one generated migration, found ${#files[@]}."
+            echo "Expected exactly one migration, found ${#files[@]}."
             printf '%s\n' "${files[@]}"
             exit 1
           fi
           file="${files[0]}"
-          echo "Persisting $file"
-          content="$(base64 -w 0 "$file")"
-          gh api \
-            --method PUT \
-            "repos/${{ github.repository }}/contents/$file" \
-            -f message="Add generated Alembic initial schema" \
-            -f content="$content" \
-            -f branch="$HEAD_BRANCH"
+          if git ls-files --error-unmatch "$file" >/dev/null 2>&1; then
+            echo "$file is already committed."
+            exit 0
+          fi
+          echo "Committing $file"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f "$file"
+          git diff --cached --stat
+          git commit -m "Add generated Alembic initial schema"
+          git push origin "HEAD:$HEAD_BRANCH"
