@@ -1,4 +1,4 @@
-"""Desktop application lifecycle, cloud sync, pet care, messaging, and assets."""
+"""桌面应用生命周期、云端同步、宠物照料、消息与资源管理。"""
 
 from __future__ import annotations
 
@@ -676,12 +676,14 @@ class DesktopPetApplication:
     def _on_pet_created(self, name: str, template_id: str) -> None:
         pet_id = f"local_pet_{int(datetime.now().timestamp())}"
         identity = PetIdentity(
-            template_id=template_id,
-            identity_version="v1",
+            pet_id=pet_id,
             name=name,
+            template_id=template_id,
+            template_version="1.0.0",
+            identity_version="v1",
             primary_owner_account_id=LOCAL_ACCOUNT_ID,
         )
-        profile = PetProfile(identity=identity, pet_id=pet_id, asset_version="v1")
+        profile = PetProfile(identity=identity, asset_version="v1")
         self.local_store.save_pet(profile)
         self.local_store.save_account_relation(
             AccountPetRelation(

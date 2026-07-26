@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 
 & "$PSScriptRoot\check_environment.ps1"
@@ -14,7 +14,8 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) {
 
 & ".venv\Scripts\python.exe" -m pip install --upgrade pip
 & ".venv\Scripts\python.exe" -m pip install -e ".[dev]"
-Write-Host "[OnePic] 项目环境已经安装到 .venv。"
+& ".venv\Scripts\python.exe" -m pip install -e "./backend[dev]"
+Write-Host "[OnePic] 项目与后端环境已经安装到 .venv。"
 
 
 
