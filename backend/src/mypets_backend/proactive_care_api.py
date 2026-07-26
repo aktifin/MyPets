@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .api import get_principal, get_session
-from .models import AccountPetRelation, Pet, SyncEvent
+from .models import SyncEvent
 from .proactive_care import (
     DEFAULT_PREFERENCES,
     build_proactive_candidates,
@@ -221,6 +221,47 @@ def _parse_datetime(value: object) -> datetime | None:
     return _aware(parsed).astimezone(UTC)
 
 
+def _active_notice_for_surface(
+    events: list[SyncEvent],
+    *,
+    surface: str,
+    candidate_keys: set[str],
+    now: datetime,
+) -> ProactiveCareNoticeView | None:
+    """Restore one unhandled notice after a refresh without counting a new delivery."""
+
+    latest_ack_sequence: dict[str, int] = {}
+    for event in events:
+        if event.event_type != ACK_EVENT:
+            continue
+        key = str(_payload(event).get("notice_key") or "")
+        if key and key not in latest_ack_sequence:
+            latest_ack_sequence[key] = int(event.sequence)
+
+    for event in events:
+        if event.event_type != DELIVERED_EVENT:
+            continue
+        payload = _payload(event)
+        if payload.get("surface") != surface:
+            continue
+        key = str(payload.get("notice_key") or "")
+        if not key or key not in candidate_keys:
+            continue
+        if latest_ack_sequence.get(key, 0) > int(event.sequence):
+            continue
+        delivered_at = _aware(event.created_at).astimezone(UTC)
+        if now - delivered_at > timedelta(hours=24):
+            continue
+        notice = payload.get("notice")
+        if not isinstance(notice, dict):
+            continue
+        try:
+            return ProactiveCareNoticeView.model_validate(notice)
+        except ValueError:
+            continue
+    return None
+
+
 def _eligible_candidate(
     candidates: list[dict[str, object]],
     events: list[SyncEvent],
@@ -237,7 +278,9 @@ def _eligible_candidate(
             continue
         if event.event_type == ACK_EVENT:
             until = _parse_datetime(payload.get("suppress_until"))
-            if until is not None and until > suppressed_until.get(key, datetime.min.replace(tzinfo=UTC)):
+            if until is not None and until > suppressed_until.get(
+                key, datetime.min.replace(tzinfo=UTC)
+            ):
                 suppressed_until[key] = until
         elif event.event_type == DELIVERED_EVENT and key not in latest_delivery_by_key:
             latest_delivery_by_key[key] = _aware(event.created_at).astimezone(UTC)
@@ -339,15 +382,34 @@ def evaluate_proactive_care(
     candidates = build_proactive_candidates(
         pets=pets,
         relations=relations,
-        last_interactions=_last_care_by_pet(session, account_id=principal.account_id, now=now),
+        last_interactions=_last_care_by_pet(
+            session, account_id=principal.account_id, now=now
+        ),
         reminders=reminders,
         preferences=prefs,
         now=now,
     )
     events = _recent_notice_events(session, account_id=principal.account_id, now=now)
+    active = _active_notice_for_surface(
+        events,
+        surface=body.surface,
+        candidate_keys={str(item["notice_key"]) for item in candidates},
+        now=now,
+    )
+    if active is not None:
+        return ProactiveCareEvaluateResponse(
+            preferences=view,
+            notice=active,
+            suppression_reason="",
+            next_check_at=default_next,
+            server_time=now,
+        )
+
     delivered = [event for event in events if event.event_type == DELIVERED_EVENT]
     local_day = _local_date(now, body.timezone_offset_minutes)
-    daily_count = sum(_payload(event).get("local_date") == local_day for event in delivered)
+    daily_count = sum(
+        _payload(event).get("local_date") == local_day for event in delivered
+    )
     if daily_count >= int(prefs["max_daily_notices"]):
         return ProactiveCareEvaluateResponse(
             preferences=view,
@@ -383,8 +445,7 @@ def evaluate_proactive_care(
             server_time=now,
         )
 
-    delivered_at = now
-    notice_data = {**candidate, "delivered_at": delivered_at.isoformat()}
+    notice_data = {**candidate, "delivered_at": now.isoformat()}
     append_event(
         session,
         account_id=principal.account_id,
@@ -417,8 +478,14 @@ def acknowledge_proactive_care(
     now = datetime.now(UTC)
     if body.outcome == "dismissed_today":
         local_now = now - timedelta(minutes=body.timezone_offset_minutes)
-        local_midnight = datetime.combine(local_now.date() + timedelta(days=1), datetime.min.time(), tzinfo=UTC)
-        suppress_until = local_midnight + timedelta(minutes=body.timezone_offset_minutes)
+        local_midnight = datetime.combine(
+            local_now.date() + timedelta(days=1),
+            datetime.min.time(),
+            tzinfo=UTC,
+        )
+        suppress_until = local_midnight + timedelta(
+            minutes=body.timezone_offset_minutes
+        )
     elif body.outcome == "snoozed":
         suppress_until = now + timedelta(minutes=body.snooze_minutes)
     elif body.outcome == "acted":
