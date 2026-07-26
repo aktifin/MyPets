@@ -44,6 +44,15 @@ def _bind_device(client: TestClient, auth: dict[str, str]) -> dict[str, str]:
     return {"Authorization": f"Bearer {token.json()['access_token']}"}
 
 
+def _disable_quiet_hours(client: TestClient, auth: dict[str, str]) -> None:
+    response = client.patch(
+        "/api/v1/portal/proactive-care/preferences",
+        headers=auth,
+        json={"quiet_hours_enabled": False},
+    )
+    assert response.status_code == 200, response.text
+
+
 def test_preferences_default_patch_and_device_visibility(
     client: TestClient,
     account_auth: dict[str, str],
@@ -87,6 +96,7 @@ def test_low_state_notice_restores_on_same_surface_but_other_surface_is_rate_lim
     account_auth: dict[str, str],
 ) -> None:
     pet_id = _create_pet(client, account_auth)["pet_id"]
+    _disable_quiet_hours(client, account_auth)
     with client.app.state.session_factory() as session:
         pet = session.get(Pet, pet_id)
         assert pet is not None
@@ -229,6 +239,7 @@ def test_due_reminder_is_a_candidate_without_a_pet(
     client: TestClient,
     account_auth: dict[str, str],
 ) -> None:
+    _disable_quiet_hours(client, account_auth)
     created = client.post(
         "/api/v1/reminders/occurrences",
         headers={**account_auth, "Idempotency-Key": "proactive-due-reminder"},
