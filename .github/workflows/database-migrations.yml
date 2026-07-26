@@ -86,6 +86,7 @@ jobs:
           Base.metadata.create_all(engine)
           PY
           cd backend
+          python scripts/check_existing_schema.py
           alembic stamp head
           alembic current | grep "20260726_0001 (head)"
           alembic check
