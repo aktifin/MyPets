@@ -151,7 +151,8 @@ class PetCarePanel(QDialog):
         stage_value = getattr(stats.growth_stage, "value", str(stats.growth_stage))
         self.growth_label.setText(
             f"{stage_names.get(stage_value, stage_value)} · "
-            f"成长 Lv.{stats.growth_level} · 羁绊 Lv.{stats.bond_level}"
+            f"成长等级 {stats.growth_level}（Lv.{stats.growth_level}） · "
+            f"羁绊等级 {stats.bond_level}（Lv.{stats.bond_level}）"
         )
         for field, bar in self.stat_bars.items():
             bar.setValue(int(getattr(stats, field)))
