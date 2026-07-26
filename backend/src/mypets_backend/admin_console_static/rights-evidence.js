@@ -12,6 +12,7 @@ const rightValidityNames = {
 
 const rightHistoryNames = {
   declared: "登记存证",
+  source_evidence_linked: "关联原始投稿证据",
   terms_updated: "调整有效期",
   evidence_added: "上传证据",
   verified: "独立复核通过",
@@ -160,8 +161,7 @@ renderGovernanceArtifacts = function renderGovernanceArtifactsWithEvidence() {
   });
 };
 
-async function openRightEvidence(rightId) {
-  selectedEvidenceRight = state.assetRights.find((item) => item.right_id === rightId) || null;
+function applySelectedRightToDialog() {
   if (!selectedEvidenceRight) return;
   $("#rightEvidenceTarget").textContent = `${selectedEvidenceRight.rights_type} · 产物 ${selectedEvidenceRight.artifact_id}`;
   $("#rightTermsValidFrom").value = localDateTimeValue(selectedEvidenceRight.valid_from);
@@ -176,14 +176,25 @@ async function openRightEvidence(rightId) {
     <div><span>有效性</span><strong>${escapeHtml(rightValidityNames[selectedEvidenceRight.validity_state] || selectedEvidenceRight.validity_state)}</strong></div>
     <div><span>声明人</span><code>${escapeHtml(selectedEvidenceRight.declared_by_account_id)}</code></div>
     <div><span>复核人</span><code>${escapeHtml(selectedEvidenceRight.verified_by_account_id || "—")}</code></div>`;
-  $("#rightEvidenceDialog").showModal();
+}
+
+async function loadRightEvidenceDetails(rightId) {
+  [selectedEvidenceRows, selectedHistoryRows] = await Promise.all([
+    api(`/api/v1/admin/governance/rights/${encodeURIComponent(rightId)}/evidence`),
+    api(`/api/v1/admin/governance/rights/${encodeURIComponent(rightId)}/history`),
+  ]);
+  renderRightEvidenceDetails();
+}
+
+async function openRightEvidence(rightId) {
+  selectedEvidenceRight = state.assetRights.find((item) => item.right_id === rightId) || null;
+  if (!selectedEvidenceRight) return;
+  applySelectedRightToDialog();
+  const dialog = $("#rightEvidenceDialog");
+  if (!dialog.open) dialog.showModal();
   setStatus("正在读取版权证据和历史…");
   try {
-    [selectedEvidenceRows, selectedHistoryRows] = await Promise.all([
-      api(`/api/v1/admin/governance/rights/${encodeURIComponent(rightId)}/evidence`),
-      api(`/api/v1/admin/governance/rights/${encodeURIComponent(rightId)}/history`),
-    ]);
-    renderRightEvidenceDetails();
+    await loadRightEvidenceDetails(rightId);
     setStatus("");
   } catch (error) {
     setStatus(errorMessage(error), true);
@@ -200,18 +211,25 @@ function renderRightEvidenceDetails() {
   $$('[data-evidence-download]').forEach((button) => button.addEventListener("click", () => downloadEvidence(button.dataset.evidenceDownload)));
 }
 
+async function refreshOpenRightEvidence(rightId) {
+  await loadGovernanceDeploymentData();
+  selectedEvidenceRight = state.assetRights.find((item) => item.right_id === rightId) || null;
+  applySelectedRightToDialog();
+  await loadRightEvidenceDetails(rightId);
+}
+
 async function saveRightTerms() {
   if (!selectedEvidenceRight) return;
+  const rightId = selectedEvidenceRight.right_id;
   try {
-    await api(`/api/v1/admin/governance/rights/${encodeURIComponent(selectedEvidenceRight.right_id)}/terms`, {
+    await api(`/api/v1/admin/governance/rights/${encodeURIComponent(rightId)}/terms`, {
       method: "POST",
       json: {
         valid_from: isoOrNull($("#rightTermsValidFrom").value),
         valid_until: isoOrNull($("#rightTermsValidUntil").value),
       },
     });
-    await loadGovernanceDeploymentData();
-    await openRightEvidence(selectedEvidenceRight.right_id);
+    await refreshOpenRightEvidence(rightId);
     setStatus("版权授权有效期已更新");
   } catch (error) {
     setStatus(errorMessage(error), true);
@@ -220,16 +238,16 @@ async function saveRightTerms() {
 
 async function uploadAdditionalEvidence() {
   if (!selectedEvidenceRight) return;
+  const rightId = selectedEvidenceRight.right_id;
   const files = [...$("#rightEvidenceFiles").files];
   if (!files.length) {
     setStatus("请选择需要上传的证据附件", true);
     return;
   }
   try {
-    await uploadEvidenceFiles(selectedEvidenceRight.right_id, files);
+    await uploadEvidenceFiles(rightId, files);
     $("#rightEvidenceFiles").value = "";
-    await loadGovernanceDeploymentData();
-    await openRightEvidence(selectedEvidenceRight.right_id);
+    await refreshOpenRightEvidence(rightId);
     setStatus("证据附件已上传");
   } catch (error) {
     setStatus(errorMessage(error), true);
@@ -252,7 +270,7 @@ async function downloadEvidence(evidenceId) {
     link.href = url;
     link.download = item.original_filename;
     link.click();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
   } catch (error) {
     setStatus(errorMessage(error), true);
   }
