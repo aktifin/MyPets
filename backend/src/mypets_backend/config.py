@@ -13,6 +13,10 @@ def _csv_values(value: str) -> tuple[str, ...]:
     return tuple(sorted({item.strip().lower() for item in value.split(",") if item.strip()}))
 
 
+def _enabled(value: str) -> bool:
+    return value.strip().lower() not in {"0", "false", "no", "off"}
+
+
 @dataclass(frozen=True)
 class Settings:
     """Runtime settings for the modular-monolith API."""
@@ -64,25 +68,27 @@ class Settings:
         )
         merged = tuple(sorted({name.lower() for values in role_values for name in values}))
         object.__setattr__(self, "admin_usernames", merged)
+        object.__setattr__(self, "environment", self.environment.strip().lower())
         object.__setattr__(self, "myreminder_base_url", self.myreminder_base_url.strip().rstrip("/"))
         object.__setattr__(self, "myreminder_integration_secret", self.myreminder_integration_secret.strip())
 
     @classmethod
     def from_env(cls) -> "Settings":
+        environment = os.getenv("MYPETS_ENVIRONMENT", cls.environment).strip().lower()
+        create_schema_default = "0" if environment == "production" else "1"
         settings = cls(
             database_url=os.getenv("MYPETS_DATABASE_URL", cls.database_url),
             jwt_secret=os.getenv("MYPETS_JWT_SECRET", cls.jwt_secret),
-            environment=os.getenv("MYPETS_ENVIRONMENT", cls.environment).lower(),
+            environment=environment,
             access_token_minutes=int(
                 os.getenv("MYPETS_ACCESS_TOKEN_MINUTES", cls.access_token_minutes)
             ),
             device_token_hours=int(
                 os.getenv("MYPETS_DEVICE_TOKEN_HOURS", cls.device_token_hours)
             ),
-            create_schema_on_start=os.getenv(
-                "MYPETS_CREATE_SCHEMA_ON_START", "1"
-            ).lower()
-            not in {"0", "false", "no"},
+            create_schema_on_start=_enabled(
+                os.getenv("MYPETS_CREATE_SCHEMA_ON_START", create_schema_default)
+            ),
             realtime_ticket_seconds=int(
                 os.getenv("MYPETS_REALTIME_TICKET_SECONDS", cls.realtime_ticket_seconds)
             ),
@@ -181,6 +187,8 @@ class Settings:
             raise ValueError("MYPETS_JWT_SECRET 至少需要 24 个字符")
         if self.environment == "production" and self.jwt_secret == _DEVELOPMENT_SECRET:
             raise ValueError("生产环境禁止使用开发默认 JWT 密钥")
+        if self.environment == "production" and self.create_schema_on_start:
+            raise ValueError("生产环境禁止启动时自动建表，请先执行 Alembic upgrade head")
         if self.access_token_minutes < 5:
             raise ValueError("账户访问令牌有效期不能短于 5 分钟")
         if self.device_token_hours < 1:

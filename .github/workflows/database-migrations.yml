@@ -1,0 +1,150 @@
+name: Database migrations
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/database-migrations.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - ".github/workflows/database-migrations.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sqlite-migrations:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install backend
+        run: python -m pip install -e "backend[dev]"
+
+      - name: Upgrade, drift check, downgrade, and re-upgrade SQLite
+        env:
+          MYPETS_DATABASE_URL: sqlite:////tmp/mypets-migration-fresh.sqlite3
+        run: |
+          rm -f /tmp/mypets-migration-fresh.sqlite3
+          cd backend
+          alembic upgrade head
+          alembic current | grep "001_initial_schema (head)"
+          alembic check
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, inspect
+
+          tables = set(inspect(create_engine(os.environ["MYPETS_DATABASE_URL"])).get_table_names())
+          assert "alembic_version" in tables
+          assert len(tables - {"alembic_version"}) == 35, sorted(tables)
+          PY
+          alembic downgrade base
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, inspect
+
+          tables = set(inspect(create_engine(os.environ["MYPETS_DATABASE_URL"])).get_table_names())
+          assert tables <= {"alembic_version"}, sorted(tables)
+          PY
+          alembic upgrade head
+          alembic check
+
+      - name: Validate adoption of an existing create_all database
+        env:
+          MYPETS_DATABASE_URL: sqlite:////tmp/mypets-migration-existing.sqlite3
+        run: |
+          rm -f /tmp/mypets-migration-existing.sqlite3
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine
+
+          from mypets_backend.database import Base
+          from mypets_backend import asset_deployment_models  # noqa: F401
+          from mypets_backend import asset_production_models  # noqa: F401
+          from mypets_backend import asset_submission_models  # noqa: F401
+          from mypets_backend import governance_models  # noqa: F401
+          from mypets_backend import models  # noqa: F401
+          from mypets_backend import reminder_models  # noqa: F401
+          from mypets_backend import social_models  # noqa: F401
+          from mypets_backend import user_portal_models  # noqa: F401
+          from mypets_backend import visit_models  # noqa: F401
+
+          engine = create_engine(os.environ["MYPETS_DATABASE_URL"])
+          Base.metadata.create_all(engine)
+          PY
+          cd backend
+          python scripts/check_existing_schema.py
+          alembic stamp head
+          alembic current | grep "001_initial_schema (head)"
+          alembic check
+
+  postgres-migrations:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: mypets
+          POSTGRES_PASSWORD: mypets
+          POSTGRES_DB: mypets
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mypets -d mypets"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install backend
+        run: python -m pip install -e "backend[dev]"
+
+      - name: Upgrade, drift check, downgrade, and re-upgrade PostgreSQL
+        env:
+          MYPETS_DATABASE_URL: postgresql+psycopg://mypets:mypets@localhost:5432/mypets
+        run: |
+          cd backend
+          alembic upgrade head
+          alembic current | grep "001_initial_schema (head)"
+          alembic check
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, inspect
+
+          tables = set(inspect(create_engine(os.environ["MYPETS_DATABASE_URL"])).get_table_names())
+          assert "alembic_version" in tables
+          assert len(tables - {"alembic_version"}) == 35, sorted(tables)
+          PY
+          alembic downgrade base
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, inspect
+
+          tables = set(inspect(create_engine(os.environ["MYPETS_DATABASE_URL"])).get_table_names())
+          assert tables <= {"alembic_version"}, sorted(tables)
+          PY
+          alembic upgrade head
+          alembic check
