@@ -14,6 +14,15 @@ from .growth_experience_client import GrowthExperienceCloudClient
 from .pet_registry import LOCAL_ACCOUNT_ID
 
 
+_LOCAL_GROWTH_GAINS = {
+    "feed": (4, 2),
+    "play": (7, 4),
+    "clean": (3, 2),
+    "pet": (2, 3),
+    "rest": (1, 1),
+}
+
+
 class GrowthExperienceApplication(DesktopExperienceApplication):
     """Add clear next-stage goals and a reusable growth memory timeline."""
 
@@ -117,7 +126,14 @@ class GrowthExperienceApplication(DesktopExperienceApplication):
             return
         current = self.bubble_menu.hint_label.text().strip()
         headline = str(progress.get("headline") or "继续陪伴即可成长")
-        remaining = max(0, int(progress.get("next_stage_exp_remaining") or progress.get("growth_exp_remaining") or 0))
+        remaining = max(
+            0,
+            int(
+                progress.get("next_stage_exp_remaining")
+                or progress.get("growth_exp_remaining")
+                or 0
+            ),
+        )
         growth_hint = f"{headline} · 还差 {remaining} 点成长经验"
         self.bubble_menu.hint_label.setText(
             f"{current}\n{growth_hint}" if current else growth_hint
@@ -129,11 +145,30 @@ class GrowthExperienceApplication(DesktopExperienceApplication):
         self._sync_growth_widgets()
         self._request_cloud_growth_experience()
 
+    def _align_local_growth_gain(self, action: str) -> None:
+        """The base local demo adds +2/+1; adjust it to the server action table."""
+
+        target_growth, target_bond = _LOCAL_GROWTH_GAINS.get(action, (2, 1))
+        self.active_pet.stats.growth_exp = max(
+            0,
+            int(self.active_pet.stats.growth_exp) + target_growth - 2,
+        )
+        self.active_pet.stats.bond_exp = max(
+            0,
+            int(self.active_pet.stats.bond_exp) + target_bond - 1,
+        )
+
     def _present_enhanced_care_success(self, action: str) -> None:
-        before = dict(self._pending_care_before.get(action, snapshot_stats(self.active_pet)))
-        previous_stage = self._pending_growth_stage.pop(action, self._stage_value(self.active_pet))
+        before = dict(
+            self._pending_care_before.get(action, snapshot_stats(self.active_pet))
+        )
+        previous_stage = self._pending_growth_stage.pop(
+            action,
+            self._stage_value(self.active_pet),
+        )
         local_pet = self.active_pet.identity.primary_owner_account_id == LOCAL_ACCOUNT_ID
         if local_pet:
+            self._align_local_growth_gain(action)
             apply_growth_levels(self.active_pet)
             try:
                 self.local_store.upsert_pet(self.active_pet)
