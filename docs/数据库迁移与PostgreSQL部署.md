@@ -1,72 +1,72 @@
 # MyPets 数据库迁移与 PostgreSQL 部署
 
-MyPets 后端从 Revision `001_initial_schema` 起使用 Alembic 管理正式数据库结构。该标识沿用仓库已有基线，避免已经 stamp 的历史数据库失去版本连续性；基线实现已冻结为显式 DDL，不再在迁移执行时调用 `Base.metadata.create_all`。Revision `002_asset_revocation_ack` 新增设备撤销素材清理回执表，用于验证真实增量迁移。生产环境不得依赖应用启动时的自动建表。
+MyPets 后端使用 Alembic 管理正式数据库结构。当前版本链为：
 
-## 一、适用范围
+```text
+001_initial_schema
+└── 002_asset_revocation_ack
+    └── 003_rights_evidence_history (head)
+```
 
-- 新建 SQLite 开发数据库；
-- 新建 PostgreSQL 测试或生产数据库；
-- 将历史上由 `Base.metadata.create_all` 建立的数据库接入 Alembic；
-- 从 `001_initial_schema` 增量升级到设备撤销回执版本；
-- 发布前检查 SQLAlchemy 模型与数据库结构是否发生未提交漂移；
-- 执行升级、单步回退和恢复验证。
+生产环境不得依赖应用启动时的 `Base.metadata.create_all`。
 
-桌面端 SQLite 仍然只是可重建缓存和断点续办队列，不纳入服务端 Alembic 迁移链。本文所述数据库是 FastAPI 后端的服务端权威数据库。
+## 一、Revision 说明
+
+- `001_initial_schema`：冻结 35 张基础业务表的显式 DDL；
+- `002_asset_revocation_ack`：新增设备撤销清理回执表，业务表增至 36 张；
+- `003_rights_evidence_history`：扩展版权有效期和复核字段，并新增证据附件与状态历史两张表，业务表增至 38 张。
+
+第三个 Revision 对 `pet_asset_rights` 增加：
+
+```text
+valid_from
+valid_until
+review_comment
+verified_at
+revoked_at
+```
+
+并新增：
+
+```text
+pet_asset_right_evidence
+pet_asset_right_history
+```
+
+证据文件正文不保存在数据库，而是写入对象存储；数据库只保存对象键、文件名、媒体类型、SHA-256、大小、上传人和时间。
 
 ## 二、新建数据库
-
-先安装后端及迁移依赖：
 
 ```bash
 cd backend
 python -m pip install -e ".[dev]"
-```
-
-配置数据库地址。PostgreSQL 示例：
-
-```bash
 export MYPETS_DATABASE_URL='postgresql+psycopg://mypets:strong-password@db-host:5432/mypets'
-```
-
-Windows PowerShell：
-
-```powershell
-$env:MYPETS_DATABASE_URL = 'postgresql+psycopg://mypets:strong-password@db-host:5432/mypets'
-```
-
-执行升级：
-
-```bash
 alembic upgrade head
 alembic current
 alembic check
 ```
 
-`alembic current` 应显示：
+当前 `alembic current` 应显示：
 
 ```text
-002_asset_revocation_ack (head)
+003_rights_evidence_history (head)
 ```
 
-`alembic check` 应显示没有新的升级操作。若检测到模型漂移，不得直接启动生产服务，应先生成和评审新的增量 Revision。
+模型漂移检查必须无新增操作。
 
-## 三、版本链
+## 三、生产升级
 
-当前版本链：
+推荐顺序：
 
-```text
-001_initial_schema
-└── 002_asset_revocation_ack (head)
-```
+1. 同时备份数据库和对象存储；
+2. 停止写入或进入维护窗口；
+3. 执行 `alembic upgrade head`；
+4. 执行 `alembic current` 和 `alembic check`；
+5. 启动新版本应用；
+6. 验证登录、宠物、消息、提醒、版权证据上传、历史查询、D3 发布和撤销回执；
+7. 恢复流量。
 
-- `001_initial_schema`：冻结 35 张基础业务表的显式 DDL；
-- `002_asset_revocation_ack`：新增 `pet_asset_revocation_acknowledgements`，形成 36 张服务端业务表。
-
-第二个 Revision 记录每台设备对版权撤销事件的清理结果，包括版权存证、产物、专属 Release、宠物、账户、设备、清理状态、安全降级状态、客户端处理时间和重试次数。唯一约束为 `right_id + release_id + device_id`，重复回执只更新同一设备记录。
-
-## 四、生产启动要求
-
-生产环境必须设置：
+生产环境必须配置：
 
 ```bash
 export MYPETS_ENVIRONMENT=production
@@ -74,78 +74,71 @@ export MYPETS_JWT_SECRET='replace-with-a-long-random-secret'
 export MYPETS_CREATE_SCHEMA_ON_START=0
 ```
 
-`MYPETS_ENVIRONMENT=production` 时，系统默认关闭启动自动建表。即使显式配置为开启，后端也会拒绝启动，并提示先执行：
+## 四、增量升级
+
+### 从 001 升级
 
 ```bash
-alembic upgrade head
+alembic upgrade 002_asset_revocation_ack
+alembic upgrade 003_rights_evidence_history
+alembic check
 ```
 
-推荐部署顺序：
-
-1. 备份数据库和对象存储；
-2. 将应用实例置于维护或停止写入状态；
-3. 执行 `alembic upgrade head`；
-4. 执行 `alembic current` 和 `alembic check`；
-5. 启动新版本应用；
-6. 验证 `/health`、登录、宠物列表、消息、提醒、素材发布、撤销事件和设备回执链路；
-7. 恢复流量。
-
-## 五、从 001 增量升级
-
-已经标记为 `001_initial_schema` 的数据库直接执行：
+### 从 002 升级
 
 ```bash
-cd backend
 alembic current
-alembic upgrade 002_asset_revocation_ack
+alembic upgrade 003_rights_evidence_history
 alembic current
 alembic check
 ```
 
-升级只新增回执表和两个索引，不修改已有 35 张业务表。部署前仍应备份数据库；在高并发生产环境中，应在维护窗口执行并监控 DDL 锁等待。
+第三个 Revision 会修改版权主表并创建两张新表。高数据量环境应在预发布数据库评估 `batch_alter_table`、PostgreSQL DDL 锁和索引创建时间。
 
-需要验证单步回退时：
+## 五、单步回退
+
+从 003 回退到 002：
+
+```bash
+alembic downgrade 002_asset_revocation_ack
+```
+
+该操作会删除：
+
+- 全部证据附件元数据；
+- 全部版权状态历史；
+- 版权有效期、复核意见和关键时间字段。
+
+对象存储中的证据正文不会被 Alembic 自动删除，回退前后必须由运维按数据库备份点协调对象存储恢复或清理，避免孤儿对象和元数据缺失。
+
+从 002 回退到 001：
 
 ```bash
 alembic downgrade 001_initial_schema
 ```
 
-该操作删除设备清理回执表及其中的回执历史，不会删除版权存证、制作产物、专属 Release 或宠物数据。生产环境执行前必须确认回执数据可丢弃或已经备份。
+该操作删除设备撤销清理回执表。
+
+生产环境不得将 `downgrade base` 作为常规回滚手段，应优先恢复升级前数据库与对象存储的一致快照。
 
 ## 六、接管历史 create_all 数据库
 
-历史数据库不能直接执行初始 Revision，因为数据库中已经存在业务表。必须先确认它与当前 SQLAlchemy Metadata 完全一致。
-
-### 1. 备份
-
-在任何 stamp 操作前制作可恢复备份。SQLite 应复制数据库文件；PostgreSQL 应使用组织现有备份机制或 `pg_dump`。
-
-### 2. 结构比对
+历史数据库必须先确认与当前 SQLAlchemy Metadata 完全一致：
 
 ```bash
 cd backend
 python scripts/check_existing_schema.py
 ```
 
-该工具会比较：
+工具会检查表、字段、类型、可空性、默认值、外键、唯一约束和索引，当前应覆盖 38 张业务表。
 
-- 表及列；
-- 字段类型和可空性；
-- 服务端默认值；
-- 外键、唯一约束和索引；
-- 投稿、制作、D3 部署、视觉身份、版权治理和设备清理回执等全部 36 张业务表。
-
-只有输出以下信息时才能继续：
+只有输出以下信息时才允许执行：
 
 ```text
 Existing database schema matches MyPets metadata.
 ```
 
-发现差异时必须停止接管，根据差异补迁移或修复历史数据库；不得为绕过检查直接 stamp。
-
-### 3. 标记版本
-
-结构确认无误后执行：
+随后：
 
 ```bash
 alembic stamp head
@@ -153,64 +146,60 @@ alembic current
 alembic check
 ```
 
-`stamp` 只写入 Alembic 版本标记，不创建、删除或修改业务表。已经标记为 `001_initial_schema` 的数据库不得直接 stamp 到 head，应执行 `alembic upgrade head`，确保第二个 Revision 实际创建回执表。
+已经标记为旧 Revision 的数据库不能直接 stamp 到 head，应实际执行增量升级。
 
-## 七、回退验证
+## 七、对象存储一致性
 
-开发和预发布环境应执行完整回退测试：
+数据库备份与对象存储备份必须使用同一恢复点。重点对象前缀包括：
 
-```bash
-alembic upgrade head
-alembic downgrade 001_initial_schema
-alembic upgrade head
-alembic downgrade base
-alembic upgrade head
-alembic check
+```text
+submissions/
+production/
+releases/
+governance/rights/
 ```
 
-生产环境不得把 `downgrade base` 作为常规回滚手段。生产回滚应优先采用：
+恢复演练至少验证：
 
-- 发布前数据库备份恢复；
-- 针对单个 Revision 编写并验证可逆 downgrade；
-- 应用版本与数据库版本协同回退；
-- 对不可逆数据变更采用前向修复迁移。
+- 证据元数据引用的对象存在；
+- 文件 SHA-256 与数据库一致；
+- 受保护下载仍要求管理员令牌；
+- 已撤销或过期授权不能分发专属素材；
+- 数据库回滚后不存在错误引用。
 
-## 八、新增迁移
+## 八、新增迁移要求
 
-修改 SQLAlchemy 模型后：
+模型变化后可使用：
 
 ```bash
-cd backend
 alembic revision --autogenerate -m "describe schema change"
 ```
 
-生成后必须人工检查：
+生成结果必须人工审核：
 
-- 表和列是否完整；
-- 外键和删除策略是否正确；
-- 索引及唯一约束是否符合业务状态机；
-- 数据迁移是否需要先填充再改为非空；
-- SQLite `batch_alter_table` 与 PostgreSQL DDL 是否均可执行；
-- downgrade 是否安全、完整且顺序正确。
-
-随后执行：
-
-```bash
-alembic upgrade head
-alembic check
-pytest -q
-```
+- 数据回填与非空列顺序；
+- SQLite batch migration；
+- PostgreSQL 锁和索引行为；
+- 外键删除策略；
+- downgrade 的数据损失范围；
+- 数据库与对象存储是否需要协同迁移。
 
 ## 九、持续集成
 
-`.github/workflows/database-migrations.yml` 对每次后端结构相关变更执行：
+数据库 CI 对 SQLite 与 PostgreSQL 16 验证：
 
-- SQLite 从空库升级到 `002_asset_revocation_ack`；
-- 检查 36 张业务表和 Alembic 版本表；
-- SQLite 单步降级到 `001_initial_schema` 并确认回执表删除；
-- SQLite 降级到 base 后重新升级；
-- 历史 `create_all` 数据库结构比对、stamp 和漂移检查；
-- PostgreSQL 16 执行相同的 head、单步降级、base 降级和重新升级链路；
-- 迁移脚本与 SQLAlchemy Metadata 的一致性检查。
+```text
+base → 001 → 002 → 003(head)
+003 → 002 → 001 → base → head
+```
 
-数据库迁移 CI、Linux/Windows 测试、Web JavaScript 校验和 Qt 冒烟必须全部通过后才能合并。
+并检查：
+
+- head 为 `003_rights_evidence_history`；
+- head 下存在 38 张业务表；
+- 回退到 002 后证据和历史表及新增列消失；
+- 回退到 001 后设备回执表消失；
+- 历史 `create_all` 数据库可安全比对和接管；
+- Alembic 与 SQLAlchemy Metadata 无漂移。
+
+数据库迁移、Linux/Windows 测试、Web JavaScript 和 Qt 冒烟必须全部通过后才能合并。
