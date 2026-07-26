@@ -8,193 +8,113 @@
 /admin
 ```
 
-管理台不依赖 Node.js、独立前端构建服务或第二套权限系统。浏览器页面只负责展示和发起操作，所有权限、状态机、幂等、兼容性检查和审计仍由服务端执行。
+页面只负责展示和发起操作。权限、状态机、幂等、兼容性检查、版权有效期和审计均由服务端执行。管理台不依赖独立 Node.js 构建服务或第二套权限系统。
 
-当前管理台覆盖：
+当前覆盖：公共宠物模板、用户原图审核、专属素材制作、版权存证与证据附件、独立复核、D3 部署审核、专属 Release 发布和回退、公共发布以及审计日志。
 
-- 公共宠物模板和版本管理；
-- 用户宠物原图审核；
-- 专属素材制作工单；
-- 版权存证登记、独立复核和撤销；
-- D3 专属素材部署审核；
-- 不可变专属 Release 发布；
-- 单宠 active/previous 部署和回退；
-- 公共素材发布、稳定通道和回滚；
-- 管理员操作审计。
+## 二、角色分权
 
-## 二、登录与角色分权
-
-管理台使用账户密码换取短期账户访问令牌，再通过 `/api/v1/admin/me` 读取角色和权限。访问令牌只保存在浏览器 `sessionStorage`，关闭标签页后自动失效；密码不保存，页面不使用长期设备密钥。
-
-生产环境应配置明确的职责分离角色：
-
-```text
-MYPETS_ADMIN_EDITORS
-MYPETS_ADMIN_REVIEWERS
-MYPETS_ADMIN_PUBLISHERS
-MYPETS_ADMIN_AUDITORS
-MYPETS_ADMIN_SUPERADMINS
-```
-
-`MYPETS_ADMIN_USERNAMES` 仅作为兼容性的超级管理员名单。
-
-角色边界：
+管理台使用账户密码换取短期访问令牌，并通过 `/api/v1/admin/me` 读取角色。令牌仅保存于 `sessionStorage`。
 
 | 角色 | 主要操作 |
 |---|---|
-| editor | 创建模板和版本、上传素材、领取原图审核、管理制作工单、登记版权存证、提交 D3 审核 |
-| reviewer | 审核模板版本、审核用户原图、独立复核版权存证、批准或退回 D3 部署审核 |
-| publisher | 发布公共或专属 Release、切换稳定指针、撤销版权存证、回退专属部署 |
-| auditor | 查询管理员审计日志 |
-| superadmin | 拥有全部权限 |
+| editor | 创建模板和版本、上传素材、管理制作工单、登记版权存证、设置有效期、上传证据、提交 D3 审核 |
+| reviewer | 审核模板和用户原图、独立复核版权存证、批准或退回 D3 审核 |
+| publisher | 发布公共或专属 Release、撤销版权存证、回退部署 |
+| auditor | 查询审计日志 |
+| superadmin | 全部权限 |
 
-页面隐藏按钮只用于减少误操作，不构成授权判断。手工调用接口时，服务端仍会根据当前账户角色重新验证。
+页面隐藏按钮只用于减少误操作，服务端仍会逐次校验角色。
 
-## 三、页面结构
+## 三、版权存证档案
 
-```text
-总览
-├── 模板数量
-├── 版本数量
-├── 待审核数量
-└── 当前稳定发布
+每条版权存证包含：
 
-宠物模板
-├── 模板搜索与创建
-├── 版本创建
-├── ZIP 上传和进度
-├── 连续动画预览
-├── 动作能力矩阵
-├── 桌面尺寸模拟
-├── 版本差异对比
-└── 提交、审核和发布
+- 制作产物、权利类型和来源声明；
+- 授权开始时间与结束时间；
+- 当前状态：`pending`、`verified` 或 `revoked`；
+- 当前有效性：`scheduled`、`active` 或 `expired`；
+- 声明人、复核人、复核意见及复核时间；
+- 撤销原因和撤销时间；
+- 证据附件清单；
+- 不可变状态历史。
 
-用户原图
-├── 等待处理、审核中、已通过和已驳回筛选
-├── 鉴权原图预览
-├── 领取审核
-└── 通过或驳回
+### 1. 登记
 
-素材制作
-├── 工单分配
-├── 制作状态与进度
-├── 补充参考图
-├── 失败和重新排队
-├── 制作产物上传与校验
-└── 受控产物下载
+editor 选择制作产物，填写来源声明与有效期。系统会自动把已审核的原始投稿图片关联为第一项证据；管理台同时要求至少再选择一个附件，避免只依赖文字声明。
 
-版权与专属部署
-├── 制作产物和最新版权状态
-├── 版权声明登记
-├── reviewer 独立复核
-├── publisher 撤销存证
-├── 提交 D3 独立审核
-├── D3 批准或退回
-├── 不可变专属 Release 发布
-├── 当前单宠部署
-└── active/previous 回退
+新存证固定进入 `pending`。声明人不能自行复核。
 
-公共发布
-├── 当前稳定通道
-├── 不可变公共 Release
-└── 稳定版本回滚
+### 2. 证据附件
 
-审计日志
-└── 操作人、动作、资源、详情和时间
-```
-
-## 四、版权治理与 D3 操作流程
-
-### 1. 制作产物完成
-
-编辑人员在“素材制作”页面上传声明式 ZIP。服务端执行路径安全、文件数量、解压大小、图片解码、Manifest、模板版本和 13 种动作能力检查。通过后工单进入 `ready`，但不会自动发布。
-
-### 2. 登记版权存证
-
-编辑人员在“版权与专属部署”页面选择制作产物，填写权利类型和来源声明。新存证状态固定为：
+支持：
 
 ```text
-pending
+application/pdf
+image/png
+image/jpeg
+text/plain
 ```
 
-声明人不能把自己的存证直接标记为已核验。
+单个文件不超过 8 MB。服务端按 SHA-256 去重，元数据保存在数据库，正文保存在对象存储。附件只能由管理员携带短期令牌下载，响应使用 `Cache-Control: private, no-store`。
+
+存证进入 `verified` 或 `revoked` 后，附件和有效期冻结；如需变更授权，应撤销旧存证并创建新的历史版本。
 
 ### 3. 独立复核
 
-reviewer 核验原图来源、授权范围、用途和私有分发边界。声明人和复核人必须不同，复核通过后状态变为：
+reviewer 核验权利主体、授权范围、用途、有效期和附件证据。通过后保存复核意见、复核人和 `verified_at`。
 
-```text
-verified
-```
+以下情况不能通过：
 
-最新权利记录不是 `verified` 时，D3 批准和发布均会被服务端拒绝。
+- 声明人尝试复核自己的存证；
+- 没有任何证据附件；
+- 授权已经过期。
 
-### 4. 提交 D3 审核
+未来才生效的授权可以完成材料复核，但在生效前不能通过 D3 审核或发布。
 
-只有包含已校验产物的 `ready` 工单可以提交。重复提交同一产物时返回原审核记录，不重复创建状态实体。
+### 4. 状态历史
 
-### 5. D3 独立审核
+系统为以下操作写入不可变业务历史：
 
-reviewer 必须确认：
+- `declared`：登记存证；
+- `source_evidence_linked`：关联原始投稿证据；
+- `evidence_added`：上传附件；
+- `terms_updated`：调整有效期；
+- `verified`：独立复核；
+- `revoked`：撤销存证。
 
-- 最新版权存证已经核验；
-- 宠物视觉身份与原图及参考资料一致；
-- 工单、产物、宠物和目标模板版本关联正确；
-- Manifest、身份版本和素材版本匹配；
-- 素材 Schema 在支持范围内。
+历史包含操作人、状态快照、意见、时间和结构化详情。管理员审计日志仍同步保留，二者用途不同：业务历史用于查看单条存证完整演进，审计日志用于全局管理员追责。
 
-制作产物上传者不能审核自己的产物。批准后状态为 `approved`；退回后状态为 `rejected`。
+## 四、D3 发布门禁
 
-### 6. 发布和部署
+D3 批准、专属发布和素材包下载均重新检查最新版权存证：
 
-publisher 将 `approved` 审核发布为不可变专属 Release，并将其设置为目标宠物的 active Release。首次部署没有 previous Release；后续发布会把原 active Release 保存为 previous。
+1. 状态必须为 `verified`；
+2. 授权必须已经生效；
+3. 授权不得过期；
+4. 权利记录必须与制作产物一致。
 
-重复发布已经处于 active 状态的同一 Release 按幂等读取处理，不重复增加宠物 `state_version`，也不重复写入发布事件和审计记录。
+`scheduled` 或 `expired` 授权不会被视为可发布。已发布素材的授权过期或撤销后，服务端下载返回 HTTP 410；撤销还会产生 `asset_revoked` 事件，要求桌面端清理缓存并回退安全形象。
 
-### 7. 撤销和回退
+## 五、主要接口
 
-版权撤销后：
-
-- 权利记录变为 `revoked`；
-- 服务端停止分发关联专属素材包；
-- 下载接口返回 HTTP 410；
-- 相关账户收到 `asset_revoked` 同步事件；
-- 客户端应清理缓存并回退到安全素材。
-
-专属部署回退只交换 active 和 previous 指针，不删除不可变 Release。
-
-## 五、管理台使用的主要接口
-
-### 公共模板和发布
-
-```text
-GET  /api/v1/admin/pet-template-versions
-GET  /api/v1/admin/pet-template-versions/{version_id}/preview
-GET  /api/v1/admin/pet-template-versions/{version_id}/preview-image
-GET  /api/v1/admin/pet-asset-releases
-```
-
-### 用户原图和制作工单
-
-```text
-GET  /api/v1/admin/pet-asset-submissions
-POST /api/v1/admin/pet-asset-submissions/{submission_id}/start-review
-POST /api/v1/admin/pet-asset-submissions/{submission_id}/approve
-POST /api/v1/admin/pet-asset-submissions/{submission_id}/reject
-
-GET  /api/v1/admin/pet-asset-production-jobs
-POST /api/v1/admin/pet-asset-production-jobs/{job_id}/assign
-POST /api/v1/admin/pet-asset-production-jobs/{job_id}/update
-POST /api/v1/admin/pet-asset-production-jobs/{job_id}/artifact
-```
-
-### 版权治理
+### 版权存证
 
 ```text
 GET  /api/v1/admin/governance/rights
 POST /api/v1/admin/governance/rights
+POST /api/v1/admin/governance/rights/{right_id}/terms
 POST /api/v1/admin/governance/rights/{right_id}/verify
 POST /api/v1/admin/governance/rights/{right_id}/revoke
+```
+
+### 证据与历史
+
+```text
+POST /api/v1/admin/governance/rights/{right_id}/evidence
+GET  /api/v1/admin/governance/rights/{right_id}/evidence
+GET  /api/v1/admin/governance/rights/{right_id}/evidence/{evidence_id}/file
+GET  /api/v1/admin/governance/rights/{right_id}/history
 ```
 
 ### D3 专属部署
@@ -211,42 +131,29 @@ POST /api/v1/admin/pet-personal-asset-deployments/{pet_id}/rollback
 
 ## 六、浏览器安全
 
-管理台 HTML、JavaScript 和 CSS 响应包含：
+管理台资源使用同源 CSP、`Referrer-Policy: no-referrer`、`X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY` 和 `Cache-Control: no-store`。
 
-```text
-Content-Security-Policy
-Referrer-Policy: no-referrer
-X-Content-Type-Options: nosniff
-X-Frame-Options: DENY
-Cache-Control: no-store
-```
+附件下载通过 JavaScript 携带 `Authorization: Bearer` 请求，再使用临时 Blob URL 触发保存。访问令牌不会进入 URL、查询参数、文件名或审计日志。
 
-内容安全策略限制脚本、样式、图片和网络请求为同源资源，并禁止 iframe 嵌入、插件对象和外部表单提交。
+## 七、不可绕过规则
 
-受保护的原图、参考图、预览图和素材包必须通过 `Authorization: Bearer` 获取。访问令牌不得出现在 URL、查询参数、审计日志或下载文件名中。
-
-所有用户输入在写入动态 HTML 前必须经过转义。管理台不加载第三方脚本，不使用 `localStorage` 保存令牌。
-
-## 七、服务端不可绕过规则
-
-1. 普通账户不能访问任何 `/api/v1/admin/*` 业务接口。
-2. 模板创建者不能批准自己创建的模板版本。
-3. 制作产物上传者不能审核自己的 D3 产物。
-4. 版权声明人不能复核自己的存证。
-5. 未完成独立版权复核的产物不能批准或发布。
-6. D3 批准前必须完成版权和视觉身份两项确认。
-7. 发布前再次执行兼容性检查。
+1. 普通账户不能访问 `/api/v1/admin/*`。
+2. 版权声明人不能复核自己的存证。
+3. editor 才能调整待复核存证的有效期和附件。
+4. verified/revoked 存证的附件与条款不可原地修改。
+5. 已过期授权不能核验为有效。
+6. 未生效或已过期授权不能批准、发布或继续下载。
+7. 制作产物上传者不能审核自己的 D3 产物。
 8. 已发布素材包不可覆盖，只能创建新 Release。
-9. 版权撤销后停止服务端分发。
-10. 所有管理操作继续写入管理员审计日志。
+9. 所有业务变更同时写入存证历史和管理员审计。
 
 ## 八、当前限制
 
-当前管理台仍未实现：
+尚未实现：
 
-- 版权附件证据上传、有效期和历史版本可视化；
+- 到期前主动预警和到期自动撤销事件；
+- 证据附件病毒扫描、电子签章和可信时间戳；
 - 视觉身份自动评分和人工对比标注；
-- 多人实时协同编辑；
-- 批量审核、批量发布和批量撤销；
+- 批量复核、批量撤销与运营统计；
 - SSO 和企业身份提供商接入；
-- 客户端缓存清理回执和撤销闭环统计。
+- 管理台设备清理回执聚合与失败设备跟进。
