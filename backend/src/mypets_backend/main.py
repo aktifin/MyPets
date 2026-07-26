@@ -20,6 +20,7 @@ from .asset_deployment_api import (
     admin_asset_deployment_router,
     asset_deployment_router,
 )
+from .asset_deployment_console_api import admin_asset_deployment_console_router
 from .asset_production_api import (
     admin_asset_production_router,
     asset_production_router,
@@ -131,6 +132,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_governance_router)
     app.include_router(admin_asset_submission_router)
     app.include_router(admin_asset_production_router)
+    app.include_router(admin_asset_deployment_console_router)
     app.include_router(admin_governed_asset_deployment_router)
     app.include_router(admin_asset_deployment_router)
     app.include_router(admin_router)
