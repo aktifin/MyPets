@@ -22,6 +22,9 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     assert "legacyForm.hidden = true" in script.text
     assert "portal-pet-switcher" in script.text
     assert "现在最需要" in script.text
+    assert "addButton.hidden = true" in script.text
+    assert "logoutWithCustomerExperience" in script.text
+    assert "请先登录后再添加宠物" in script.text
     assert "style=" not in script.text
 
 
