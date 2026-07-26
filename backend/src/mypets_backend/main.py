@@ -34,6 +34,8 @@ from .config import Settings
 from .database import Base, create_database_engine, create_session_factory
 from .governance_api import governance_api_router
 from .governance_compat_api import governance_compat_router
+from .governance_evidence_api import rights_evidence_router
+from .governance_rights_enhanced_api import rights_enhanced_router
 from .governed_asset_deployment_api import (
     admin_governed_asset_deployment_router,
     governed_asset_deployment_router,
@@ -96,9 +98,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "asynchronous pet visits, desktop dual-pet visit interactions, lazy settlement, "
             "categorized messaging, resume-safe reminders, safe user pet-image submissions, "
             "controlled pet asset production work orders, independently reviewed personal asset "
-            "releases and per-pet rollback, revoked-asset device acknowledgements, realtime cursor "
-            "notifications, external reminder providers, synchronization, pet asset publishing, "
-            "administrator governance, and console API."
+            "releases and per-pet rollback, rights evidence and immutable review history, revoked-"
+            "asset device acknowledgements, realtime cursor notifications, external reminder "
+            "providers, synchronization, pet asset publishing, administrator governance, and "
+            "console API."
         ),
     )
     app.state.settings = resolved
@@ -110,8 +113,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(router)
     app.include_router(realtime_router)
     app.include_router(user_portal_api_router)
-    # Static compatibility paths must precede dynamic governance routes.
+    # Static compatibility and enhanced rights paths must precede legacy dynamic routes.
     app.include_router(governance_compat_router)
+    app.include_router(rights_evidence_router)
+    app.include_router(rights_enhanced_router)
     app.include_router(governance_api_router)
     app.include_router(asset_submission_router)
     app.include_router(asset_production_router)
