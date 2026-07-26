@@ -279,3 +279,8 @@ class AssetPackageDownloadController(QObject):
         except (OSError, ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             self._pending.discard(identity.key)
             self.download_failed.emit(identity.template_id, str(exc))
+
+
+from .asset_revocation import install_asset_revocation_runtime
+
+install_asset_revocation_runtime(sys.modules[__name__], PetAssetCatalog)
