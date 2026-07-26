@@ -84,11 +84,26 @@ class GrowthExperienceApplication(DesktopExperienceApplication):
         self._sync_growth_widgets()
 
     def _local_growth_experience(self) -> dict[str, object]:
-        pet = apply_growth_levels(self.active_pet)
-        try:
-            self.local_store.upsert_pet(pet)
-        except (OSError, RuntimeError, ValueError):
-            pass
+        pet = self.active_pet
+        if pet.identity.primary_owner_account_id != LOCAL_ACCOUNT_ID:
+            return {"progress": build_growth_progress(pet), "memories": []}
+
+        before = (
+            int(pet.stats.growth_level),
+            int(pet.stats.bond_level),
+            self._stage_value(pet),
+        )
+        apply_growth_levels(pet)
+        after = (
+            int(pet.stats.growth_level),
+            int(pet.stats.bond_level),
+            self._stage_value(pet),
+        )
+        if after != before:
+            try:
+                self.local_store.upsert_pet(pet)
+            except (OSError, RuntimeError, ValueError):
+                pass
         records = self.local_store.list_interaction_records(
             pet.identity.pet_id,
             limit=1000,
