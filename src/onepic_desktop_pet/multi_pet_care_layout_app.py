@@ -25,7 +25,6 @@ class MultiPetCareLayoutApplication(MultiPetOverviewApplication):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self._layout_active_pet_id = self.active_pet.identity.pet_id
         self.next_pet_prompt = NextPetPrompt()
         self.next_pet_prompt.switch_requested.connect(self._switch_rotation_pet)
         self.dual_pet_layout = DualPetLayoutController(
@@ -136,12 +135,16 @@ class MultiPetCareLayoutApplication(MultiPetOverviewApplication):
 
     def _present_enhanced_care_success(self, action: str) -> None:
         super()._present_enhanced_care_success(action)
-        QTimer.singleShot(350, self._show_next_pet_prompt)
+        self.refresh_multi_pet_overview()
+        # Cloud summaries are refreshed asynchronously. The prompt remains explicit and
+        # is delayed long enough to use the newest server response in normal conditions.
+        QTimer.singleShot(900, self._show_next_pet_prompt)
 
     def _show_next_pet_prompt(self) -> None:
         summary = self.multi_pet_summary()
         next_pet_id = str(summary.get("next_pet_id") or "")
         if not next_pet_id:
+            self.next_pet_prompt.hide()
             return
         target = next(
             (
@@ -153,6 +156,7 @@ class MultiPetCareLayoutApplication(MultiPetOverviewApplication):
             None,
         )
         if not isinstance(target, dict):
+            self.next_pet_prompt.hide()
             return
         name = str(target.get("name") or "下一只宠物")
         detail = str(target.get("recommendation_detail") or "还有一只宠物值得看看。")
@@ -285,14 +289,19 @@ class MultiPetCareLayoutApplication(MultiPetOverviewApplication):
         if previous != current and self.settings.multi_pet_layout_enabled:
             if self.settings.multi_pet_companion_pet_id == current:
                 self.settings.multi_pet_companion_pet_id = previous
-            QTimer.singleShot(200, lambda: self._sync_dual_pet_layout(use_saved_position=True))
-        self._layout_active_pet_id = current
+            QTimer.singleShot(
+                200,
+                lambda: self._sync_dual_pet_layout(use_saved_position=True),
+            )
         self._refresh_dual_layout_actions()
 
     def _multi_pet_received(self, payload: object) -> None:
         super()._multi_pet_received(payload)
         if self.settings.multi_pet_layout_enabled:
-            QTimer.singleShot(100, lambda: self._sync_dual_pet_layout(use_saved_position=True))
+            QTimer.singleShot(
+                100,
+                lambda: self._sync_dual_pet_layout(use_saved_position=True),
+            )
         self._refresh_dual_layout_actions()
 
     def quit(self) -> None:
