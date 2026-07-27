@@ -19,6 +19,72 @@ const multiPetPriorityLabels = {
   unavailable: "暂不可照料",
 };
 
+function ensureMultiPetAfterCarePrompt() {
+  let prompt = $("multi-pet-after-care-prompt");
+  if (prompt) return prompt;
+  const dashboardSection = $("dashboard-section");
+  if (!dashboardSection) return null;
+  prompt = node("article", "", "panel multi-pet-after-care-prompt");
+  prompt.id = "multi-pet-after-care-prompt";
+  prompt.hidden = true;
+  const copy = node("div", "", "multi-pet-after-care-copy");
+  copy.append(
+    node("span", "照料完成", "recommendation-label"),
+    node("strong", "还有宠物值得看看"),
+    node("small", "", "hint"),
+  );
+  copy.querySelector("strong").id = "multi-pet-after-care-title";
+  copy.querySelector("small").id = "multi-pet-after-care-detail";
+  const actions = node("div", "", "multi-pet-after-care-actions");
+  const later = node("button", "稍后", "secondary");
+  later.type = "button";
+  later.addEventListener("click", () => {
+    prompt.hidden = true;
+  });
+  const switchButton = node("button", "切换", "");
+  switchButton.id = "multi-pet-after-care-switch";
+  switchButton.type = "button";
+  switchButton.addEventListener("click", async () => {
+    const targetPetId = switchButton.dataset.petId || "";
+    if (!targetPetId) return;
+    switchButton.disabled = true;
+    try {
+      const target = multiPetOverviewState.items.find((item) => item.pet_id === targetPetId);
+      await switchPortalPetForRotation(targetPetId);
+      prompt.hidden = true;
+      setStatus(globalStatus, `已切换到 ${target?.name || "下一只宠物"}。`, "success");
+    } catch (error) {
+      setStatus(globalStatus, error.message, "error");
+    } finally {
+      switchButton.disabled = false;
+    }
+  });
+  actions.append(later, switchButton);
+  prompt.append(copy, actions);
+  const overview = $("multi-pet-overview-panel");
+  if (overview) overview.insertAdjacentElement("beforebegin", prompt);
+  else dashboardSection.append(prompt);
+  return prompt;
+}
+
+function showMultiPetAfterCarePrompt() {
+  const prompt = ensureMultiPetAfterCarePrompt();
+  if (!prompt) return;
+  const targetPetId = multiPetOverviewState.nextPetId;
+  const target = multiPetOverviewState.items.find((item) => item.pet_id === targetPetId);
+  if (!targetPetId || !target) {
+    prompt.hidden = true;
+    return;
+  }
+  $("multi-pet-after-care-title").textContent = `下一只可以看看 ${target.name}`;
+  $("multi-pet-after-care-detail").textContent = target.recommendation_detail || "还有一只宠物需要关注。";
+  const switchButton = $("multi-pet-after-care-switch");
+  switchButton.dataset.petId = targetPetId;
+  switchButton.textContent = `切换到 ${target.name}`;
+  prompt.hidden = false;
+  prompt.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
 function ensureMultiPetOverviewPanel() {
   let panel = $("multi-pet-overview-panel");
   if (panel) return panel;
@@ -64,6 +130,7 @@ function ensureMultiPetOverviewPanel() {
   const pendingPanel = $("pending-items-panel");
   if (pendingPanel) pendingPanel.insertAdjacentElement("afterend", panel);
   else dashboardSection.append(panel);
+  ensureMultiPetAfterCarePrompt();
   return panel;
 }
 
@@ -85,7 +152,6 @@ async function careForOverviewPet(item, button) {
     await switchPortalPetForRotation(item.pet_id);
   }
   await performPhase1Care(item.recommended_action, button);
-  await refreshMultiPetOverview();
 }
 
 function renderMultiPetOverview() {
@@ -177,6 +243,8 @@ async function refreshMultiPetOverview() {
       completedTodayCount: 0,
       items: [],
     });
+    const prompt = $("multi-pet-after-care-prompt");
+    if (prompt) prompt.hidden = true;
     renderMultiPetOverview();
     return;
   }
@@ -197,6 +265,13 @@ const baseRefreshAllForMultiPetOverview = refreshAll;
 refreshAll = async function refreshAllWithMultiPetOverview() {
   await baseRefreshAllForMultiPetOverview();
   await refreshMultiPetOverview();
+};
+
+const basePerformPhase1CareForMultiPetOverview = performPhase1Care;
+performPhase1Care = async function performPhase1CareWithMultiPetFollowUp(action, button) {
+  await basePerformPhase1CareForMultiPetOverview(action, button);
+  await refreshMultiPetOverview();
+  showMultiPetAfterCarePrompt();
 };
 
 ensureMultiPetOverviewPanel();
