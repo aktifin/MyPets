@@ -3,6 +3,33 @@
   gap: 16px;
 }
 
+.multi-pet-after-care-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-color: #bfd0ff;
+  background: #f4f7ff;
+}
+
+.multi-pet-after-care-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.multi-pet-after-care-copy strong {
+  color: #26448b;
+  font-size: 16px;
+}
+
+.multi-pet-after-care-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
 .multi-pet-heading,
 .multi-pet-controls,
 .multi-pet-card-header,
@@ -141,18 +168,21 @@
 }
 
 @media (max-width: 720px) {
+  .multi-pet-after-care-prompt,
   .multi-pet-heading {
     align-items: flex-start;
     flex-direction: column;
   }
 
+  .multi-pet-after-care-actions,
   .multi-pet-controls {
     justify-content: flex-start;
     width: 100%;
   }
 
+  .multi-pet-after-care-actions button,
   .multi-pet-controls button {
-    flex: 1 1 220px;
+    flex: 1 1 180px;
   }
 
   .multi-pet-overview-list {
