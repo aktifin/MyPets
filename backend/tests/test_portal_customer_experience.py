@@ -20,6 +20,8 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     assert "/portal/pending-items-experience.js" in page.text
     assert "/portal/multi-pet-overview.css" in page.text
     assert "/portal/multi-pet-overview.js" in page.text
+    assert "/portal/customer-actions-experience.css" in page.text
+    assert "/portal/customer-actions-experience.js" in page.text
 
     script = client.get("/portal/customer-experience.js")
     styles = client.get("/portal/customer-experience.css")
@@ -33,6 +35,8 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     pending_styles = client.get("/portal/pending-items-experience.css")
     multi_script = client.get("/portal/multi-pet-overview.js")
     multi_styles = client.get("/portal/multi-pet-overview.css")
+    actions_script = client.get("/portal/customer-actions-experience.js")
+    actions_styles = client.get("/portal/customer-actions-experience.css")
     for response in (
         script,
         styles,
@@ -46,6 +50,8 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
         pending_styles,
         multi_script,
         multi_styles,
+        actions_script,
+        actions_styles,
     ):
         assert response.status_code == 200
         assert response.headers["cache-control"] == "no-store"
@@ -96,13 +102,22 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     assert "performPhase1CareWithMultiPetFollowUp" in multi_script.text
     assert "portal/preference" in multi_script.text
 
+    assert "/timeline" in actions_script.text
+    assert "/target" in actions_script.text
+    assert "收到，我来看看" in actions_script.text
+    assert "查看详情" in actions_script.text
+    assert "串门时间线" in actions_script.text
+    assert "Idempotency-Key" in actions_script.text
+
     assert "style=" not in script.text
     assert "style=" not in daily_script.text
     assert "style=" not in proactive_script.text
     assert "style=" not in growth_script.text
     assert "style=" not in pending_script.text
     assert "style=" not in multi_script.text
+    assert "style=" not in actions_script.text
     assert ".style." not in multi_script.text
+    assert ".style." not in actions_script.text
 
 
 def test_pet_presets_hide_internal_version_selection_from_customers(client: TestClient) -> None:
