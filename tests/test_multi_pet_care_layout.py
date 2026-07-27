@@ -121,16 +121,20 @@ def test_dual_pet_layout_keeps_one_companion_and_remembers_positions() -> None:
     assert settings.multi_pet_primary_x is not None
     assert settings.multi_pet_companion_x is not None
 
+    desired_primary = QPoint(90, 110)
+    desired_secondary = QPoint(310, 118)
+    settings.multi_pet_primary_x = desired_primary.x()
+    settings.multi_pet_primary_y = desired_primary.y()
+    settings.multi_pet_companion_x = desired_secondary.x()
+    settings.multi_pet_companion_y = desired_secondary.y()
+    controller.restore_layout()
+    assert primary.pos() == desired_primary
+    assert first.pos() == desired_secondary
+
     first.move(QPoint(first.x() + 12, first.y() + 8))
     controller.remember_positions()
-    saved_secondary = (
-        settings.multi_pet_companion_x,
-        settings.multi_pet_companion_y,
-    )
-    primary.move(0, 0)
-    first.move(0, 0)
-    controller.restore_layout()
-    assert (first.x(), first.y()) == saved_secondary
+    assert settings.multi_pet_companion_x == first.x()
+    assert settings.multi_pet_companion_y == first.y()
 
     second = controller.show_companion(
         pet_id="pet-c",
