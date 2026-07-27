@@ -28,7 +28,7 @@ def _account_id(client: TestClient, username: str) -> str:
         return value.id
 
 
-def _seed_customer_navigation(client: TestClient) -> dict[str, str]:
+def _seed_customer_navigation(client: TestClient) -> dict[str, object]:
     requester_auth = register_account(client, "timeline_requester", display_name="来访主人")
     host_auth = register_account(client, "timeline_host", display_name="接待主人")
     outsider_auth = register_account(client, "timeline_outsider", display_name="无关用户")
@@ -68,6 +68,8 @@ def _seed_customer_navigation(client: TestClient) -> dict[str, str]:
                 ),
             ]
         )
+        session.flush()
+
         session.add_all(
             [
                 AccountPetRelation(
@@ -80,26 +82,48 @@ def _seed_customer_navigation(client: TestClient) -> dict[str, str]:
                     pet_id=host_pet_id,
                     role="owner",
                 ),
+                PetVisit(
+                    id=visit_id,
+                    requester_account_id=requester_id,
+                    host_account_id=host_id,
+                    visitor_pet_id=visitor_id,
+                    host_pet_id=host_pet_id,
+                    status="completed",
+                    note="周末一起玩",
+                    duration_minutes=60,
+                    completion_reason="visit_auto_returned",
+                    created_at=now - timedelta(hours=2),
+                    responded_at=now - timedelta(hours=1, minutes=55),
+                    started_at=now - timedelta(hours=1, minutes=55),
+                    scheduled_end_at=now - timedelta(minutes=55),
+                    completed_at=now - timedelta(minutes=55),
+                ),
             ]
         )
-        session.add(
-            PetVisit(
-                id=visit_id,
-                requester_account_id=requester_id,
-                host_account_id=host_id,
-                visitor_pet_id=visitor_id,
-                host_pet_id=host_pet_id,
-                status="completed",
-                note="周末一起玩",
-                duration_minutes=60,
-                completion_reason="visit_auto_returned",
-                created_at=now - timedelta(hours=2),
-                responded_at=now - timedelta(hours=1, minutes=55),
-                started_at=now - timedelta(hours=1, minutes=55),
-                scheduled_end_at=now - timedelta(minutes=55),
-                completed_at=now - timedelta(minutes=55),
-            )
+        session.flush()
+
+        session.add_all(
+            [
+                Conversation(
+                    id=visit_conversation_id,
+                    kind="direct",
+                    direct_key="|".join(sorted((requester_id, host_id))),
+                    created_by_account_id=requester_id,
+                    created_at=now,
+                    updated_at=now,
+                ),
+                Conversation(
+                    id=friend_conversation_id,
+                    kind="direct",
+                    direct_key="|".join(sorted((requester_id, outsider_id))),
+                    created_by_account_id=requester_id,
+                    created_at=now,
+                    updated_at=now,
+                ),
+            ]
         )
+        session.flush()
+
         interaction_payload = {
             "cause": "visit_desktop_interaction",
             "interaction": {
@@ -112,25 +136,15 @@ def _seed_customer_navigation(client: TestClient) -> dict[str, str]:
                 "created_at": (now - timedelta(hours=1, minutes=30)).isoformat(),
             },
         }
-        session.add(
-            SyncEvent(
-                event_id=str(uuid4()),
-                account_id=requester_id,
-                event_type="pet_visit_interaction",
-                idempotency_key=f"timeline-interaction:{interaction_id}",
-                payload_json=json.dumps(interaction_payload),
-                created_at=now - timedelta(hours=1, minutes=30),
-            )
-        )
         session.add_all(
             [
-                Conversation(
-                    id=visit_conversation_id,
-                    kind="direct",
-                    direct_key="|".join(sorted((requester_id, host_id))),
-                    created_by_account_id=requester_id,
-                    created_at=now,
-                    updated_at=now,
+                SyncEvent(
+                    event_id=str(uuid4()),
+                    account_id=requester_id,
+                    event_type="pet_visit_interaction",
+                    idempotency_key=f"timeline-interaction:{interaction_id}",
+                    payload_json=json.dumps(interaction_payload),
+                    created_at=now - timedelta(hours=1, minutes=30),
                 ),
                 ConversationMember(
                     conversation_id=visit_conversation_id,
@@ -142,23 +156,6 @@ def _seed_customer_navigation(client: TestClient) -> dict[str, str]:
                     account_id=host_id,
                     joined_at=now,
                 ),
-                Message(
-                    id=str(uuid4()),
-                    conversation_id=visit_conversation_id,
-                    sender_account_id=requester_id,
-                    sender_pet_id=visitor_id,
-                    message_type="visit_message",
-                    content="周末一起玩",
-                    created_at=now,
-                ),
-                Conversation(
-                    id=friend_conversation_id,
-                    kind="direct",
-                    direct_key="|".join(sorted((requester_id, outsider_id))),
-                    created_by_account_id=requester_id,
-                    created_at=now,
-                    updated_at=now,
-                ),
                 ConversationMember(
                     conversation_id=friend_conversation_id,
                     account_id=requester_id,
@@ -168,6 +165,20 @@ def _seed_customer_navigation(client: TestClient) -> dict[str, str]:
                     conversation_id=friend_conversation_id,
                     account_id=outsider_id,
                     joined_at=now,
+                ),
+            ]
+        )
+        session.flush()
+        session.add_all(
+            [
+                Message(
+                    id=str(uuid4()),
+                    conversation_id=visit_conversation_id,
+                    sender_account_id=requester_id,
+                    sender_pet_id=visitor_id,
+                    message_type="visit_message",
+                    content="周末一起玩",
+                    created_at=now,
                 ),
                 Message(
                     id=str(uuid4()),
@@ -186,17 +197,15 @@ def _seed_customer_navigation(client: TestClient) -> dict[str, str]:
         "requester_auth": requester_auth,
         "host_auth": host_auth,
         "outsider_auth": outsider_auth,
-        "requester_id": requester_id,
-        "host_id": host_id,
-        "visitor_id": visitor_id,
-        "host_pet_id": host_pet_id,
         "visit_id": visit_id,
         "visit_conversation_id": visit_conversation_id,
         "friend_conversation_id": friend_conversation_id,
     }
 
 
-def test_visit_timeline_projects_lifecycle_and_deduplicated_interaction(client: TestClient) -> None:
+def test_visit_timeline_projects_lifecycle_and_deduplicated_interaction(
+    client: TestClient,
+) -> None:
     values = _seed_customer_navigation(client)
     response = client.get(
         f"/api/v1/visits/{values['visit_id']}/timeline",
@@ -233,7 +242,9 @@ def test_visit_timeline_projects_lifecycle_and_deduplicated_interaction(client: 
     assert forbidden.status_code == 403
 
 
-def test_conversation_target_selects_visit_then_friend_fallback(client: TestClient) -> None:
+def test_conversation_target_selects_visit_then_friend_fallback(
+    client: TestClient,
+) -> None:
     values = _seed_customer_navigation(client)
     visit_target = client.get(
         f"/api/v1/conversations/{values['visit_conversation_id']}/target",
