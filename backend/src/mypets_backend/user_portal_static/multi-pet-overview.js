@@ -41,12 +41,13 @@ function ensureMultiPetOverviewPanel() {
   nextButton.id = "multi-pet-next-button";
   nextButton.type = "button";
   nextButton.addEventListener("click", async () => {
-    if (!multiPetOverviewState.nextPetId) return;
+    const targetPetId = multiPetOverviewState.nextPetId;
+    if (!targetPetId) return;
+    const target = multiPetOverviewState.items.find((item) => item.pet_id === targetPetId);
     nextButton.disabled = true;
     try {
-      await switchPortalPetForRotation(multiPetOverviewState.nextPetId);
-      const pet = multiPetOverviewState.items.find((item) => item.pet_id === multiPetOverviewState.nextPetId);
-      setStatus(globalStatus, `已切换到 ${pet?.name || "下一只宠物"}。`, "success");
+      await switchPortalPetForRotation(targetPetId);
+      setStatus(globalStatus, `已切换到 ${target?.name || "下一只宠物"}。`, "success");
     } catch (error) {
       setStatus(globalStatus, error.message, "error");
     } finally {
@@ -133,13 +134,11 @@ function renderMultiPetOverview() {
       `今日任务 ${item.daily_completed_tasks}/${item.daily_total_tasks}${item.daily_all_completed ? " · 已完成" : ""}`,
       "multi-pet-task",
     );
-    const progress = node("div", "", "multi-pet-progress");
-    const progressValue = node("span");
-    progressValue.style.setProperty(
-      "--multi-pet-progress",
-      `${Math.min(100, Math.round((Number(item.daily_completed_tasks) / Math.max(1, Number(item.daily_total_tasks))) * 100))}%`,
-    );
-    progress.append(progressValue);
+    const progress = document.createElement("progress");
+    progress.className = "multi-pet-progress";
+    progress.max = Math.max(1, Number(item.daily_total_tasks));
+    progress.value = Math.max(0, Number(item.daily_completed_tasks));
+    progress.setAttribute("aria-label", `${item.name} 今日任务进度`);
 
     const actions = node("div", "", "multi-pet-actions");
     if (!item.current) {
