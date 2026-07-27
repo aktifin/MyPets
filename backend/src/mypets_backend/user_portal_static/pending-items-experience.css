@@ -1,0 +1,90 @@
+.pending-items-panel {
+  margin-top: 18px;
+}
+
+.pending-heading-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pending-items-list {
+  display: grid;
+  gap: 12px;
+}
+
+.pending-item-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 15px 16px;
+  border: 1px solid #e7e5e4;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.pending-item-card.urgent {
+  border-color: #f3b4a2;
+  background: #fff8f5;
+}
+
+.pending-item-body {
+  min-width: 0;
+}
+
+.pending-item-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.pending-kind {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f3f0ee;
+  color: #695b55;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pending-item-detail {
+  margin: 7px 0 5px;
+  color: #4b5563;
+  line-height: 1.55;
+}
+
+.pending-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.badge.urgent {
+  background: #fff1eb;
+  color: #a33b20;
+}
+
+.pending-summary-card strong {
+  color: #c05266;
+}
+
+@media (max-width: 760px) {
+  .pending-item-card {
+    grid-template-columns: 1fr;
+  }
+
+  .pending-item-actions {
+    justify-content: flex-start;
+  }
+
+  .pending-heading-controls {
+    align-items: flex-end;
+    flex-direction: column;
+  }
+}
