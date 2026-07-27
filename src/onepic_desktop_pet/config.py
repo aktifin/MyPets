@@ -63,6 +63,14 @@ class PetSettings:
     proactive_suppressed_until: str = ""
     proactive_suppressed_notice_key: str = ""
 
+    # Dual-pet layout is device-local and never changes cloud pet ownership or selection.
+    multi_pet_layout_enabled: bool = False
+    multi_pet_companion_pet_id: str = ""
+    multi_pet_primary_x: int | None = None
+    multi_pet_primary_y: int | None = None
+    multi_pet_companion_x: int | None = None
+    multi_pet_companion_y: int | None = None
+
     # Incremented only when a materially new customer onboarding flow is completed.
     desktop_experience_version: int = 0
 
@@ -105,6 +113,15 @@ def _clock(value: object, fallback: str) -> str:
     return f"{max(0, min(23, hour)):02d}:{max(0, min(59, minute)):02d}"
 
 
+def _optional_coordinate(value: object) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _validated(data: dict[str, Any]) -> PetSettings:
     """过滤未知字段并对关键数值执行安全范围校验。"""
 
@@ -126,6 +143,8 @@ def _validated(data: dict[str, Any]) -> PetSettings:
         int(settings.inactive_sleep_ms),
     )
 
+    settings.start_x = _optional_coordinate(settings.start_x)
+    settings.start_y = _optional_coordinate(settings.start_y)
     settings.edge_dock_enabled = bool(settings.edge_dock_enabled)
     settings.edge_snap_distance = min(120, max(8, int(settings.edge_snap_distance)))
     settings.edge_hide_delay_ms = min(10000, max(100, int(settings.edge_hide_delay_ms)))
@@ -167,6 +186,16 @@ def _validated(data: dict[str, Any]) -> PetSettings:
     settings.proactive_suppressed_notice_key = str(
         settings.proactive_suppressed_notice_key or ""
     )[:200]
+
+    settings.multi_pet_layout_enabled = bool(settings.multi_pet_layout_enabled)
+    settings.multi_pet_companion_pet_id = str(
+        settings.multi_pet_companion_pet_id or ""
+    )[:64]
+    settings.multi_pet_primary_x = _optional_coordinate(settings.multi_pet_primary_x)
+    settings.multi_pet_primary_y = _optional_coordinate(settings.multi_pet_primary_y)
+    settings.multi_pet_companion_x = _optional_coordinate(settings.multi_pet_companion_x)
+    settings.multi_pet_companion_y = _optional_coordinate(settings.multi_pet_companion_y)
+
     settings.desktop_experience_version = max(0, int(settings.desktop_experience_version))
     return settings
 
@@ -194,6 +223,12 @@ _PERSISTED_FIELDS = {
     "proactive_notice_count",
     "proactive_suppressed_until",
     "proactive_suppressed_notice_key",
+    "multi_pet_layout_enabled",
+    "multi_pet_companion_pet_id",
+    "multi_pet_primary_x",
+    "multi_pet_primary_y",
+    "multi_pet_companion_x",
+    "multi_pet_companion_y",
     "desktop_experience_version",
 }
 
@@ -244,6 +279,12 @@ def save_settings(settings: PetSettings, path: Path | None = None) -> Path:
         "proactive_notice_count": settings.proactive_notice_count,
         "proactive_suppressed_until": settings.proactive_suppressed_until,
         "proactive_suppressed_notice_key": settings.proactive_suppressed_notice_key,
+        "multi_pet_layout_enabled": settings.multi_pet_layout_enabled,
+        "multi_pet_companion_pet_id": settings.multi_pet_companion_pet_id,
+        "multi_pet_primary_x": settings.multi_pet_primary_x,
+        "multi_pet_primary_y": settings.multi_pet_primary_y,
+        "multi_pet_companion_x": settings.multi_pet_companion_x,
+        "multi_pet_companion_y": settings.multi_pet_companion_y,
         "desktop_experience_version": settings.desktop_experience_version,
     }
     temporary.write_text(
