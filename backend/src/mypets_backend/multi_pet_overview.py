@@ -150,10 +150,14 @@ def build_pet_overview_item(
     if not can_care:
         action_reason = recommendation_detail
     elif recommended_action is None:
-        action_reason = "当前无需直接照料操作。"
+        action_reason = "切换后可查看完整状态，不会自动执行照料。"
 
     needs_attention = priority in {"urgent", "attention", "routine"}
-    switch_candidate = needs_attention and action_available
+    switch_candidate = bool(
+        needs_attention
+        and can_care
+        and (action_available or recommended_action is None)
+    )
     status_summary = recommendation_title
     if priority == "stable":
         status_summary = "状态良好，今日任务已完成"
