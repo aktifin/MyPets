@@ -74,20 +74,28 @@ class PendingItemsApplication(GrowthExperienceApplication):
     def refresh_pending_items(self) -> None:
         if not self.cloud_session.connected:
             if self._pending_items_dialog is not None:
+                identity = getattr(self.cloud_session, "identity", None)
+                message = (
+                    "云端正在同步，先显示上次读取的待处理事项。"
+                    if identity is not None
+                    else "请先连接云端账户，再读取待处理事项。"
+                )
                 self._pending_items_dialog.set_status(
-                    "请先连接云端账户，再读取待处理事项。",
-                    error=True,
+                    message,
+                    error=identity is None,
                 )
             return
         self.pending_items_client.refresh(limit=100)
 
     def _pending_cloud_state_changed(self, state: str) -> None:
-        if state == "connected":
+        state_value = str(getattr(state, "value", state))
+        if state_value == "connected":
             self._refresh_pending_items_action()
             QTimer.singleShot(500, self.refresh_pending_items)
             return
-        self._pending_items_payload = {"count": 0, "urgent_count": 0, "items": []}
-        self._sync_pending_items_dialog()
+        if state_value in {"disabled", "offline"}:
+            self._pending_items_payload = {"count": 0, "urgent_count": 0, "items": []}
+            self._sync_pending_items_dialog()
         self._refresh_pending_items_action()
 
     def _pending_items_received(self, payload: object) -> None:
@@ -120,7 +128,7 @@ class PendingItemsApplication(GrowthExperienceApplication):
         if self._pending_items_dialog is not None:
             self._pending_items_dialog.set_status(message)
         self.cloud_session.sync_now()
-        self.refresh_pending_items()
+        QTimer.singleShot(500, self.refresh_pending_items)
 
     def _pending_items_failed(self, operation: str, message: str) -> None:
         if self._pending_items_dialog is not None:
@@ -140,7 +148,7 @@ class PendingItemsApplication(GrowthExperienceApplication):
         )
 
     def _refresh_pending_items_action(self) -> None:
-        connected = bool(self.cloud_session.connected)
+        identity = getattr(self.cloud_session, "identity", None)
         count = self.pending_items_count()
         urgent = self.pending_urgent_count()
         if urgent:
@@ -150,7 +158,7 @@ class PendingItemsApplication(GrowthExperienceApplication):
         else:
             text = "待处理事项"
         self.pending_items_action.setText(text)
-        self.pending_items_action.setEnabled(connected)
+        self.pending_items_action.setEnabled(identity is not None)
 
     def start(self, smoke_test_ms: int | None = None) -> int:
         if smoke_test_ms is None:
