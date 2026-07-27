@@ -146,6 +146,34 @@ def test_proactive_care_settings_are_normalized_to_safe_ranges(tmp_path) -> None
     assert len(settings.proactive_suppressed_notice_key) == 200
 
 
+def test_dual_pet_layout_coordinates_are_persisted_and_normalized(tmp_path) -> None:
+    default_path = tmp_path / "default.json"
+    override_path = tmp_path / "override.json"
+    default_path.write_text("{}", encoding="utf-8")
+    override_path.write_text(
+        json.dumps(
+            {
+                "multi_pet_layout_enabled": True,
+                "multi_pet_companion_pet_id": "pet-companion",
+                "multi_pet_primary_x": "120",
+                "multi_pet_primary_y": 230,
+                "multi_pet_companion_x": "bad",
+                "multi_pet_companion_y": -40,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(default_path, override_path)
+
+    assert settings.multi_pet_layout_enabled is True
+    assert settings.multi_pet_companion_pet_id == "pet-companion"
+    assert settings.multi_pet_primary_x == 120
+    assert settings.multi_pet_primary_y == 230
+    assert settings.multi_pet_companion_x is None
+    assert settings.multi_pet_companion_y == -40
+
+
 def test_default_inactivity_uses_five_and_ten_minutes() -> None:
     settings = PetSettings()
     assert settings.inactive_sit_ms == 300000
@@ -156,6 +184,8 @@ def test_default_inactivity_uses_five_and_ten_minutes() -> None:
     assert settings.proactive_quiet_end == "08:00"
     assert settings.proactive_min_interval_minutes == 120
     assert settings.proactive_max_daily_notices == 3
+    assert settings.multi_pet_layout_enabled is False
+    assert settings.multi_pet_companion_pet_id == ""
 
 
 def test_save_settings_writes_json_without_credentials(tmp_path) -> None:
@@ -182,6 +212,12 @@ def test_save_settings_writes_json_without_credentials(tmp_path) -> None:
             proactive_notice_count=1,
             proactive_suppressed_until="2026-07-26T12:00:00+00:00",
             proactive_suppressed_notice_key="pet:1:low:hunger",
+            multi_pet_layout_enabled=True,
+            multi_pet_companion_pet_id="pet-2",
+            multi_pet_primary_x=100,
+            multi_pet_primary_y=200,
+            multi_pet_companion_x=320,
+            multi_pet_companion_y=210,
             desktop_experience_version=1,
         ),
         path,
@@ -203,6 +239,10 @@ def test_save_settings_writes_json_without_credentials(tmp_path) -> None:
     assert data["proactive_max_daily_notices"] == 2
     assert data["proactive_notice_count"] == 1
     assert data["proactive_suppressed_notice_key"] == "pet:1:low:hunger"
+    assert data["multi_pet_layout_enabled"] is True
+    assert data["multi_pet_companion_pet_id"] == "pet-2"
+    assert data["multi_pet_primary_x"] == 100
+    assert data["multi_pet_companion_x"] == 320
     assert data["desktop_experience_version"] == 1
     assert set(data) == {
         "display_height",
@@ -227,6 +267,12 @@ def test_save_settings_writes_json_without_credentials(tmp_path) -> None:
         "proactive_notice_count",
         "proactive_suppressed_until",
         "proactive_suppressed_notice_key",
+        "multi_pet_layout_enabled",
+        "multi_pet_companion_pet_id",
+        "multi_pet_primary_x",
+        "multi_pet_primary_y",
+        "multi_pet_companion_x",
+        "multi_pet_companion_y",
         "desktop_experience_version",
     }
     assert "device_secret" not in data

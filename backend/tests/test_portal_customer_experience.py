@@ -91,7 +91,9 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     assert "多宠状态总览" in multi_script.text
     assert "真正需要关注的宠物排在前面" in multi_script.text
     assert "切换下一只需要关注" in multi_script.text
-    assert "performPhase1Care" in multi_script.text
+    assert "照料完成" in multi_script.text
+    assert "下一只可以看看" in multi_script.text
+    assert "performPhase1CareWithMultiPetFollowUp" in multi_script.text
     assert "portal/preference" in multi_script.text
 
     assert "style=" not in script.text
