@@ -90,7 +90,7 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     assert "/api/v1/multi-pet-overview?timezone_offset_minutes=" in multi_script.text
     assert "多宠状态总览" in multi_script.text
     assert "真正需要关注的宠物排在前面" in multi_script.text
-    assert "切换下一只需要照料" in multi_script.text
+    assert "切换下一只需要关注" in multi_script.text
     assert "performPhase1Care" in multi_script.text
     assert "portal/preference" in multi_script.text
 
