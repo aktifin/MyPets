@@ -158,7 +158,7 @@ def _low_state_candidate(pet: object) -> dict[str, object] | None:
             45,
             "play",
             "心情有点低",
-            "陪它玩一会儿，增加今天的互动。",
+            "陪它玩一会儿，增加轻松互动。",
         ),
         (
             100 - int(_value(pet, "boredom", 0)),
@@ -205,10 +205,12 @@ def _low_state_candidate(pet: object) -> dict[str, object] | None:
 def aggregate_multi_pet_candidates(
     candidates: Iterable[Mapping[str, object]],
 ) -> list[dict[str, object]]:
-    """Collapse multiple per-pet prompts into one stable, actionable summary.
+    """Collapse simultaneous pet notices into one public-compatible summary.
 
     Only the highest-priority prompt for each pet participates. Due reminders stay
     separate so a time-sensitive reminder is not hidden inside a pet status summary.
+    The aggregate intentionally remains a ``low_state`` notice at the public API boundary;
+    its stable ``multi-pet:`` key and action label identify the multi-pet behavior.
     """
 
     values = [dict(item) for item in candidates]
@@ -227,22 +229,30 @@ def aggregate_multi_pet_candidates(
 
     pet_items = sorted(
         best_by_pet.values(),
-        key=lambda item: (-int(item.get("priority") or 0), str(item.get("notice_key") or "")),
+        key=lambda item: (
+            -int(item.get("priority") or 0),
+            str(item.get("notice_key") or ""),
+        ),
     )
     if len(pet_items) < 2:
         return sorted(
             [*others, *pet_items],
-            key=lambda item: (-int(item.get("priority") or 0), str(item.get("notice_key") or "")),
+            key=lambda item: (
+                -int(item.get("priority") or 0),
+                str(item.get("notice_key") or ""),
+            ),
         )
 
     keys = sorted(str(item.get("notice_key") or "") for item in pet_items)
     digest = hashlib.sha256("|".join(keys).encode("utf-8")).hexdigest()[:16]
-    detail_parts = [str(item.get("title") or "宠物需要关注") for item in pet_items[:4]]
+    detail_parts = [
+        str(item.get("title") or "宠物需要关注") for item in pet_items[:4]
+    ]
     if len(pet_items) > 4:
         detail_parts.append(f"另有 {len(pet_items) - 4} 只宠物")
     summary = {
         "notice_key": f"multi-pet:{digest}",
-        "kind": "multi_pet_summary",
+        "kind": "low_state",
         "priority": max(int(item.get("priority") or 0) for item in pet_items)
         + min(40, len(pet_items) * 5),
         "pet_id": None,
@@ -267,7 +277,10 @@ def aggregate_multi_pet_candidates(
     }
     return sorted(
         [*others, summary],
-        key=lambda item: (-int(item.get("priority") or 0), str(item.get("notice_key") or "")),
+        key=lambda item: (
+            -int(item.get("priority") or 0),
+            str(item.get("notice_key") or ""),
+        ),
     )
 
 
