@@ -93,8 +93,8 @@ async function actOnPendingItem(item, action) {
     headers: { "Idempotency-Key": pendingIdempotencyKey(item, action) },
     json: { snooze_minutes: 10 },
   });
-  setStatus(globalStatus, payload.message || "待处理事项已更新。", "success");
   await refreshAll();
+  setStatus(globalStatus, payload.message || "待处理事项已更新。", "success");
 }
 
 function renderPendingItems() {
