@@ -49,9 +49,9 @@ def _conversation(category: str, *, kind: str = "direct") -> ConversationRecord:
         sender_account_id="account-peer" if kind == "direct" else account_id,
         sender_display_name="好友" if kind == "direct" else "系统",
         sender_pet_id="pet-visitor" if category == "visit" else None,
-        message_type="visit_message" if category == "visit" else (
-            "growth_notice" if kind == "system" else "text"
-        ),
+        message_type="visit_message"
+        if category == "visit"
+        else ("growth_notice" if kind == "system" else "text"),
         content="周末一起玩" if category == "visit" else "消息内容",
         created_at=datetime(2026, 7, 27, 8, 0, tzinfo=UTC),
     )
@@ -71,7 +71,9 @@ def _conversation(category: str, *, kind: str = "direct") -> ConversationRecord:
     )
 
 
-def test_actionable_message_drawer_sends_quick_reply_and_requests_detail(tmp_path: Path) -> None:
+def test_actionable_message_drawer_sends_quick_reply_and_requests_detail(
+    tmp_path: Path,
+) -> None:
     app = QApplication.instance() or QApplication([])
     store = LocalStateStore(tmp_path / "messages.sqlite3")
     cache = MessageCache(store)
@@ -81,9 +83,13 @@ def test_actionable_message_drawer_sends_quick_reply_and_requests_detail(tmp_pat
     drawer = ActionableMessageDrawer(cache)
     sent: list[tuple[str, str]] = []
     related: list[str] = []
-    drawer.send_requested.connect(lambda conversation_id, content: sent.append((conversation_id, content)))
+    drawer.send_requested.connect(
+        lambda conversation_id, content: sent.append((conversation_id, content))
+    )
     drawer.related_detail_requested.connect(related.append)
     drawer.set_account("account-local", "本机用户")
+    drawer.show()
+    app.processEvents()
 
     visit_index = drawer.category_combo.findData("visit")
     drawer.category_combo.setCurrentIndex(visit_index)
@@ -202,7 +208,9 @@ def test_customer_navigation_client_uses_read_only_paths() -> None:
     timelines: list[object] = []
     targets: list[tuple[str, object]] = []
     client.timeline_received.connect(timelines.append)
-    client.target_received.connect(lambda conversation_id, payload: targets.append((conversation_id, payload)))
+    client.target_received.connect(
+        lambda conversation_id, payload: targets.append((conversation_id, payload))
+    )
 
     assert client.load_timeline("visit-1") is True
     assert client.load_conversation_target("conversation-1") is True
