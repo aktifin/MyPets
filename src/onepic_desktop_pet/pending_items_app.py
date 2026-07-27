@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QTimer
+from PySide6.QtGui import QAction
 
 from .growth_experience_app import GrowthExperienceApplication
 from .pending_items_client import PendingItemsCloudClient
@@ -20,6 +21,22 @@ class PendingItemsApplication(GrowthExperienceApplication):
         }
         self._pending_items_dialog: PendingItemsDialog | None = None
         super().__init__(*args, **kwargs)
+
+        self.pending_items_action = QAction("待处理事项", self.system_tray_menu.menu)
+        self.pending_items_action.triggered.connect(self.open_pending_items_dialog)
+        separator = next(
+            (
+                action
+                for action in self.system_tray_menu.menu.actions()
+                if action.isSeparator()
+            ),
+            None,
+        )
+        if separator is not None:
+            self.system_tray_menu.menu.insertAction(separator, self.pending_items_action)
+        else:
+            self.system_tray_menu.menu.addAction(self.pending_items_action)
+
         self.pending_items_client = PendingItemsCloudClient(
             self.cloud_api,
             parent=self.qt_app,
@@ -32,6 +49,7 @@ class PendingItemsApplication(GrowthExperienceApplication):
         self._pending_items_timer = QTimer(self.qt_app)
         self._pending_items_timer.setInterval(5 * 60 * 1000)
         self._pending_items_timer.timeout.connect(self.refresh_pending_items)
+        self._refresh_pending_items_action()
         if self.cloud_session.connected:
             QTimer.singleShot(600, self.refresh_pending_items)
 
@@ -65,18 +83,19 @@ class PendingItemsApplication(GrowthExperienceApplication):
 
     def _pending_cloud_state_changed(self, state: str) -> None:
         if state == "connected":
+            self._refresh_pending_items_action()
             QTimer.singleShot(500, self.refresh_pending_items)
             return
         self._pending_items_payload = {"count": 0, "urgent_count": 0, "items": []}
         self._sync_pending_items_dialog()
-        self.system_tray_menu.refresh()
+        self._refresh_pending_items_action()
 
     def _pending_items_received(self, payload: object) -> None:
         if not isinstance(payload, dict):
             return
         self._pending_items_payload = dict(payload)
         self._sync_pending_items_dialog()
-        self.system_tray_menu.refresh()
+        self._refresh_pending_items_action()
 
     def _act_on_pending_item(
         self,
@@ -107,7 +126,7 @@ class PendingItemsApplication(GrowthExperienceApplication):
         if self._pending_items_dialog is not None:
             self._pending_items_dialog.set_status(message, error=True)
         if operation == "list":
-            self.system_tray_menu.refresh()
+            self._refresh_pending_items_action()
 
     def _sync_pending_items_dialog(self) -> None:
         if self._pending_items_dialog is None:
@@ -119,6 +138,19 @@ class PendingItemsApplication(GrowthExperienceApplication):
             total_count=self.pending_items_count(),
             urgent_count=self.pending_urgent_count(),
         )
+
+    def _refresh_pending_items_action(self) -> None:
+        connected = bool(self.cloud_session.connected)
+        count = self.pending_items_count()
+        urgent = self.pending_urgent_count()
+        if urgent:
+            text = f"待处理事项（{count}，{urgent} 项优先）"
+        elif count:
+            text = f"待处理事项（{count}）"
+        else:
+            text = "待处理事项"
+        self.pending_items_action.setText(text)
+        self.pending_items_action.setEnabled(connected)
 
     def start(self, smoke_test_ms: int | None = None) -> int:
         if smoke_test_ms is None:
