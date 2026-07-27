@@ -100,6 +100,31 @@ def test_local_multi_pet_overview_prioritizes_state_then_daily_rotation() -> Non
     assert next_rotation_pet_id(items, current_pet_id="local-stable") == "local-hungry"
 
 
+def test_health_attention_rotates_for_review_but_never_auto_cares() -> None:
+    health_item = build_local_overview_item(
+        _pet(
+            "local-health",
+            "康康",
+            hunger=95,
+            energy=95,
+            mood=95,
+            cleanliness=95,
+            health=25,
+            boredom=5,
+        ),
+        build_local_daily_care_summary([]),
+        current=False,
+    )
+
+    assert health_item["priority"] == "urgent"
+    assert health_item["recommended_action"] is None
+    assert health_item["action_available"] is False
+    assert health_item["switch_candidate"] is True
+    assert health_item["recommended_action_label"] == "查看状态"
+    assert "不会自动执行照料" in health_item["action_reason"]
+    assert next_rotation_pet_id([health_item], current_pet_id="other") == "local-health"
+
+
 def test_merge_prefers_local_snapshot_for_same_pet_and_keeps_cloud_pets() -> None:
     local_item = build_local_overview_item(
         _pet("same-pet", "本机名称", hunger=30),
