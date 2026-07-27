@@ -173,7 +173,7 @@ def multi_pet_overview(
         total_count=len(ordered),
         needs_attention_count=sum(bool(item["needs_attention"]) for item in ordered),
         urgent_count=sum(item["priority"] == "urgent" for item in ordered),
-        care_ready_count=sum(bool(item["switch_candidate"]) for item in ordered),
+        care_ready_count=sum(bool(item["action_available"]) for item in ordered),
         completed_today_count=sum(bool(item["daily_all_completed"]) for item in ordered),
         items=[MultiPetOverviewItemView.model_validate(item) for item in ordered],
     )
