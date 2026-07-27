@@ -5,7 +5,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtWidgets import QApplication, QPushButton
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
 from onepic_desktop_pet.pending_items_dialog import PendingItemsDialog
 
@@ -69,5 +69,8 @@ def test_pending_items_dialog_has_clear_empty_state() -> None:
     dialog.set_items([], total_count=0)
 
     assert dialog.summary_label.text() == "共 0 项"
-    assert "当前没有需要处理的事项" in dialog.findChildren(type(dialog.summary_label))[-2].text()
+    assert any(
+        "当前没有需要处理的事项" in label.text()
+        for label in dialog.findChildren(QLabel)
+    )
     dialog.close()
