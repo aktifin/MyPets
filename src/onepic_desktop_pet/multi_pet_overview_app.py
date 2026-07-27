@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QAction
 
@@ -71,8 +73,6 @@ class MultiPetOverviewApplication(PendingItemsApplication):
 
     @staticmethod
     def _timezone_offset_minutes() -> int:
-        from datetime import datetime
-
         offset = datetime.now().astimezone().utcoffset()
         return -round((offset.total_seconds() if offset else 0) / 60)
 
@@ -110,7 +110,7 @@ class MultiPetOverviewApplication(PendingItemsApplication):
             "total_count": len(items),
             "needs_attention_count": sum(bool(item.get("needs_attention")) for item in items),
             "urgent_count": sum(item.get("priority") == "urgent" for item in items),
-            "care_ready_count": sum(bool(item.get("switch_candidate")) for item in items),
+            "care_ready_count": sum(bool(item.get("action_available")) for item in items),
             "next_pet_id": next_rotation_pet_id(items, current_pet_id=current_id),
             "items": items,
         }
@@ -148,27 +148,41 @@ class MultiPetOverviewApplication(PendingItemsApplication):
         next_pet_id = str(self.multi_pet_summary().get("next_pet_id") or "")
         if not next_pet_id:
             if self._multi_pet_dialog is not None:
-                self._multi_pet_dialog.set_status("当前没有其他可立即照料的宠物。")
+                self._multi_pet_dialog.set_status("当前没有其他需要查看或可立即照料的宠物。")
             return
         self._switch_rotation_pet(next_pet_id)
 
-    def _switch_rotation_pet(self, pet_id: str) -> None:
+    def _switch_rotation_pet(self, pet_id: str) -> bool:
         pet = self.local_store.get_pet(pet_id)
         if pet is None:
+            self._queued_rotation_care = None
             if self._multi_pet_dialog is not None:
                 self._multi_pet_dialog.set_status("宠物尚未同步到本机，请稍后刷新。", error=True)
-            return
+            return False
+        if (
+            pet.identity.primary_owner_account_id != LOCAL_ACCOUNT_ID
+            and not self.cloud_session.connected
+        ):
+            self._queued_rotation_care = None
+            if self._multi_pet_dialog is not None:
+                self._multi_pet_dialog.set_status(
+                    "云端未连接，暂时不能切换到这只云端宠物。",
+                    error=True,
+                )
+            return False
         self._switch_pet(pet_id)
         if self._multi_pet_dialog is not None:
             self._multi_pet_dialog.set_status(f"正在切换到 {pet.identity.name}…")
         QTimer.singleShot(300, self._sync_multi_pet_after_switch)
+        return True
 
     def _care_rotation_pet(self, pet_id: str, action: str) -> None:
         if pet_id == self.active_pet.identity.pet_id:
             self._request_pet_care(action)
             return
         self._queued_rotation_care = (pet_id, action)
-        self._switch_rotation_pet(pet_id)
+        if not self._switch_rotation_pet(pet_id):
+            self._queued_rotation_care = None
 
     def _sync_multi_pet_after_switch(self) -> None:
         self._sync_multi_pet_dialog()
@@ -178,11 +192,11 @@ class MultiPetOverviewApplication(PendingItemsApplication):
         if not isinstance(payload, dict):
             return
         raw_items = payload.get("items")
-        self._cloud_multi_pet_items = [
-            dict(item)
-            for item in raw_items
-            if isinstance(raw_items, list) and isinstance(item, dict)
-        ] if isinstance(raw_items, list) else []
+        self._cloud_multi_pet_items = (
+            [dict(item) for item in raw_items if isinstance(item, dict)]
+            if isinstance(raw_items, list)
+            else []
+        )
         self._sync_multi_pet_dialog()
         self._refresh_multi_pet_actions()
 
@@ -197,6 +211,7 @@ class MultiPetOverviewApplication(PendingItemsApplication):
             QTimer.singleShot(500, self.refresh_multi_pet_overview)
         elif state_value == "disabled":
             self._cloud_multi_pet_items = []
+            self._queued_rotation_care = None
             self._sync_multi_pet_dialog()
             self._refresh_multi_pet_actions()
 
@@ -237,12 +252,12 @@ class MultiPetOverviewApplication(PendingItemsApplication):
                 None,
             )
             self.next_rotation_action.setText(
-                f"切换到下一只需照料：{target.get('name')}"
+                f"切换到下一只需关注：{target.get('name')}"
                 if isinstance(target, dict)
-                else "切换到下一只需要照料"
+                else "切换到下一只需要关注"
             )
         else:
-            self.next_rotation_action.setText("暂无其他待照料宠物")
+            self.next_rotation_action.setText("暂无其他需关注宠物")
 
     def _pets_changed(self) -> None:
         super()._pets_changed()
