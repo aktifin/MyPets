@@ -58,6 +58,7 @@ jobs:
           tests/test_growth_experience.py
           tests/test_pending_items.py
           tests/test_multi_pet_overview.py
+          tests/test_multi_pet_care_layout.py
           tests/test_tray_menu.py
 
       - name: Compile desktop package
