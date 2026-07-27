@@ -59,7 +59,7 @@ class PendingItemsDialog(QDialog):
         copy.addWidget(self.summary_label)
         heading.addLayout(copy, 1)
         refresh = QPushButton("刷新")
-        refresh.clicked.connect(self.refresh_requested.emit)
+        refresh.clicked.connect(lambda _checked=False: self.refresh_requested.emit())
         heading.addWidget(refresh)
         root.addLayout(heading)
 
