@@ -53,6 +53,7 @@ def user_portal() -> HTMLResponse:
         '<link rel="stylesheet" href="/portal/proactive-care-experience.css">',
         '<link rel="stylesheet" href="/portal/growth-experience.css">',
         '<link rel="stylesheet" href="/portal/pending-items-experience.css">',
+        '<link rel="stylesheet" href="/portal/multi-pet-overview.css">',
     ):
         if stylesheet not in html:
             html = html.replace("</head>", f"  {stylesheet}\n</head>", 1)
@@ -75,6 +76,7 @@ def user_portal() -> HTMLResponse:
         '<script src="/portal/proactive-care-experience.js" defer></script>',
         '<script src="/portal/growth-experience.js" defer></script>',
         '<script src="/portal/pending-items-experience.js" defer></script>',
+        '<script src="/portal/multi-pet-overview.js" defer></script>',
     )
     for script in scripts:
         if script not in html:
@@ -177,6 +179,16 @@ def user_portal_pending_items_experience_script() -> FileResponse:
 @user_portal_web_router.get("/portal/pending-items-experience.css")
 def user_portal_pending_items_experience_styles() -> FileResponse:
     return _asset("pending-items-experience.css", "text/css; charset=utf-8")
+
+
+@user_portal_web_router.get("/portal/multi-pet-overview.js")
+def user_portal_multi_pet_overview_script() -> FileResponse:
+    return _asset("multi-pet-overview.js", "text/javascript; charset=utf-8")
+
+
+@user_portal_web_router.get("/portal/multi-pet-overview.css")
+def user_portal_multi_pet_overview_styles() -> FileResponse:
+    return _asset("multi-pet-overview.css", "text/css; charset=utf-8")
 
 
 @user_portal_web_router.get("/portal/styles.css")
