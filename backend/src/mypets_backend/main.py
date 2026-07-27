@@ -32,6 +32,7 @@ from .asset_submission_api import (
     asset_submission_router,
 )
 from .config import Settings
+from .customer_history_api import customer_history_router
 from .customer_navigation_api import customer_navigation_router
 from .daily_care_api import daily_care_router
 from .database import Base, create_database_engine, create_session_factory
@@ -104,14 +105,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         description=(
             "Server-authoritative accounts, user Web portal, pets, friendship, shared care, "
             "asynchronous pet visits, customer visit timelines, desktop dual-pet visit interactions, "
-            "lazy settlement, categorized messaging with related-detail navigation, resume-safe "
-            "reminders, safe user pet-image submissions, controlled pet asset production work orders, "
-            "independently reviewed personal asset releases and per-pet rollback, rights evidence and "
-            "immutable review history, revoked-asset device acknowledgements and operations follow-up, "
-            "customer-ready onboarding, daily care tasks, streaks, growth goals, milestone memories, "
-            "multi-pet attention and rotation, a unified actionable pending-items queue and rate-limited "
-            "proactive care, realtime cursor notifications, external reminder providers, synchronization, "
-            "pet asset publishing, administrator governance, and console API."
+            "lazy settlement, categorized messaging with related-detail navigation, customer processing "
+            "history, resume-safe reminders, safe user pet-image submissions, controlled pet asset "
+            "production work orders, independently reviewed personal asset releases and per-pet rollback, "
+            "rights evidence and immutable review history, revoked-asset device acknowledgements and "
+            "operations follow-up, customer-ready onboarding, daily care tasks, streaks, growth goals, "
+            "milestone memories, multi-pet attention and rotation, a unified actionable pending-items queue "
+            "and rate-limited proactive care, realtime cursor notifications, external reminder providers, "
+            "synchronization, pet asset publishing, administrator governance, and console API."
         ),
     )
     app.state.settings = resolved
@@ -126,6 +127,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(portal_experience_router)
     app.include_router(proactive_care_router)
     app.include_router(pending_items_router)
+    app.include_router(customer_history_router)
     app.include_router(multi_pet_overview_router)
     # Static compatibility and enhanced rights paths must precede legacy dynamic routes.
     app.include_router(governance_compat_router)
