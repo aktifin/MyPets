@@ -10,6 +10,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
+from . import proactive_care_aggregate_compat as _proactive_care_aggregate_compat
 from .admin_api import admin_router, catalog_router
 from .admin_console_api import admin_console_api_router
 from .admin_governance_api import admin_governance_router, governance_catalog_router
@@ -63,6 +64,7 @@ from .user_portal_api import user_portal_api_router
 from .user_portal_web import user_portal_web_router
 from .visit_api import visit_router
 from .visit_scene_api import visit_scene_router
+
 
 
 def _seed_default_admins(session_factory: sessionmaker, admin_usernames: tuple[str, ...]) -> None:
