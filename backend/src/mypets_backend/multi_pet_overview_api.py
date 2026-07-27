@@ -75,6 +75,8 @@ def _current_pet_id(
     session: Session,
     principal: Principal,
     available_ids: set[str],
+    *,
+    fallback_pet_id: str | None,
 ) -> str | None:
     selected: str | None = None
     if principal.kind == "device" and principal.device_id:
@@ -85,7 +87,7 @@ def _current_pet_id(
         selected = preference.selected_pet_id if preference is not None else None
     if selected in available_ids:
         return selected
-    return next(iter(available_ids), None)
+    return fallback_pet_id
 
 
 def _interaction_history_by_pet(
@@ -128,7 +130,12 @@ def multi_pet_overview(
         for relation in relations_for_account(session, principal.account_id)
     }
     available_ids = {pet.id for pet in pets}
-    current_pet_id = _current_pet_id(session, principal, available_ids)
+    current_pet_id = _current_pet_id(
+        session,
+        principal,
+        available_ids,
+        fallback_pet_id=pets[0].id if pets else None,
+    )
     now = datetime.now(UTC)
     history_by_pet = _interaction_history_by_pet(
         session,
