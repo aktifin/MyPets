@@ -16,6 +16,8 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     assert "/portal/proactive-care-experience.js" in page.text
     assert "/portal/growth-experience.css" in page.text
     assert "/portal/growth-experience.js" in page.text
+    assert "/portal/pending-items-experience.css" in page.text
+    assert "/portal/pending-items-experience.js" in page.text
 
     script = client.get("/portal/customer-experience.js")
     styles = client.get("/portal/customer-experience.css")
@@ -25,6 +27,8 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     proactive_styles = client.get("/portal/proactive-care-experience.css")
     growth_script = client.get("/portal/growth-experience.js")
     growth_styles = client.get("/portal/growth-experience.css")
+    pending_script = client.get("/portal/pending-items-experience.js")
+    pending_styles = client.get("/portal/pending-items-experience.css")
     for response in (
         script,
         styles,
@@ -34,6 +38,8 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
         proactive_styles,
         growth_script,
         growth_styles,
+        pending_script,
+        pending_styles,
     ):
         assert response.status_code == 200
         assert response.headers["cache-control"] == "no-store"
@@ -69,10 +75,17 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     assert "stage_progress_percent" in growth_script.text
     assert "growth_exp_remaining" in growth_script.text
 
+    assert "/api/v1/pending-items?limit=100" in pending_script.text
+    assert "待处理事项" in pending_script.text
+    assert "好友、共同照料、串门和提醒" in pending_script.text
+    assert "10 分钟后提醒" in pending_script.text
+    assert "Idempotency-Key" in pending_script.text
+
     assert "style=" not in script.text
     assert "style=" not in daily_script.text
     assert "style=" not in proactive_script.text
     assert "style=" not in growth_script.text
+    assert "style=" not in pending_script.text
 
 
 def test_pet_presets_hide_internal_version_selection_from_customers(client: TestClient) -> None:
