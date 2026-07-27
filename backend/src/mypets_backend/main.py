@@ -46,6 +46,7 @@ from .growth_experience_api import growth_experience_router
 from .message_center_api import message_center_router
 from .messaging_api import messaging_router
 from .models import Account
+from .multi_pet_overview_api import multi_pet_overview_router
 from .object_store import FileObjectStore
 from .pending_items_api import pending_items_router
 from .pet_care_api import pet_care_router
@@ -106,10 +107,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "controlled pet asset production work orders, independently reviewed personal asset "
             "releases and per-pet rollback, rights evidence and immutable review history, revoked-"
             "asset device acknowledgements and operations follow-up, customer-ready onboarding, "
-            "daily care tasks, streaks, growth goals, milestone memories, a unified actionable "
-            "pending-items queue and rate-limited proactive care, realtime cursor notifications, "
-            "external reminder providers, synchronization, pet asset publishing, administrator "
-            "governance, and console API."
+            "daily care tasks, streaks, growth goals, milestone memories, multi-pet attention and "
+            "rotation, a unified actionable pending-items queue and rate-limited proactive care, "
+            "realtime cursor notifications, external reminder providers, synchronization, pet "
+            "asset publishing, administrator governance, and console API."
         ),
     )
     app.state.settings = resolved
@@ -124,6 +125,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(portal_experience_router)
     app.include_router(proactive_care_router)
     app.include_router(pending_items_router)
+    app.include_router(multi_pet_overview_router)
     # Static compatibility and enhanced rights paths must precede legacy dynamic routes.
     app.include_router(governance_compat_router)
     app.include_router(rights_evidence_router)
