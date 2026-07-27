@@ -21,7 +21,7 @@ def _action_state(
     action: str | None,
 ) -> tuple[bool, str]:
     if not action:
-        return False, "当前无需直接照料操作。"
+        return False, "切换后可查看完整状态，不会自动执行照料。"
     actions = daily_summary.get("actions")
     for raw in actions if isinstance(actions, list) else []:
         if isinstance(raw, Mapping) and raw.get("action") == action:
@@ -29,16 +29,47 @@ def _action_state(
     return True, "现在可以操作。"
 
 
-def _state_score(pet: PetProfile) -> int:
+def _state_choice(pet: PetProfile) -> tuple[int, str | None, str, str]:
     stats = pet.stats
-    return min(
-        int(stats.health),
-        int(stats.hunger),
-        int(stats.energy),
-        int(stats.cleanliness),
-        int(stats.mood),
-        100 - int(stats.boredom),
-    )
+    values = [
+        (
+            int(stats.health),
+            None,
+            "健康状态需要留意",
+            "先查看完整状态，再决定是否继续互动。",
+        ),
+        (
+            int(stats.hunger),
+            "feed",
+            "有点饿了",
+            "投喂一次可以补充当前饱食状态。",
+        ),
+        (
+            int(stats.energy),
+            "rest",
+            "需要休息",
+            "让它休息一会儿，再继续其他互动。",
+        ),
+        (
+            int(stats.cleanliness),
+            "clean",
+            "需要清洁",
+            "清洁一次，让它保持舒适。",
+        ),
+        (
+            int(stats.mood),
+            "play",
+            "心情有点低",
+            "陪它玩一会儿，增加轻松互动。",
+        ),
+        (
+            100 - int(stats.boredom),
+            "play",
+            "有点无聊",
+            "陪它玩一会儿，换个轻松的状态。",
+        ),
+    ]
+    return min(values, key=lambda row: row[0])
 
 
 def build_local_overview_item(
@@ -47,12 +78,11 @@ def build_local_overview_item(
     *,
     current: bool,
 ) -> dict[str, object]:
-    score = _state_score(pet)
+    score, state_action, state_title, state_detail = _state_choice(pet)
     completed = int(daily_summary.get("completed_tasks") or 0)
     total = max(1, int(daily_summary.get("total_tasks") or 3))
     all_completed = bool(daily_summary.get("all_tasks_completed"))
     at_home = pet.presence is PresenceStatus.HOME
-    recommendation = recommend_care(pet)
 
     if not at_home:
         priority = "unavailable"
@@ -61,15 +91,16 @@ def build_local_overview_item(
         detail = "返家后才能继续照料，现在可查看串门进度。"
     elif score < 35:
         priority = "urgent"
-        action = recommendation.action
-        title = recommendation.title
-        detail = recommendation.detail
+        action = state_action
+        title = state_title
+        detail = state_detail
     elif score < 65:
         priority = "attention"
-        action = recommendation.action
-        title = recommendation.title
-        detail = recommendation.detail
+        action = state_action
+        title = state_title
+        detail = state_detail
     elif not all_completed:
+        recommendation = recommend_care(pet)
         priority = "routine"
         action = recommendation.action or "pet"
         title = "继续今天的陪伴"
@@ -83,6 +114,11 @@ def build_local_overview_item(
     available, reason = _action_state(daily_summary, action)
     available = at_home and bool(action) and available
     needs_attention = priority in {"urgent", "attention", "routine"}
+    switch_candidate = bool(
+        needs_attention
+        and at_home
+        and (available or action is None)
+    )
     return {
         "pet_id": pet.identity.pet_id,
         "name": pet.identity.name,
@@ -108,7 +144,7 @@ def build_local_overview_item(
         "action_available": available,
         "action_reason": reason if at_home else detail,
         "needs_attention": needs_attention,
-        "switch_candidate": needs_attention and available,
+        "switch_candidate": switch_candidate,
         "current": bool(current),
         "daily_completed_tasks": completed,
         "daily_total_tasks": total,
