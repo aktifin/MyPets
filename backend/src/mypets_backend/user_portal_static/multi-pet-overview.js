@@ -37,7 +37,7 @@ function ensureMultiPetOverviewPanel() {
   const controls = node("div", "", "multi-pet-controls");
   const summary = node("span", "0 只宠物", "badge");
   summary.id = "multi-pet-overview-summary";
-  const nextButton = node("button", "下一只需要照料", "");
+  const nextButton = node("button", "下一只需要关注", "");
   nextButton.id = "multi-pet-next-button";
   nextButton.type = "button";
   nextButton.addEventListener("click", async () => {
@@ -104,8 +104,8 @@ function renderMultiPetOverview() {
   if (nextButton) {
     nextButton.disabled = !multiPetOverviewState.nextPetId;
     nextButton.textContent = multiPetOverviewState.nextPetId
-      ? "切换下一只需要照料"
-      : "暂无其他待照料宠物";
+      ? "切换下一只需要关注"
+      : "暂无其他需关注宠物";
   }
 
   const list = $("multi-pet-overview-list");
