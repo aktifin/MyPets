@@ -150,6 +150,9 @@ def finish_party(
             member.status = "completed"
             member.left_at = now
             _restore_member_pet(session, party, member, now=now, cause=reason)
+        elif cancelled and member.role == "host" and member.status == "accepted":
+            member.status = "completed"
+            member.left_at = now
         elif member.status in {"invited", "accepted"}:
             member.status = "expired"
             member.responded_at = member.responded_at or now
