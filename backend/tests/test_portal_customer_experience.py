@@ -24,6 +24,11 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     assert "/portal/customer-actions-experience.js" in page.text
     assert "/portal/customer-history-experience.css" in page.text
     assert "/portal/customer-history-experience.js" in page.text
+    assert "/portal/message-efficiency-experience.css" in page.text
+    assert "/portal/message-efficiency-experience.js" in page.text
+    assert page.text.index("/portal/customer-actions-experience.js") < page.text.index(
+        "/portal/message-efficiency-experience.js"
+    )
 
     script = client.get("/portal/customer-experience.js")
     styles = client.get("/portal/customer-experience.css")
@@ -41,6 +46,8 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     actions_styles = client.get("/portal/customer-actions-experience.css")
     history_script = client.get("/portal/customer-history-experience.js")
     history_styles = client.get("/portal/customer-history-experience.css")
+    message_script = client.get("/portal/message-efficiency-experience.js")
+    message_styles = client.get("/portal/message-efficiency-experience.css")
     for response in (
         script,
         styles,
@@ -58,6 +65,8 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
         actions_styles,
         history_script,
         history_styles,
+        message_script,
+        message_styles,
     ):
         assert response.status_code == 200
         assert response.headers["cache-control"] == "no-store"
@@ -122,17 +131,33 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     assert "shared_care" in history_script.text
     assert "openCustomerHistoryTarget" in history_script.text
 
-    assert "style=" not in script.text
-    assert "style=" not in daily_script.text
-    assert "style=" not in proactive_script.text
-    assert "style=" not in growth_script.text
-    assert "style=" not in pending_script.text
-    assert "style=" not in multi_script.text
-    assert "style=" not in actions_script.text
-    assert "style=" not in history_script.text
+    assert "/api/v1/message-search" in message_script.text
+    assert "/message-window" in message_script.text
+    assert "/unread-navigation" in message_script.text
+    assert "/api/v1/message-quick-replies" in message_script.text
+    assert "第一条未读" in message_script.text
+    assert "上一条未读" in message_script.text
+    assert "下一条未读" in message_script.text
+    assert "读到这里" in message_script.text
+    assert "快捷回复已填入，请确认后发送" in message_script.text
+    assert "恢复全部默认" in message_script.text
+
+    for customer_script in (
+        script,
+        daily_script,
+        proactive_script,
+        growth_script,
+        pending_script,
+        multi_script,
+        actions_script,
+        history_script,
+        message_script,
+    ):
+        assert "style=" not in customer_script.text
     assert ".style." not in multi_script.text
     assert ".style." not in actions_script.text
     assert ".style." not in history_script.text
+    assert ".style." not in message_script.text
 
 
 def test_pet_presets_hide_internal_version_selection_from_customers(client: TestClient) -> None:
