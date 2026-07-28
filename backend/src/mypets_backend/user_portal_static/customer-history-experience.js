@@ -151,6 +151,7 @@ function customerHistoryQuery() {
     limit: "200",
   });
   if (customerHistoryState.days > 0) params.set("days", String(customerHistoryState.days));
+  else params.set("start", "1970-01-01T00:00:00+00:00");
   return params.toString();
 }
 
