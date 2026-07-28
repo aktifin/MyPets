@@ -14,7 +14,7 @@ from typing import Annotated, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, field_validator
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -29,7 +29,7 @@ from .messaging_api import (
     _member_accounts,
     _message_view,
 )
-from .models import Conversation, ConversationMember, Message, Pet, SyncEvent
+from .models import Account, Conversation, ConversationMember, Message, Pet, SyncEvent
 from .security import Principal
 from .services import append_event
 
@@ -250,8 +250,10 @@ def _message_matches(
 ) -> list[SearchMatchField]:
     fields: list[SearchMatchField] = []
     folded = query.casefold()
-    if folded in message.content.casefold() or folded in sender_name.casefold():
+    if folded in message.content.casefold():
         fields.append("content")
+    if sender_name and folded in sender_name.casefold():
+        fields.append("contact")
     if pet_name and folded in pet_name.casefold():
         fields.append("pet")
     return fields
@@ -317,25 +319,34 @@ def search_messages(
     session.flush()
     conversations = _accessible_conversations(session, principal.account_id)
     ids = [item.id for item in conversations]
-    messages = list(
-        session.scalars(
-            select(Message)
-            .where(Message.conversation_id.in_(ids))
-            .order_by(Message.created_at.desc(), Message.sequence.desc())
-            .limit(20000)
+    messages = (
+        list(
+            session.scalars(
+                select(Message)
+                .where(Message.conversation_id.in_(ids))
+                .order_by(Message.created_at.desc(), Message.sequence.desc())
+                .limit(20000)
+            )
         )
-    ) if ids else []
+        if ids
+        else []
+    )
     grouped: dict[str, list[Message]] = defaultdict(list)
     account_ids = {message.sender_account_id for message in messages}
     pet_ids = {message.sender_pet_id for message in messages if message.sender_pet_id}
-    accounts = {
-        account.id: account
-        for account in session.scalars(select(__import__("mypets_backend.models", fromlist=["Account"]).Account).where(__import__("mypets_backend.models", fromlist=["Account"]).Account.id.in_(account_ids)))
-    } if account_ids else {}
-    pets = {
-        pet.id: pet
-        for pet in session.scalars(select(Pet).where(Pet.id.in_(pet_ids)))
-    } if pet_ids else {}
+    accounts = (
+        {
+            account.id: account
+            for account in session.scalars(select(Account).where(Account.id.in_(account_ids)))
+        }
+        if account_ids
+        else {}
+    )
+    pets = (
+        {pet.id: pet for pet in session.scalars(select(Pet).where(Pet.id.in_(pet_ids)))}
+        if pet_ids
+        else {}
+    )
     for message in messages:
         grouped[message.conversation_id].append(message)
 
@@ -437,7 +448,7 @@ def get_message_window(
                 Message.sequence <= center_sequence,
             )
             .order_by(Message.sequence.desc())
-            .limit(before + 1)
+            .limit(before + 2)
         )
     )
     later_rows = list(
@@ -451,7 +462,7 @@ def get_message_window(
             .limit(after + 1)
         )
     )
-    has_earlier = len(earlier_rows) > before
+    has_earlier = len(earlier_rows) > before + 1
     has_later = len(later_rows) > after
     rows = list(reversed(earlier_rows[: before + 1])) + later_rows[:after]
     unique: dict[str, Message] = {row.id: row for row in rows}
