@@ -56,6 +56,7 @@ def user_portal() -> HTMLResponse:
         '<link rel="stylesheet" href="/portal/multi-pet-overview.css">',
         '<link rel="stylesheet" href="/portal/customer-actions-experience.css">',
         '<link rel="stylesheet" href="/portal/customer-history-experience.css">',
+        '<link rel="stylesheet" href="/portal/message-efficiency-experience.css">',
     ):
         if stylesheet not in html:
             html = html.replace("</head>", f"  {stylesheet}\n</head>", 1)
@@ -81,6 +82,7 @@ def user_portal() -> HTMLResponse:
         '<script src="/portal/multi-pet-overview.js" defer></script>',
         '<script src="/portal/customer-actions-experience.js" defer></script>',
         '<script src="/portal/customer-history-experience.js" defer></script>',
+        '<script src="/portal/message-efficiency-experience.js" defer></script>',
     )
     for script in scripts:
         if script not in html:
@@ -213,6 +215,16 @@ def user_portal_customer_history_experience_script() -> FileResponse:
 @user_portal_web_router.get("/portal/customer-history-experience.css")
 def user_portal_customer_history_experience_styles() -> FileResponse:
     return _asset("customer-history-experience.css", "text/css; charset=utf-8")
+
+
+@user_portal_web_router.get("/portal/message-efficiency-experience.js")
+def user_portal_message_efficiency_script() -> FileResponse:
+    return _asset("message-efficiency-experience.js", "text/javascript; charset=utf-8")
+
+
+@user_portal_web_router.get("/portal/message-efficiency-experience.css")
+def user_portal_message_efficiency_styles() -> FileResponse:
+    return _asset("message-efficiency-experience.css", "text/css; charset=utf-8")
 
 
 @user_portal_web_router.get("/portal/styles.css")
