@@ -1,4 +1,4 @@
-"""Lazy pet and visit settlement middleware for authoritative snapshots.
+"""Lazy pet, visit, and party settlement middleware for authoritative snapshots.
 
 Only read paths that return a complete pet snapshot and pet-care mutation paths are
 intercepted. Invalid, expired, or revoked credentials are ignored here and remain the
@@ -18,6 +18,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import Response
 
 from .models import Account, Device
+from .party_service import settle_due_parties
 from .pet_state_service import settle_pets_for_account
 from .security import Principal, decode_access_token
 from .social_models import AccountBlock
@@ -92,6 +93,7 @@ class PetSettlementMiddleware(BaseHTTPMiddleware):
                 return
             now = datetime.now(UTC)
             settle_due_visits(session, now=now)
+            settle_due_parties(session, now=now)
             trigger = "pet_care" if request.method == "POST" else "pet_list"
             if request.url.path.endswith("bootstrap"):
                 trigger = "bootstrap"

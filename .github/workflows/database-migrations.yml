@@ -41,7 +41,7 @@ jobs:
           rm -f /tmp/mypets-migration-fresh.sqlite3
           cd backend
           alembic upgrade head
-          alembic current | grep "004_revocation_follow_up (head)"
+          alembic current | grep "005_pet_parties (head)"
           alembic check
           python - <<'PY'
           import os
@@ -53,6 +53,18 @@ jobs:
           assert "pet_asset_revocation_follow_ups" in tables
           assert "pet_asset_right_evidence" in tables
           assert "pet_asset_right_history" in tables
+          assert "pet_parties" in tables
+          assert "pet_party_members" in tables
+          assert len(tables - {"alembic_version"}) == 41, sorted(tables)
+          PY
+          alembic downgrade 004_revocation_follow_up
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, inspect
+
+          tables = set(inspect(create_engine(os.environ["MYPETS_DATABASE_URL"])).get_table_names())
+          assert "pet_parties" not in tables
+          assert "pet_party_members" not in tables
           assert len(tables - {"alembic_version"}) == 39, sorted(tables)
           PY
           alembic downgrade 003_rights_evidence_history
@@ -113,6 +125,7 @@ jobs:
           from mypets_backend import asset_submission_models  # noqa: F401
           from mypets_backend import governance_models  # noqa: F401
           from mypets_backend import models  # noqa: F401
+          from mypets_backend import party_models  # noqa: F401
           from mypets_backend import reminder_models  # noqa: F401
           from mypets_backend import social_models  # noqa: F401
           from mypets_backend import user_portal_models  # noqa: F401
@@ -124,7 +137,7 @@ jobs:
           cd backend
           python scripts/check_existing_schema.py
           alembic stamp head
-          alembic current | grep "004_revocation_follow_up (head)"
+          alembic current | grep "005_pet_parties (head)"
           alembic check
 
   postgres-migrations:
@@ -164,7 +177,7 @@ jobs:
         run: |
           cd backend
           alembic upgrade head
-          alembic current | grep "004_revocation_follow_up (head)"
+          alembic current | grep "005_pet_parties (head)"
           alembic check
           python - <<'PY'
           import os
@@ -176,6 +189,18 @@ jobs:
           assert "pet_asset_revocation_follow_ups" in tables
           assert "pet_asset_right_evidence" in tables
           assert "pet_asset_right_history" in tables
+          assert "pet_parties" in tables
+          assert "pet_party_members" in tables
+          assert len(tables - {"alembic_version"}) == 41, sorted(tables)
+          PY
+          alembic downgrade 004_revocation_follow_up
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, inspect
+
+          tables = set(inspect(create_engine(os.environ["MYPETS_DATABASE_URL"])).get_table_names())
+          assert "pet_parties" not in tables
+          assert "pet_party_members" not in tables
           assert len(tables - {"alembic_version"}) == 39, sorted(tables)
           PY
           alembic downgrade 003_rights_evidence_history

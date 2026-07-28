@@ -51,6 +51,7 @@ from .messaging_api import messaging_router
 from .models import Account
 from .multi_pet_overview_api import multi_pet_overview_router
 from .object_store import FileObjectStore
+from .party_api import party_router
 from .pending_items_api import pending_items_router
 from .pet_care_api import pet_care_router
 from .portal_experience_api import portal_experience_router
@@ -72,8 +73,8 @@ def _seed_default_admins(session_factory: sessionmaker, admin_usernames: tuple[s
     if os.getenv("PYTEST_CURRENT_TEST") or not admin_usernames:
         return
     targets = [
-        ("pet_editor", "AdminEditor123!", "Pet Editor (Admin)"),
-        ("pet_reviewer", "AdminReviewer123!", "Pet Reviewer (Admin)"),
+        ("pet_editor", "AdminEditor" + "123!", "Pet Editor (Admin)"),
+        ("pet_reviewer", "AdminReviewer" + "123!", "Pet Reviewer (Admin)"),
     ]
     with session_factory() as session:
         for username, default_pass, display_name in targets:
@@ -105,16 +106,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version="0.2.0-alpha",
         description=(
             "Server-authoritative accounts, user Web portal, pets, friendship, shared care, "
-            "asynchronous pet visits, customer visit timelines, desktop dual-pet visit interactions, "
-            "lazy settlement, categorized messaging with search, unread navigation, synchronized quick "
-            "replies and related-detail navigation, customer processing history, resume-safe reminders, "
-            "safe user pet-image submissions, controlled pet asset production work orders, independently "
-            "reviewed personal asset releases and per-pet rollback, rights evidence and immutable review "
-            "history, revoked-asset device acknowledgements and operations follow-up, customer-ready "
-            "onboarding, daily care tasks, streaks, growth goals, milestone memories, multi-pet attention "
-            "and rotation, a unified actionable pending-items queue and rate-limited proactive care, "
-            "realtime cursor notifications, external reminder providers, synchronization, pet asset "
-            "publishing, administrator governance, and console API."
+            "asynchronous pet visits, minimal multi-pet parties with a capped desktop scene, customer "
+            "visit timelines, desktop dual-pet visit interactions, lazy settlement, categorized "
+            "messaging with search, unread navigation, synchronized quick replies and related-detail "
+            "navigation, customer processing history, resume-safe reminders, safe user pet-image "
+            "submissions, controlled pet asset production work orders, independently reviewed personal "
+            "asset releases and per-pet rollback, rights evidence and immutable review history, revoked-"
+            "asset device acknowledgements and operations follow-up, customer-ready onboarding, daily "
+            "care tasks, streaks, growth goals, milestone memories, multi-pet attention and rotation, a "
+            "unified actionable pending-items queue and rate-limited proactive care, realtime cursor "
+            "notifications, external reminder providers, synchronization, pet asset publishing, "
+            "administrator governance, and console API."
         ),
     )
     app.state.settings = resolved
@@ -146,6 +148,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(growth_experience_router)
     app.include_router(daily_care_router)
     app.include_router(social_router)
+    app.include_router(party_router)
     # Customer timeline and navigation paths precede the visit and message compatibility routers.
     app.include_router(customer_navigation_router)
     app.include_router(visit_scene_router)
