@@ -46,6 +46,7 @@ from .governed_asset_deployment_api import (
 )
 from .growth_experience_api import growth_experience_router
 from .message_center_api import message_center_router
+from .message_efficiency_api import message_efficiency_router
 from .messaging_api import messaging_router
 from .models import Account
 from .multi_pet_overview_api import multi_pet_overview_router
@@ -105,14 +106,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         description=(
             "Server-authoritative accounts, user Web portal, pets, friendship, shared care, "
             "asynchronous pet visits, customer visit timelines, desktop dual-pet visit interactions, "
-            "lazy settlement, categorized messaging with related-detail navigation, customer processing "
-            "history, resume-safe reminders, safe user pet-image submissions, controlled pet asset "
-            "production work orders, independently reviewed personal asset releases and per-pet rollback, "
-            "rights evidence and immutable review history, revoked-asset device acknowledgements and "
-            "operations follow-up, customer-ready onboarding, daily care tasks, streaks, growth goals, "
-            "milestone memories, multi-pet attention and rotation, a unified actionable pending-items queue "
-            "and rate-limited proactive care, realtime cursor notifications, external reminder providers, "
-            "synchronization, pet asset publishing, administrator governance, and console API."
+            "lazy settlement, categorized messaging with search, unread navigation, synchronized quick "
+            "replies and related-detail navigation, customer processing history, resume-safe reminders, "
+            "safe user pet-image submissions, controlled pet asset production work orders, independently "
+            "reviewed personal asset releases and per-pet rollback, rights evidence and immutable review "
+            "history, revoked-asset device acknowledgements and operations follow-up, customer-ready "
+            "onboarding, daily care tasks, streaks, growth goals, milestone memories, multi-pet attention "
+            "and rotation, a unified actionable pending-items queue and rate-limited proactive care, "
+            "realtime cursor notifications, external reminder providers, synchronization, pet asset "
+            "publishing, administrator governance, and console API."
         ),
     )
     app.state.settings = resolved
@@ -148,7 +150,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(customer_navigation_router)
     app.include_router(visit_scene_router)
     app.include_router(visit_router)
-    # The projected conversation route must be registered before the compatibility route.
+    # Message search/preferences and the projected conversation route precede compatibility routes.
+    app.include_router(message_efficiency_router)
     app.include_router(message_center_router)
     app.include_router(messaging_router)
     app.include_router(reminder_router)
