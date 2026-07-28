@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -19,7 +20,6 @@ from PySide6.QtWidgets import (
 )
 
 from .actionable_message_drawer import ActionableMessageDrawer
-from .messaging import ConversationRecord, MessageRecord
 
 
 class QuickReplySettingsDialog(QDialog):
@@ -39,7 +39,10 @@ class QuickReplySettingsDialog(QDialog):
         self.setWindowTitle("快捷回复设置")
         self.resize(520, 390)
         root = QVBoxLayout(self)
-        intro = QLabel("每行一条，当前顺序就是会话中的展示顺序。点击快捷回复只会填入输入框，确认后再发送。")
+        intro = QLabel(
+            "每行一条，当前顺序就是会话中的展示顺序。"
+            "点击快捷回复只会填入输入框，确认后再发送。"
+        )
         intro.setWordWrap(True)
         root.addWidget(intro)
         form = QFormLayout()
@@ -76,11 +79,13 @@ class QuickReplySettingsDialog(QDialog):
     def set_preferences(self, payload: object) -> None:
         value = payload if isinstance(payload, dict) else {}
         categories = value.get("categories")
-        self._preferences = {
-            str(key): [str(item) for item in items if str(item).strip()]
-            for key, items in categories.items()
-            if isinstance(categories, dict) and isinstance(items, list)
-        } if isinstance(categories, dict) else {}
+        self._preferences = {}
+        if isinstance(categories, dict):
+            for key, items in categories.items():
+                if isinstance(items, list):
+                    self._preferences[str(key)] = [
+                        str(item).strip() for item in items if str(item).strip()
+                    ]
         self._render_category()
         self.set_status("设置已加载。")
 
@@ -90,7 +95,9 @@ class QuickReplySettingsDialog(QDialog):
 
     def _save(self) -> None:
         category = str(self.category_combo.currentData() or "direct")
-        values = [line.strip() for line in self.editor.toPlainText().splitlines() if line.strip()]
+        values = [
+            line.strip() for line in self.editor.toPlainText().splitlines() if line.strip()
+        ]
         if not 1 <= len(values) <= 6:
             self.set_status("每类快捷回复需要保留 1 至 6 条。", error=True)
             return
@@ -108,7 +115,9 @@ class QuickReplySettingsDialog(QDialog):
 
     def set_status(self, message: str, *, error: bool = False) -> None:
         self.status_label.setText(message)
-        self.status_label.setStyleSheet("color: #b91c1c;" if error else "color: palette(text);")
+        self.status_label.setStyleSheet(
+            "color: #b91c1c;" if error else "color: palette(text);"
+        )
 
 
 class MessageEfficiencyDrawer(ActionableMessageDrawer):
@@ -134,6 +143,7 @@ class MessageEfficiencyDrawer(ActionableMessageDrawer):
         root = self.layout()
         if root is None:
             return
+
         search_row = QHBoxLayout()
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("搜索联系人、宠物或消息内容")
@@ -155,8 +165,12 @@ class MessageEfficiencyDrawer(ActionableMessageDrawer):
         self.previous_unread_button = QPushButton("上一条未读")
         self.next_unread_button = QPushButton("下一条未读")
         self.read_through_button = QPushButton("读到这里")
-        self.first_unread_button.clicked.connect(lambda: self._navigate_unread("first"))
-        self.previous_unread_button.clicked.connect(lambda: self._navigate_unread("previous"))
+        self.first_unread_button.clicked.connect(
+            lambda: self._navigate_unread("first")
+        )
+        self.previous_unread_button.clicked.connect(
+            lambda: self._navigate_unread("previous")
+        )
         self.next_unread_button.clicked.connect(lambda: self._navigate_unread("next"))
         self.read_through_button.clicked.connect(self._read_current)
         for button in (
@@ -167,6 +181,22 @@ class MessageEfficiencyDrawer(ActionableMessageDrawer):
         ):
             unread_row.addWidget(button)
         root.insertLayout(max(0, root.count() - 3), unread_row)
+
+        # The inherited drawer allocates three quick buttons. Add a second row so
+        # the synchronized account preference can expose up to six ordered items.
+        extra_quick_row = QHBoxLayout()
+        extra_quick_row.addStretch(1)
+        for _index in range(3):
+            button = QPushButton()
+            button.setVisible(False)
+            button.clicked.connect(
+                lambda _checked=False, current=button: self._send_quick_reply(
+                    current.text()
+                )
+            )
+            extra_quick_row.addWidget(button)
+            self._quick_buttons.append(button)
+        root.insertLayout(max(0, root.count() - 2), extra_quick_row)
 
         self.quick_settings_button = QPushButton("管理快捷回复")
         self.quick_settings_button.clicked.connect(self._open_quick_settings)
@@ -205,7 +235,11 @@ class MessageEfficiencyDrawer(ActionableMessageDrawer):
             return
         value = payload if isinstance(payload, dict) else {}
         items = value.get("items")
-        self._search_results = [dict(item) for item in items if isinstance(item, dict)] if isinstance(items, list) else []
+        self._search_results = (
+            [dict(item) for item in items if isinstance(item, dict)]
+            if isinstance(items, list)
+            else []
+        )
         self.search_status.setText(f"{int(value.get('count') or 0)} 个匹配会话")
         self.refresh_from_cache()
 
@@ -230,10 +264,16 @@ class MessageEfficiencyDrawer(ActionableMessageDrawer):
             if conversation is None or (category and conversation.category != category):
                 continue
             snippet = str(result.get("snippet") or "匹配到相关会话")
-            item = QListWidgetItem(f"{self._conversation_label(conversation)}\n{snippet}")
+            item = QListWidgetItem(
+                f"{self._conversation_label(conversation)}\n{snippet}"
+            )
             item.setData(Qt.ItemDataRole.UserRole, conversation_id)
             matched = result.get("matched_message")
-            sequence = int(matched.get("sequence_number") or 0) if isinstance(matched, dict) else 0
+            sequence = (
+                int(matched.get("sequence_number") or 0)
+                if isinstance(matched, dict)
+                else 0
+            )
             item.setData(Qt.ItemDataRole.UserRole + 1, sequence)
             item.setToolTip(snippet)
             self.conversation_list.addItem(item)
@@ -273,7 +313,9 @@ class MessageEfficiencyDrawer(ActionableMessageDrawer):
         if conversation_id != self._selected_conversation_id:
             return
         value = payload if isinstance(payload, dict) else {}
-        self._anchor_sequence = int(value.get("center_sequence") or self._anchor_sequence or 0)
+        self._anchor_sequence = int(
+            value.get("center_sequence") or self._anchor_sequence or 0
+        )
         self._render_selected()
 
     def set_unread_navigation(self, conversation_id: str, payload: object) -> None:
@@ -282,7 +324,9 @@ class MessageEfficiencyDrawer(ActionableMessageDrawer):
         self._unread_payload = dict(payload) if isinstance(payload, dict) else {}
         current = self._unread_payload.get("current")
         if isinstance(current, dict):
-            self._anchor_sequence = int(current.get("sequence_number") or self._anchor_sequence or 0)
+            self._anchor_sequence = int(
+                current.get("sequence_number") or self._anchor_sequence or 0
+            )
         self._render_unread_controls()
         self._highlight_anchor()
 
@@ -290,22 +334,31 @@ class MessageEfficiencyDrawer(ActionableMessageDrawer):
         value = self._unread_payload
         count = int(value.get("unread_count") or 0) if isinstance(value, dict) else 0
         current = value.get("current") if isinstance(value, dict) else None
-        sequence = int(current.get("sequence_number") or 0) if isinstance(current, dict) else 0
+        sequence = (
+            int(current.get("sequence_number") or 0)
+            if isinstance(current, dict)
+            else 0
+        )
         self.unread_status.setText(
             f"{count} 条未读" + (f" · 当前第 {sequence} 条" if sequence else "")
             if self._selected_conversation_id
             else "选择会话后查看未读"
         )
-        self.first_unread_button.setEnabled(bool(value.get("first")) if isinstance(value, dict) else False)
-        self.previous_unread_button.setEnabled(bool(value.get("previous")) if isinstance(value, dict) else False)
-        self.next_unread_button.setEnabled(bool(value.get("next")) if isinstance(value, dict) else False)
+        self.first_unread_button.setEnabled(
+            bool(value.get("first")) if isinstance(value, dict) else False
+        )
+        self.previous_unread_button.setEnabled(
+            bool(value.get("previous")) if isinstance(value, dict) else False
+        )
+        self.next_unread_button.setEnabled(
+            bool(value.get("next")) if isinstance(value, dict) else False
+        )
         self.read_through_button.setEnabled(isinstance(current, dict))
 
     def _navigate_unread(self, direction: str) -> None:
         if not self._selected_conversation_id:
             return
-        key = "first" if direction == "first" else direction
-        message = self._unread_payload.get(key)
+        message = self._unread_payload.get("first" if direction == "first" else direction)
         if not isinstance(message, dict):
             return
         sequence = int(message.get("sequence_number") or 0)
@@ -327,10 +380,14 @@ class MessageEfficiencyDrawer(ActionableMessageDrawer):
     def _highlight_anchor(self) -> None:
         if not hasattr(self, "message_list"):
             return
-        messages = self.cache.list_messages(
-            self.account_id,
-            self._selected_conversation_id or "",
-        ) if self.account_id and self._selected_conversation_id else []
+        messages = (
+            self.cache.list_messages(
+                self.account_id,
+                self._selected_conversation_id or "",
+            )
+            if self.account_id and self._selected_conversation_id
+            else []
+        )
         target_row = -1
         for row, message in enumerate(messages):
             item = self.message_list.item(row)
@@ -344,7 +401,7 @@ class MessageEfficiencyDrawer(ActionableMessageDrawer):
         if target_row >= 0:
             self.message_list.scrollToItem(
                 self.message_list.item(target_row),
-                self.message_list.ScrollHint.PositionAtCenter,
+                QAbstractItemView.ScrollHint.PositionAtCenter,
             )
 
     def set_quick_reply_preferences(self, payload: object) -> None:
@@ -370,7 +427,9 @@ class MessageEfficiencyDrawer(ActionableMessageDrawer):
             else None
         )
         writable = conversation is not None and conversation.kind == "direct"
-        replies = self._category_replies(conversation.category if conversation else "direct")
+        replies = self._category_replies(
+            conversation.category if conversation else "direct"
+        )
         for index, button in enumerate(self._quick_buttons):
             text = replies[index] if index < len(replies) else ""
             button.setText(text)
