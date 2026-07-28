@@ -17,7 +17,7 @@ _QUICK_REPLIES = {
 
 
 class ActionableMessageDrawer(MessageDrawer):
-    """Keep normal typed messaging while adding optional one-click customer replies."""
+    """Keep normal typed messaging while adding optional customer replies."""
 
     related_detail_requested = Signal(str)
 
@@ -62,9 +62,10 @@ class ActionableMessageDrawer(MessageDrawer):
             _QUICK_REPLIES["direct"],
         )
         for index, button in enumerate(self._quick_buttons):
-            button.setText(replies[index])
-            button.setVisible(writable)
-            button.setEnabled(writable)
+            text = replies[index] if index < len(replies) else ""
+            button.setText(text)
+            button.setVisible(writable and bool(text))
+            button.setEnabled(writable and bool(text))
         self.related_button.setVisible(conversation is not None)
         self.related_button.setEnabled(conversation is not None)
 

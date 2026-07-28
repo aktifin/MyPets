@@ -4,8 +4,8 @@
 职责范围：
 - 解析可选的 `--smoke-test-ms` 自动退出参数；
 - 启动包含首次运行引导、点击宠物快捷养宠面板、成长目标与纪念册、统一待处理事项、
-  多宠状态总览、照料后下一宠提示、双宠并排布局、主动关怀、串门时间线、消息快捷回复、
-  待办直达详情、客户处理记录、好友、共同照料、提醒和消息功能的 Qt 应用；
+  多宠状态总览、照料后下一宠提示、双宠并排布局、主动关怀、串门时间线、消息搜索、
+  未读定位、可配置快捷回复、待办直达详情、客户处理记录、好友、共同照料和提醒功能的 Qt 应用；
 - 不包含窗口、行为或配置业务逻辑。
 
 使用示例：
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import argparse
 
-from onepic_desktop_pet.customer_history_app import run
+from onepic_desktop_pet.message_efficiency_app import run
 
 
 def parse_args() -> argparse.Namespace:

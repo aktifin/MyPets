@@ -61,6 +61,7 @@ jobs:
           tests/test_multi_pet_care_layout.py
           tests/test_customer_actions.py
           tests/test_customer_history.py
+          tests/test_message_efficiency.py
           tests/test_tray_menu.py
 
       - name: Compile desktop package
@@ -123,6 +124,7 @@ jobs:
           && node --check src/mypets_backend/user_portal_static/multi-pet-overview.js
           && node --check src/mypets_backend/user_portal_static/customer-actions-experience.js
           && node --check src/mypets_backend/user_portal_static/customer-history-experience.js
+          && node --check src/mypets_backend/user_portal_static/message-efficiency-experience.js
 
       - name: Compile backend package
         run: python -m compileall -q src
