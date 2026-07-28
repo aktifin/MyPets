@@ -259,7 +259,6 @@ def test_party_decline_capacity_and_lazy_auto_end(client: TestClient) -> None:
     guest = _register(client, "party_auto_guest")
     alternate = _register(client, "party_auto_alternate")
     host_pet = _create_pet(client, host, "自动结束发起宠物")
-    guest_pet = _create_pet(client, guest, "自动结束来宾宠物")
     alternate_pet = _create_pet(client, alternate, "替补宠物")
     _friend(client, host, guest, "party_auto_guest")
     _friend(client, host, alternate, "party_auto_alternate")
@@ -275,7 +274,11 @@ def test_party_decline_capacity_and_lazy_auto_end(client: TestClient) -> None:
     _invite(client, host, party_id, "party_auto_guest")
     declined = client.post(f"/api/v1/parties/{party_id}/decline", headers=guest)
     assert declined.status_code == 200
-    assert declined.json()["can_invite"] is True
+    assert declined.json()["can_invite"] is False
+    host_detail = client.get(f"/api/v1/parties/{party_id}", headers=host)
+    assert host_detail.status_code == 200
+    assert host_detail.json()["can_invite"] is True
+    assert host_detail.json()["member_count"] == 1
 
     _invite(client, host, party_id, "party_auto_alternate")
     _accept(client, alternate, party_id, alternate_pet["pet_id"])
