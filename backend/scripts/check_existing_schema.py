@@ -22,6 +22,7 @@ from mypets_backend import asset_revocation_models  # noqa: F401
 from mypets_backend import asset_submission_models  # noqa: F401
 from mypets_backend import governance_models  # noqa: F401
 from mypets_backend import models  # noqa: F401
+from mypets_backend import party_models  # noqa: F401
 from mypets_backend import reminder_models  # noqa: F401
 from mypets_backend import social_models  # noqa: F401
 from mypets_backend import user_portal_models  # noqa: F401
