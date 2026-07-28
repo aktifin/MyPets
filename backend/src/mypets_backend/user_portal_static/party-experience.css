@@ -1,0 +1,122 @@
+.party-workspace {
+  display: grid;
+  gap: 1rem;
+}
+
+.party-create-panel .party-create-form {
+  align-items: end;
+}
+
+.party-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.party-list-panel[hidden],
+.party-workspace[hidden] {
+  display: none;
+}
+
+.party-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.party-invite-form {
+  margin-top: 0.75rem;
+}
+
+.party-pet-select {
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
+.party-scene-card {
+  border: 1px solid var(--line, #d8d8d8);
+  border-radius: 18px;
+  padding: 1rem;
+  background: var(--surface, #fff);
+  display: grid;
+  gap: 1rem;
+}
+
+.party-scene-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.party-scene-header h3,
+.party-member-card strong {
+  margin: 0;
+}
+
+.party-member-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.party-member-card {
+  min-height: 128px;
+  border: 1px solid var(--line, #d8d8d8);
+  border-radius: 16px;
+  padding: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 0.35rem;
+  text-align: center;
+  background: var(--surface-soft, #f8f8f8);
+}
+
+.party-member-avatar {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.party-scene-actions {
+  align-items: center;
+}
+
+.party-timeline {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.party-timeline-entry {
+  border-left: 3px solid currentColor;
+  padding: 0.25rem 0 0.25rem 0.85rem;
+}
+
+.party-timeline-entry p {
+  margin: 0.25rem 0;
+}
+
+.party-timeline-entry.kind-interaction {
+  border-left-width: 5px;
+}
+
+@media (max-width: 920px) {
+  .party-summary-grid,
+  .party-member-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .party-summary-grid,
+  .party-member-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .party-scene-header {
+    flex-direction: column;
+  }
+}
