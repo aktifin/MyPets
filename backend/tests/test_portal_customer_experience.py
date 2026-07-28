@@ -22,6 +22,8 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     assert "/portal/multi-pet-overview.js" in page.text
     assert "/portal/customer-actions-experience.css" in page.text
     assert "/portal/customer-actions-experience.js" in page.text
+    assert "/portal/customer-history-experience.css" in page.text
+    assert "/portal/customer-history-experience.js" in page.text
 
     script = client.get("/portal/customer-experience.js")
     styles = client.get("/portal/customer-experience.css")
@@ -37,6 +39,8 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     multi_styles = client.get("/portal/multi-pet-overview.css")
     actions_script = client.get("/portal/customer-actions-experience.js")
     actions_styles = client.get("/portal/customer-actions-experience.css")
+    history_script = client.get("/portal/customer-history-experience.js")
+    history_styles = client.get("/portal/customer-history-experience.css")
     for response in (
         script,
         styles,
@@ -52,6 +56,8 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
         multi_styles,
         actions_script,
         actions_styles,
+        history_script,
+        history_styles,
     ):
         assert response.status_code == 200
         assert response.headers["cache-control"] == "no-store"
@@ -109,6 +115,13 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     assert "串门时间线" in actions_script.text
     assert "Idempotency-Key" in actions_script.text
 
+    assert "/api/v1/customer-history" in history_script.text
+    assert "处理记录" in history_script.text
+    assert "最近 30 天" in history_script.text
+    assert "全部记录" in history_script.text
+    assert "shared_care" in history_script.text
+    assert "openCustomerHistoryTarget" in history_script.text
+
     assert "style=" not in script.text
     assert "style=" not in daily_script.text
     assert "style=" not in proactive_script.text
@@ -116,8 +129,10 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     assert "style=" not in pending_script.text
     assert "style=" not in multi_script.text
     assert "style=" not in actions_script.text
+    assert "style=" not in history_script.text
     assert ".style." not in multi_script.text
     assert ".style." not in actions_script.text
+    assert ".style." not in history_script.text
 
 
 def test_pet_presets_hide_internal_version_selection_from_customers(client: TestClient) -> None:
