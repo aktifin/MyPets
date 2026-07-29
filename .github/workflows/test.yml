@@ -64,6 +64,7 @@ jobs:
           tests/test_message_efficiency.py
           tests/test_party_experience.py
           tests/test_party_pending_items.py
+          tests/test_release_foundation.py
           tests/test_tray_menu.py
 
       - name: Compile desktop package

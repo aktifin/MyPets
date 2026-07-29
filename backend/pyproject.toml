@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mypets-backend"
-version = "0.1.0"
-description = "MyPets modular-monolith API for accounts, devices, pets, synchronization, user Web access, and content administration."
+version = "0.3.0a1"
+description = "MyPets 服务端，提供账户、宠物、社交、消息提醒、同步、用户门户和内容运营能力。"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.128,<1",
