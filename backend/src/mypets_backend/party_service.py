@@ -14,6 +14,7 @@ from .services import append_event, pet_view
 
 _PARTY_TERMINAL = {"completed", "cancelled"}
 _ACTIVE_MEMBER_STATES = {"accepted", "joined"}
+_RESTRICTED_INVITATION_STATES = {"declined", "expired"}
 
 
 def party_members(session: Session, party_id: str) -> list[PetPartyMember]:
@@ -31,9 +32,11 @@ def _party_payload(
     members: list[PetPartyMember],
     *,
     cause: str,
+    visibility: str = "participant",
 ) -> dict[str, object]:
     return {
         "cause": cause,
+        "visibility": visibility,
         "party_id": party.id,
         "host_account_id": party.host_account_id,
         "host_pet_id": party.host_pet_id,
@@ -63,6 +66,48 @@ def _party_payload(
     }
 
 
+def _restricted_notice_is_relevant(
+    party: PetParty,
+    member: PetPartyMember,
+    *,
+    cause: str,
+) -> bool:
+    """Return whether a terminal invitee should receive one final lifecycle notice.
+
+    Declined and expired invitees keep their own invitation record, but they must not continue
+    receiving roster changes, interactions, departures, or completion updates that happen after
+    their participation opportunity has ended.
+    """
+
+    if member.status == "declined":
+        return cause == f"party_declined:{member.id}"
+    if member.status != "expired":
+        return True
+    if cause == "party_started":
+        return bool(
+            member.responded_at
+            and party.started_at
+            and member.responded_at == party.started_at
+        )
+    if cause == "party_cancelled":
+        return True
+    return False
+
+
+def _visible_members_for_recipient(
+    values: list[PetPartyMember],
+    recipient: PetPartyMember,
+) -> tuple[list[PetPartyMember], str]:
+    if recipient.status not in _RESTRICTED_INVITATION_STATES:
+        return values, "participant"
+    visible = [
+        item
+        for item in values
+        if item.role == "host" or item.account_id == recipient.account_id
+    ]
+    return visible, "invitation_record"
+
+
 def publish_party_update(
     session: Session,
     party: PetParty,
@@ -71,8 +116,23 @@ def publish_party_update(
     members: list[PetPartyMember] | None = None,
 ) -> None:
     values = members if members is not None else party_members(session, party.id)
-    payload = {"party": _party_payload(party, values, cause=cause)}
-    for account_id in {item.account_id for item in values}:
+    recipients = {item.account_id: item for item in values}
+    for account_id, recipient in recipients.items():
+        if recipient.status in _RESTRICTED_INVITATION_STATES and not _restricted_notice_is_relevant(
+            party,
+            recipient,
+            cause=cause,
+        ):
+            continue
+        visible_members, visibility = _visible_members_for_recipient(values, recipient)
+        payload = {
+            "party": _party_payload(
+                party,
+                visible_members,
+                cause=cause,
+                visibility=visibility,
+            )
+        }
         append_event(
             session,
             account_id=account_id,
