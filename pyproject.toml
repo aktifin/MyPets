@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "onepic-desktop-pet"
-version = "0.1.0"
-description = "上传一张角色图片，让 Agent 帮助制作可互动的 Windows 桌面宠物。"
+version = "0.3.0a1"
+description = "MyPets Windows 桌面宠物客户端，支持养宠、多宠切换、好友串门、消息提醒和受限社交互动。"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 license = { file = "LICENSE" }
