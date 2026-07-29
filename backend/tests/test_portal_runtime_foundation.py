@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 
-def test_portal_runtime_loads_before_core_and_replaces_duplicate_bootstrap(
+def test_portal_runtime_loads_before_core_and_waits_for_final_bootstrap(
     client: TestClient,
 ) -> None:
     response = client.get("/portal")
@@ -15,7 +15,10 @@ def test_portal_runtime_loads_before_core_and_replaces_duplicate_bootstrap(
     runtime_index = response.text.index('/portal/portal-runtime.js')
     app_index = response.text.index('/portal/app.js')
     phase1_index = response.text.index('/portal/phase1.js')
+    last_extension_index = response.text.index('/portal/device-self-service.js')
+    bootstrap_index = response.text.index('/portal/portal-bootstrap.js')
     assert runtime_index < app_index < phase1_index
+    assert phase1_index < last_extension_index < bootstrap_index
     assert '/portal/phase1-bootstrap.js' not in response.text
 
 
@@ -24,6 +27,7 @@ def test_portal_asset_manifest_serves_runtime_and_legacy_compatibility_assets(
 ) -> None:
     for path in (
         "/portal/portal-runtime.js",
+        "/portal/portal-bootstrap.js",
         "/portal/portal-runtime.css",
         "/portal/app.js",
         "/portal/customer-experience.js",
@@ -48,15 +52,32 @@ def test_portal_runtime_centralizes_refresh_navigation_and_failure_isolation(
     source = client.get("/portal/portal-runtime.js").text
 
     assert "registerFeature" in source
+    assert "markExtensionsReady" in source
+    assert "waitForExtensionsReady" in source
+    assert "await waitForExtensionsReady()" in source
     assert "captureLegacyRefresh" in source
     assert "window.refreshAll = requestRefresh" in source
     assert "state.refreshPromise" in source
     assert "state.refreshQueued" in source
+    assert 'new CustomEvent("mypets:extensions-ready"' in source
     assert 'new CustomEvent("mypets:section-change"' in source
     assert 'new CustomEvent("mypets:portal-refreshed"' in source
     assert "invokeFeature" in source
     assert "recordFailure" in source
     assert "部分功能暂未完成加载" in source
+    assert "new Worker" not in source
+    assert "WebSocket" not in source
+
+
+def test_final_bootstrap_marks_extensions_ready_before_starting_runtime(
+    client: TestClient,
+) -> None:
+    source = client.get("/portal/portal-bootstrap.js").text
+
+    ready_index = source.index("runtime.markExtensionsReady()")
+    start_index = source.index("runtime.start()")
+    assert ready_index < start_index
+    assert "setTimeout" not in source
     assert "new Worker" not in source
     assert "WebSocket" not in source
 
