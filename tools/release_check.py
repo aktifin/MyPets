@@ -40,6 +40,8 @@ def collect_errors() -> list[str]:
         "VERSION",
         "README.md",
         "LICENSE",
+        "OnePicDesktopPet.spec",
+        "packaging/windows_version_info.txt",
         "docs/普通用户安装使用指南.md",
         "docs/发布检查清单.md",
         "scripts/start_local.ps1",
@@ -99,9 +101,29 @@ def collect_errors() -> list[str]:
     if '"channel": RELEASE_CHANNEL' not in backend_main:
         errors.append("健康检查未返回发布通道")
 
+    spec = _read("OnePicDesktopPet.spec")
+    for required_text in (
+        'name="MyPets"',
+        'version="packaging/windows_version_info.txt"',
+    ):
+        if required_text not in spec:
+            errors.append(f"PyInstaller 规范缺少契约：{required_text}")
+
+    windows_version = _read("packaging/windows_version_info.txt")
+    for required_text in (
+        f"StringStruct('FileVersion', '{version}')",
+        f"StringStruct('ProductVersion', '{version}')",
+        "StringStruct('OriginalFilename', 'MyPets.exe')",
+        "StringStruct('ProductName', 'MyPets')",
+    ):
+        if required_text not in windows_version:
+            errors.append(f"Windows 版本资源缺少契约：{required_text}")
+
     package_script = _read("scripts/package_release.ps1")
     for required_text in (
         "MyPets-Desktop-$version-windows-x64",
+        '$source = Join-Path $distRoot "MyPets"',
+        "MyPets.exe",
         "release_check.py",
         "Get-FileHash",
         "普通用户安装使用指南.md",
