@@ -76,8 +76,6 @@ def test_party_pending_detail_reuses_existing_party_dialog(monkeypatch) -> None:
 
 def test_party_mutation_refreshes_pending_tray_count(monkeypatch) -> None:
     calls: list[str] = []
-    application = object.__new__(PartyApplication)
-    application._party_dialog = None
 
     class SessionStub:
         def sync_now(self) -> None:
@@ -87,17 +85,27 @@ def test_party_mutation_refreshes_pending_tray_count(monkeypatch) -> None:
         def refresh(self) -> None:
             calls.append("party-refresh")
 
-    application.cloud_session = SessionStub()
-    application.party_client = ClientStub()
-    application._sync_party_context = lambda: calls.append("context")
-    application.refresh_pending_items = lambda: calls.append("pending-refresh")
+    class ApplicationStub:
+        _party_dialog = None
+        cloud_session = SessionStub()
+        party_client = ClientStub()
+        _party_success_message = staticmethod(PartyApplication._party_success_message)
+
+        @staticmethod
+        def _sync_party_context() -> None:
+            calls.append("context")
+
+        @staticmethod
+        def refresh_pending_items() -> None:
+            calls.append("pending-refresh")
+
     monkeypatch.setattr(
         "onepic_desktop_pet.party_app.QTimer.singleShot",
         lambda _delay, callback: callback(),
     )
 
     PartyApplication._party_mutation_succeeded(
-        application,
+        ApplicationStub(),
         "party_accept",
         {"party_id": "party-1"},
     )
