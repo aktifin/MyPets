@@ -29,6 +29,7 @@ _ASSETS: dict[str, tuple[str, str]] = {
     "visits.js": ("visits.js", "text/javascript; charset=utf-8"),
     "realtime.js": ("realtime.js", "text/javascript; charset=utf-8"),
     "portal-runtime.js": ("portal-runtime.js", "text/javascript; charset=utf-8"),
+    "portal-bootstrap.js": ("portal-bootstrap.js", "text/javascript; charset=utf-8"),
     "asset-submissions.js": ("asset-submissions.js", "text/javascript; charset=utf-8"),
     "asset-production.js": ("asset-production.js", "text/javascript; charset=utf-8"),
     "customer-experience.js": ("customer-experience.js", "text/javascript; charset=utf-8"),
@@ -120,6 +121,7 @@ _EXTENSION_SCRIPTS = (
     "party-experience.js",
     "party-pending-experience.js",
     "device-self-service.js",
+    "portal-bootstrap.js",
 )
 
 
