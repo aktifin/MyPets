@@ -1,9 +1,9 @@
 """Narrow party-history visibility and revalidate accepted guests before start.
 
 The compatibility party routes remain the authoritative implementation for normal
-participants. These exact-path routes are registered first and only add the two
-customer-safety checks that require a stricter response or a final relationship
-validation. They do not introduce another party lifecycle, role, or persistence model.
+participants. These exact-path routes are registered first and only add the customer-
+safety checks that require a stricter response or a final relationship validation.
+They do not introduce another party lifecycle, role, or persistence model.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from .api import get_principal, get_session
 from .party_api import (
     PartyDetailView,
+    PartyListResponse,
     PartyTimelineEntryView,
     PartyView,
     _account,
@@ -24,6 +25,7 @@ from .party_api import (
     _party,
     _timeline,
     _view,
+    list_parties,
     start_party,
 )
 from .party_models import PetParty, PetPartyMember
@@ -40,6 +42,60 @@ party_hardening_router = APIRouter(
 _RESTRICTED_INVITATION_STATES = {"declined", "expired"}
 
 
+def _redact_party_view(
+    base: PartyView,
+    *,
+    account_id: str,
+    current_status: str,
+) -> PartyView:
+    """Reduce a terminal invitee's summary to the host and their own invitation."""
+
+    visible_members = [
+        item
+        for item in base.members
+        if item.role == "host" or item.account.account_id == account_id
+    ]
+    active_capacity = [
+        item for item in visible_members if item.status in {"invited", "accepted", "joined"}
+    ]
+    accepted = [
+        item for item in visible_members if item.status in {"accepted", "joined"}
+    ]
+    joined = [item for item in visible_members if item.status == "joined"]
+    cancellation_visible = (
+        current_status == "expired"
+        and base.completion_reason == "party_cancelled"
+    )
+    return base.model_copy(
+        update={
+            "completion_reason": base.completion_reason if cancellation_visible else "",
+            "started_at": None,
+            "scheduled_end_at": None,
+            "ended_at": base.ended_at if cancellation_visible else None,
+            "member_count": len(active_capacity),
+            "accepted_count": len(accepted),
+            "joined_count": len(joined),
+            "members": visible_members,
+            "can_invite": False,
+            "can_start": False,
+            "can_cancel": False,
+            "can_end": False,
+            "can_interact": False,
+        }
+    )
+
+
+def _redact_list_item(view: PartyView, principal: Principal) -> PartyView:
+    current = next(item for item in view.members if item.is_current_account)
+    if current.status not in _RESTRICTED_INVITATION_STATES:
+        return view
+    return _redact_party_view(
+        view,
+        account_id=principal.account_id,
+        current_status=current.status,
+    )
+
+
 def _restricted_timeline(
     session: Session,
     party: PetParty,
@@ -48,6 +104,7 @@ def _restricted_timeline(
 ) -> list[PartyTimelineEntryView]:
     """Return only creation and the current account's own invitation outcome."""
 
+    full_timeline = _timeline(session, party, principal)
     allowed_ids = {
         f"party:{party.id}:created",
         f"party-member:{current.id}:invited",
@@ -55,11 +112,7 @@ def _restricted_timeline(
     if current.status == "declined":
         allowed_ids.add(f"party-member:{current.id}:responded")
 
-    entries = [
-        item
-        for item in _timeline(session, party, principal)
-        if item.event_id in allowed_ids
-    ]
+    entries = [item for item in full_timeline if item.event_id in allowed_ids]
     if current.status == "expired":
         occurred_at = (
             current.responded_at
@@ -88,7 +141,7 @@ def _restricted_timeline(
             cancellation = next(
                 (
                     item
-                    for item in _timeline(session, party, principal)
+                    for item in full_timeline
                     if item.event_id == f"party:{party.id}:ended"
                 ),
                 None,
@@ -107,42 +160,28 @@ def _restricted_detail(
     base: PartyView,
     current: PetPartyMember,
 ) -> PartyDetailView:
-    visible_members = [
-        item
-        for item in base.members
-        if item.role == "host" or item.account.account_id == principal.account_id
-    ]
-    active_capacity = [
-        item for item in visible_members if item.status in {"invited", "accepted", "joined"}
-    ]
-    accepted = [
-        item for item in visible_members if item.status in {"accepted", "joined"}
-    ]
-    joined = [item for item in visible_members if item.status == "joined"]
-    cancellation_visible = (
-        current.status == "expired"
-        and party.completion_reason == "party_cancelled"
-    )
-    redacted = base.model_copy(
-        update={
-            "completion_reason": party.completion_reason if cancellation_visible else "",
-            "started_at": None,
-            "scheduled_end_at": None,
-            "ended_at": base.ended_at if cancellation_visible else None,
-            "member_count": len(active_capacity),
-            "accepted_count": len(accepted),
-            "joined_count": len(joined),
-            "members": visible_members,
-            "can_invite": False,
-            "can_start": False,
-            "can_cancel": False,
-            "can_end": False,
-            "can_interact": False,
-        }
+    redacted = _redact_party_view(
+        base,
+        account_id=principal.account_id,
+        current_status=current.status,
     )
     return PartyDetailView(
         **redacted.model_dump(),
         timeline=_restricted_timeline(session, party, principal, current),
+    )
+
+
+@party_hardening_router.get("", response_model=PartyListResponse)
+def list_parties_hardened(
+    principal: Annotated[Principal, Depends(get_principal)],
+    session: Annotated[Session, Depends(get_session)],
+) -> PartyListResponse:
+    result = list_parties(principal, session)
+    return PartyListResponse(
+        invitations=[_redact_list_item(item, principal) for item in result.invitations],
+        open=[_redact_list_item(item, principal) for item in result.open],
+        active=[_redact_list_item(item, principal) for item in result.active],
+        history=[_redact_list_item(item, principal) for item in result.history],
     )
 
 
