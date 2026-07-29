@@ -85,6 +85,7 @@ def user_portal() -> HTMLResponse:
         '<script src="/portal/customer-history-experience.js" defer></script>',
         '<script src="/portal/message-efficiency-experience.js" defer></script>',
         '<script src="/portal/party-experience.js" defer></script>',
+        '<script src="/portal/party-pending-experience.js" defer></script>',
     )
     for script in scripts:
         if script not in html:
@@ -237,6 +238,11 @@ def user_portal_party_experience_script() -> FileResponse:
 @user_portal_web_router.get("/portal/party-experience.css")
 def user_portal_party_experience_styles() -> FileResponse:
     return _asset("party-experience.css", "text/css; charset=utf-8")
+
+
+@user_portal_web_router.get("/portal/party-pending-experience.js")
+def user_portal_party_pending_experience_script() -> FileResponse:
+    return _asset("party-pending-experience.js", "text/javascript; charset=utf-8")
 
 
 @user_portal_web_router.get("/portal/styles.css")
