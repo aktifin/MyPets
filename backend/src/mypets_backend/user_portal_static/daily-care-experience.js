@@ -4,6 +4,7 @@ const portalDailyCareState = {
   summary: null,
   petId: "",
   clockOffsetMs: 0,
+  timerId: 0,
 };
 
 function installDailyCarePanel() {
@@ -54,25 +55,45 @@ function dailyCareAvailability(action) {
   const raw = (summary.actions || []).find((item) => item.action === action);
   if (!raw) return null;
   const effectiveNow = Date.now() + portalDailyCareState.clockOffsetMs;
-  const nextAt = raw.next_available_at ? Date.parse(raw.next_available_at) : Number.NaN;
+  const nextAt = raw.next_available_at
+    ? Date.parse(raw.next_available_at)
+    : Number.NaN;
   const remaining = Number.isNaN(nextAt)
     ? Math.max(0, Number(raw.remaining_seconds || 0))
     : Math.max(0, Math.ceil((nextAt - effectiveNow) / 1000));
   const selected = selectedPortalPet();
   if (!selected || selected.pet.presence !== "home") {
-    return { ...raw, available: false, remaining_seconds: 0, reason: "宠物串门期间不能照料，请先查看串门状态。" };
+    return {
+      ...raw,
+      available: false,
+      remaining_seconds: 0,
+      reason: "宠物串门期间不能照料，请先查看串门状态。",
+    };
   }
   if (!new Set(["owner", "co_owner", "caregiver"]).has(selected.relation.role)) {
-    return { ...raw, available: false, remaining_seconds: 0, reason: "当前关系仅可查看宠物状态，不能执行照料。" };
+    return {
+      ...raw,
+      available: false,
+      remaining_seconds: 0,
+      reason: "当前关系仅可查看宠物状态，不能执行照料。",
+    };
   }
   if (summary.daily_limit_reached) {
-    return { ...raw, available: false, remaining_seconds: 0, reason: `今天已完成 ${summary.daily_limit} 次照料，明天可以继续。` };
+    return {
+      ...raw,
+      available: false,
+      remaining_seconds: 0,
+      reason: `今天已完成 ${summary.daily_limit} 次照料，明天可以继续。`,
+    };
   }
   return {
     ...raw,
     available: remaining <= 0,
     remaining_seconds: remaining,
-    reason: remaining > 0 ? `${raw.label}刚刚完成，${remaining} 秒后可再次操作。` : "现在可以操作。",
+    reason:
+      remaining > 0
+        ? `${raw.label}刚刚完成，${remaining} 秒后可再次操作。`
+        : "现在可以操作。",
   };
 }
 
@@ -82,9 +103,12 @@ function syncDailyCareButtons() {
     if (!availability) return;
     button.disabled = !availability.available;
     button.title = availability.reason;
-    button.setAttribute("aria-label", availability.available
-      ? `${availability.label}，现在可以操作`
-      : `${availability.label}，${availability.reason}`);
+    button.setAttribute(
+      "aria-label",
+      availability.available
+        ? `${availability.label}，现在可以操作`
+        : `${availability.label}，${availability.reason}`,
+    );
   });
 }
 
@@ -99,7 +123,8 @@ function renderDailyCarePanel() {
   }
 
   $("daily-care-streak").textContent = `连续 ${summary.streak_days} 天`;
-  $("daily-care-progress-label").textContent = `今日任务 ${summary.completed_tasks} / ${summary.total_tasks}`;
+  $("daily-care-progress-label").textContent =
+    `今日任务 ${summary.completed_tasks} / ${summary.total_tasks}`;
   $("daily-care-progress-detail").textContent = summary.reward_detail;
   const progress = $("daily-care-progress");
   progress.max = Math.max(1, Number(summary.total_tasks || 3));
@@ -108,20 +133,41 @@ function renderDailyCarePanel() {
   const taskList = $("daily-care-task-list");
   taskList.replaceChildren();
   (summary.tasks || []).forEach((task) => {
-    const card = experienceNode("div", task.completed ? "daily-care-task completed" : "daily-care-task");
-    const icon = experienceNode("span", "daily-care-task-icon", task.completed ? "✓" : `${task.current}/${task.target}`);
+    const card = experienceNode(
+      "div",
+      task.completed ? "daily-care-task completed" : "daily-care-task",
+    );
+    const icon = experienceNode(
+      "span",
+      "daily-care-task-icon",
+      task.completed ? "✓" : `${task.current}/${task.target}`,
+    );
     const taskCopy = experienceNode("span", "daily-care-task-copy");
-    taskCopy.append(experienceNode("strong", "", task.title), experienceNode("small", "", task.detail));
+    taskCopy.append(
+      experienceNode("strong", "", task.title),
+      experienceNode("small", "", task.detail),
+    );
     card.append(icon, taskCopy);
     taskList.append(card);
   });
 
   const footer = $("daily-care-footer");
   footer.replaceChildren();
-  const reward = experienceNode("div", summary.all_tasks_completed ? "daily-care-reward earned" : "daily-care-reward");
+  const reward = experienceNode(
+    "div",
+    summary.all_tasks_completed
+      ? "daily-care-reward earned"
+      : "daily-care-reward",
+  );
   reward.append(
     experienceNode("strong", "", summary.reward_title),
-    experienceNode("small", "", summary.all_tasks_completed ? "今天的陪伴任务已经完成。" : "完成全部任务后自动点亮。"),
+    experienceNode(
+      "small",
+      "",
+      summary.all_tasks_completed
+        ? "今天的陪伴任务已经完成。"
+        : "完成全部任务后自动点亮。",
+    ),
   );
   const limit = experienceNode(
     "span",
@@ -132,7 +178,9 @@ function renderDailyCarePanel() {
   );
   footer.append(reward, limit);
 
-  if ($("dashboard-today-actions")) $("dashboard-today-actions").textContent = String(summary.care_count);
+  if ($("dashboard-today-actions")) {
+    $("dashboard-today-actions").textContent = String(summary.care_count);
+  }
   syncDailyCareButtons();
 }
 
@@ -141,101 +189,112 @@ async function refreshDailyCareSummary() {
   if (!accessToken || !selected) {
     portalDailyCareState.summary = null;
     portalDailyCareState.petId = "";
+    portalDailyCareState.clockOffsetMs = 0;
     renderDailyCarePanel();
     return;
   }
   const petId = selected.pet.pet_id;
   const offset = new Date().getTimezoneOffset();
-  const summary = await api(`/api/v1/pets/${encodeURIComponent(petId)}/daily-care?timezone_offset_minutes=${offset}`);
+  const summary = await api(
+    `/api/v1/pets/${encodeURIComponent(petId)}/daily-care?timezone_offset_minutes=${offset}`,
+  );
   portalDailyCareState.summary = summary;
   portalDailyCareState.petId = petId;
   portalDailyCareState.clockOffsetMs = Date.parse(summary.server_time) - Date.now();
   renderDailyCarePanel();
 }
 
-installDailyCarePanel();
-
-const baseRefreshPhase1PetDataForDailyCare = refreshPhase1PetData;
-refreshPhase1PetData = async function refreshPhase1PetDataWithDailyCare() {
-  await baseRefreshPhase1PetDataForDailyCare();
-  await refreshDailyCareSummary();
-};
-
-const baseRenderPortalPhase1ForDailyCare = renderPortalPhase1;
-renderPortalPhase1 = function renderPortalPhase1WithDailyCare() {
-  baseRenderPortalPhase1ForDailyCare();
-  renderDailyCarePanel();
-};
-
-const baseRecommendedCareForDailyCare = recommendedCare;
-recommendedCare = function recommendedCareWithAvailability(selected) {
-  const suggestion = baseRecommendedCareForDailyCare(selected);
-  if (!suggestion?.action) return suggestion;
-  const availability = dailyCareAvailability(suggestion.action);
-  return availability && !availability.available
-    ? { ...suggestion, detail: availability.reason, availability }
-    : { ...suggestion, availability };
-};
-
-const baseRenderCareRecommendationForDailyCare = renderCareRecommendation;
-renderCareRecommendation = function renderCareRecommendationWithDailyCare() {
-  baseRenderCareRecommendationForDailyCare();
+function applyDailyCareRecommendationState() {
   const recommendation = $("dashboard-care-recommendation");
   const button = recommendation?.querySelector("button");
+  const copy = recommendation?.querySelector(".care-recommendation-copy small");
   const suggestion = recommendedCare(selectedPortalPet());
-  if (!button || !suggestion?.action || !suggestion.availability) return;
-  button.disabled = !suggestion.availability.available;
-  button.title = suggestion.availability.reason;
-  if (!suggestion.availability.available && suggestion.availability.remaining_seconds > 0) {
-    button.textContent = `${suggestion.availability.remaining_seconds} 秒后可${careActionLabel(suggestion.action)}`;
+  if (!button || !suggestion?.action) return;
+  const availability = dailyCareAvailability(suggestion.action);
+  if (!availability) return;
+  button.disabled = !availability.available;
+  button.title = availability.reason;
+  if (!availability.available && copy) copy.textContent = availability.reason;
+  if (!availability.available && availability.remaining_seconds > 0) {
+    button.textContent =
+      `${availability.remaining_seconds} 秒后可${careActionLabel(suggestion.action)}`;
   }
-};
+}
 
-const baseRenderNextStepsForDailyCare = renderNextSteps;
-renderNextSteps = function renderNextStepsWithDailyCare() {
-  baseRenderNextStepsForDailyCare();
+function renderDailyCareNextStep() {
   const container = $("next-step-list");
+  container?.querySelector("[data-daily-care-next-step]")?.remove();
   const summary = portalDailyCareState.summary;
   if (!container || !summary || summary.all_tasks_completed) return;
   const remaining = Math.max(0, summary.total_tasks - summary.completed_tasks);
   const card = experienceNode("button", "next-step-card emphasis");
   card.type = "button";
+  card.dataset.dailyCareNextStep = "1";
   const copy = experienceNode("span", "next-step-copy");
   copy.append(
     experienceNode("strong", "", `今天还有 ${remaining} 项养宠任务`),
-    experienceNode("small", "", "完成后点亮今日陪伴徽章，并延续连续陪伴记录。"),
+    experienceNode(
+      "small",
+      "",
+      "完成后点亮今日陪伴徽章，并延续连续陪伴记录。",
+    ),
   );
   card.append(copy, experienceNode("span", "next-step-action", "去完成"));
-  card.addEventListener("click", () => $("daily-care-panel")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+  card.addEventListener("click", () => {
+    $("daily-care-panel")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
   container.prepend(card);
-};
-
-const basePerformPhase1CareForDailyCare = performPhase1Care;
-performPhase1Care = async function performPhase1CareWithDailyCare(action, button) {
-  await basePerformPhase1CareForDailyCare(action, button);
-  renderDailyCarePanel();
-  const summary = portalDailyCareState.summary;
-  if (!summary) return;
-  const message = summary.all_tasks_completed
-    ? `${careActionLabel(action)}完成，今日陪伴徽章已点亮，连续 ${summary.streak_days} 天。`
-    : `${careActionLabel(action)}完成，今日任务 ${summary.completed_tasks}/${summary.total_tasks}。`;
-  setStatus(globalStatus, message, "success");
-};
-
-const baseLogoutForDailyCare = logout;
-logout = function logoutWithDailyCare(message = "", kind = "") {
-  portalDailyCareState.summary = null;
-  portalDailyCareState.petId = "";
-  baseLogoutForDailyCare(message, kind);
-  renderDailyCarePanel();
-};
-
-window.setInterval(() => {
-  if (!portalDailyCareState.summary) return;
-  syncDailyCareButtons();
-  renderCareRecommendation();
-}, 1000);
-
-if (dashboard) {
-  refreshDailyCareSummary().catch((error) => setStatus(globalStatus, error.message, "error"));
 }
+
+function renderDailyCareIntegrations() {
+  renderDailyCarePanel();
+  if (typeof renderCareRecommendation === "function") {
+    renderCareRecommendation();
+    applyDailyCareRecommendationState();
+  }
+  if (typeof renderNextSteps === "function") {
+    renderNextSteps();
+    renderDailyCareNextStep();
+  }
+}
+
+function startDailyCareTicker() {
+  if (portalDailyCareState.timerId) return;
+  portalDailyCareState.timerId = window.setInterval(() => {
+    if (!portalDailyCareState.summary) return;
+    syncDailyCareButtons();
+    applyDailyCareRecommendationState();
+  }, 1000);
+}
+
+portalRuntime.registerFeature({
+  id: "daily-care",
+  label: "每日照料",
+  order: 100,
+  mount: () => {
+    installDailyCarePanel();
+    startDailyCareTicker();
+  },
+  onPetContextRefresh: refreshDailyCareSummary,
+  onRefreshComplete: renderDailyCareIntegrations,
+  onSectionEnter: ({ sectionId }) => {
+    if (sectionId === "dashboard-section" || sectionId === "pets-section") {
+      renderDailyCareIntegrations();
+    }
+  },
+  onCareComplete: ({ action }) => {
+    renderDailyCareIntegrations();
+    const summary = portalDailyCareState.summary;
+    if (!summary) return;
+    const message = summary.all_tasks_completed
+      ? `${careActionLabel(action)}完成，今日陪伴徽章已点亮，连续 ${summary.streak_days} 天。`
+      : `${careActionLabel(action)}完成，今日任务 ${summary.completed_tasks}/${summary.total_tasks}。`;
+    setStatus(globalStatus, message, "success");
+  },
+  onLogout: () => {
+    portalDailyCareState.summary = null;
+    portalDailyCareState.petId = "";
+    portalDailyCareState.clockOffsetMs = 0;
+    renderDailyCarePanel();
+  },
+});

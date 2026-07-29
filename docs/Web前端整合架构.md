@@ -10,11 +10,11 @@ MyPets Web 用户门户由基础页面和多个客户体验扩展逐步演进而
 - 某个扩展加载失败时，错误可能中断后续功能；
 - 静态资源路由逐文件声明，新增脚本容易遗漏路由或安全响应头。
 
-本轮采用“建立统一运行时、保持业务兼容、逐批迁移扩展”的方式，不一次性重写全部页面。
+整合采用“建立统一运行时、保持业务兼容、逐批迁移扩展”的方式，不一次性重写全部页面。
 
 ## 二、统一运行时
 
-`portal-runtime.js` 在 `app.js` 之前加载，提供 `window.MyPetsPortal`，主要职责如下：
+`portal-runtime.js` 在 `app.js` 之前加载，提供 `window.MyPetsPortal`。
 
 ### 1. 单一启动入口
 
@@ -46,7 +46,7 @@ MyPets Web 用户门户由基础页面和多个客户体验扩展逐步演进而
 - 刷新期间再次提出的请求只排队一次；
 - 当前刷新结束后再执行一次合并刷新，而不是按请求数量重复执行。
 
-现有扩展脚本仍可继续包装 `refreshAll`，后续逐批迁移到 `registerFeature` 生命周期。
+尚未迁移的扩展脚本可以继续包装 `refreshAll`，但新代码不得新增同类包装。
 
 ### 3. 统一导航
 
@@ -60,7 +60,9 @@ MyPets Web 用户门户由基础页面和多个客户体验扩展逐步演进而
 - 收起“更多”菜单；
 - 聚焦当前工作区；
 - 发布 `mypets:section-change` 事件；
-- 调用注册功能的 `onSectionEnter`。
+- 按功能 `order` 顺序执行 `onSectionEnter`。
+
+页面进入钩子使用串行 Promise 队列。用户快速切换多个标签时，前一次刷新不会覆盖后一次页面的最终状态。
 
 `activatePortalSection` 和 `activateCustomerSection` 在启动后映射到统一导航，旧脚本不需要立即重写。
 
@@ -76,10 +78,14 @@ MyPetsPortal.registerFeature({
   mount: async ({ runtime }) => {},
   onRefreshComplete: async ({ reason, activeSection, runtime }) => {},
   onSectionEnter: async ({ sectionId, runtime }) => {},
+  onPetContextRefresh: async ({ petId, selectedPet, runtime }) => {},
+  onCareComplete: async ({ action, petId, runtime }) => {},
   onRealtime: async ({ event, runtime }) => {},
   onLogout: async ({ runtime }) => {},
 });
 ```
+
+运行时同时提供 `runFeatureHook(hook, context)`，供核心页面在宠物上下文刷新或照料完成后按顺序调用扩展能力。
 
 每个生命周期独立捕获异常。一个扩展失败时：
 
@@ -89,7 +95,50 @@ MyPetsPortal.registerFeature({
 - 控制台保留具体错误；
 - 页面不向用户展示堆栈和内部编码。
 
-## 三、静态资源清单
+## 三、已完成的生命周期迁移
+
+### 1. 首页、成长、消息和提醒核心
+
+`phase1.js` 已注册为 `phase1-core`，顺序为 `10`：
+
+- 完整刷新通过 `onRefreshComplete` 加载；
+- 页面进入通过 `onSectionEnter` 按页面加载宠物、消息或提醒数据；
+- 实时事件通过 `onRealtime` 刷新；
+- 手动刷新调用统一 `requestRefresh`；
+- 宠物数据完成后调用 `onPetContextRefresh`；
+- 照料完成后调用 `onCareComplete`；
+- 不再自行监听全部主导航按钮或实时游标。
+
+### 2. 每日照料
+
+`daily-care-experience.js` 已注册为 `daily-care`，顺序为 `100`：
+
+- 宠物切换后通过 `onPetContextRefresh` 获取当日照料摘要；
+- 完整刷新和页面进入后补充首页推荐及下一步任务；
+- 照料完成后更新冷却、今日任务和成功文案；
+- 退出时清空状态；
+- 不再覆盖 `refreshPhase1PetData`、`renderPortalPhase1`、`recommendedCare`、`renderCareRecommendation`、`renderNextSteps`、`performPhase1Care` 或 `logout`。
+
+### 3. 成长目标与纪念册
+
+`growth-experience.js` 已注册为 `growth-experience`，顺序为 `110`：
+
+- 在每日照料之后加载，能够复用最新冷却状态；
+- 宠物切换、页面进入和照料完成后刷新展示；
+- 退出时清空状态；
+- 不再覆盖宠物刷新、首页渲染或退出函数。
+
+### 4. 主动关怀
+
+`proactive-care-experience.js` 已注册为 `proactive-care`，顺序为 `130`：
+
+- 完整刷新后读取偏好并评估提示；
+- 页面进入时只重绘当前提示或设置；
+- 实时事件通过统一 `onRealtime` 重新评估；
+- 退出时统一清理定时器和状态；
+- 不再覆盖 `refreshAll`、`renderDashboard` 或 `logout`，也不再单独监听实时游标。
+
+## 四、静态资源清单
 
 `user_portal_web.py` 使用一个显式 `_ASSETS` 清单管理用户门户脚本和样式，统一通过 `/portal/{asset_path}` 提供。
 
@@ -103,7 +152,7 @@ MyPetsPortal.registerFeature({
 
 资源必须先加入清单才能被访问，未知资源返回 404，避免建立任意文件读取入口。`portal-bootstrap.js` 必须保持为页面最后一个门户脚本，新增扩展不得插入到它之后。
 
-## 四、兼容边界
+## 五、兼容边界
 
 本轮没有改变：
 
@@ -115,13 +164,13 @@ MyPetsPortal.registerFeature({
 - Windows 桌面客户端；
 - Agent、工具调用和设备控制边界。
 
-## 五、后续迁移顺序
+## 六、后续迁移顺序
 
 后续前端整合按以下顺序推进：
 
-1. 将首页、每日照料、主动关怀和成长扩展从函数覆盖迁移到 `registerFeature`；
-2. 将消息、提醒、待办、处理记录和设备管理迁移到统一的 `onSectionEnter`；
-3. 将串门和聚会刷新迁移到统一实时事件生命周期；
+1. 将待办、处理记录、消息效率和设备管理迁移到 `registerFeature`；
+2. 将串门和聚会刷新迁移到统一页面进入及实时事件生命周期；
+3. 清理剩余 `refreshAll`、`renderNextSteps`、`logout` 和直接实时监听包装；
 4. 把动态创建的核心页面结构逐步移回明确的 HTML 模板或组件构建函数；
 5. 建立统一加载态、空状态、错误态和操作反馈组件；
 6. 完成真实浏览器、多账户和移动宽度人工验收。

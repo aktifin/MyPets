@@ -52,6 +52,7 @@ def test_portal_runtime_centralizes_refresh_navigation_and_failure_isolation(
     source = client.get("/portal/portal-runtime.js").text
 
     assert "registerFeature" in source
+    assert "runFeatureHook" in source
     assert "markExtensionsReady" in source
     assert "waitForExtensionsReady" in source
     assert "await waitForExtensionsReady()" in source
@@ -59,6 +60,11 @@ def test_portal_runtime_centralizes_refresh_navigation_and_failure_isolation(
     assert "window.refreshAll = requestRefresh" in source
     assert "state.refreshPromise" in source
     assert "state.refreshQueued" in source
+    assert "state.sectionHookPromise" in source
+    assert 'runFeatureHook("onRefreshComplete"' in source
+    assert 'runFeatureHook("onSectionEnter"' in source
+    assert 'runFeatureHook("onRealtime"' in source
+    assert 'runFeatureHook("onLogout"' in source
     assert 'new CustomEvent("mypets:extensions-ready"' in source
     assert 'new CustomEvent("mypets:section-change"' in source
     assert 'new CustomEvent("mypets:portal-refreshed"' in source
@@ -94,3 +100,86 @@ def test_core_portal_uses_runtime_startup_and_no_longer_owns_tab_switching(
     assert 'document.querySelectorAll(".main-tab")' not in source
     assert "await refreshAll({ reason: \"login\" })" in source
     assert "await refreshAll({ reason: \"register\" })" in source
+
+
+def test_phase1_core_uses_ordered_runtime_lifecycle_hooks(client: TestClient) -> None:
+    source = client.get("/portal/phase1.js").text
+
+    assert 'id: "phase1-core"' in source
+    assert "order: 10" in source
+    assert 'portalRuntime.runFeatureHook("onPetContextRefresh"' in source
+    assert 'portalRuntime.runFeatureHook("onCareComplete"' in source
+    assert "onRefreshComplete:" in source
+    assert "onSectionEnter:" in source
+    assert "onRealtime:" in source
+    assert "onLogout:" in source
+    assert 'portalRuntime.requestRefresh({ reason: "manual-phase1" })' in source
+    assert "const baseRefreshAllForPhase1" not in source
+    assert 'document.querySelectorAll(".main-tab")' not in source
+    assert 'window.addEventListener("mypets:realtime-cursor"' not in source
+
+
+def test_daily_care_no_longer_replaces_shared_global_functions(
+    client: TestClient,
+) -> None:
+    source = client.get("/portal/daily-care-experience.js").text
+
+    assert 'id: "daily-care"' in source
+    assert "order: 100" in source
+    assert "onPetContextRefresh:" in source
+    assert "onRefreshComplete:" in source
+    assert "onSectionEnter:" in source
+    assert "onCareComplete:" in source
+    assert "onLogout:" in source
+    assert "renderDailyCareIntegrations" in source
+    assert "baseRefreshPhase1PetDataForDailyCare" not in source
+    assert "baseRenderPortalPhase1ForDailyCare" not in source
+    assert "baseRecommendedCareForDailyCare" not in source
+    assert "baseRenderCareRecommendationForDailyCare" not in source
+    assert "baseRenderNextStepsForDailyCare" not in source
+    assert "basePerformPhase1CareForDailyCare" not in source
+    assert "baseLogoutForDailyCare" not in source
+    assert "refreshPhase1PetData =" not in source
+    assert "renderPortalPhase1 =" not in source
+    assert "performPhase1Care =" not in source
+    assert "logout =" not in source
+
+
+def test_growth_experience_uses_pet_context_lifecycle_without_global_replacement(
+    client: TestClient,
+) -> None:
+    source = client.get("/portal/growth-experience.js").text
+
+    assert 'id: "growth-experience"' in source
+    assert "order: 110" in source
+    assert "onPetContextRefresh:" in source
+    assert "onRefreshComplete:" in source
+    assert "onSectionEnter:" in source
+    assert "onCareComplete:" in source
+    assert "onLogout:" in source
+    assert "baseRefreshPhase1PetDataForGrowth" not in source
+    assert "baseRenderPortalPhase1ForGrowth" not in source
+    assert "baseLogoutForGrowth" not in source
+    assert "refreshPhase1PetData =" not in source
+    assert "renderPortalPhase1 =" not in source
+    assert "logout =" not in source
+
+
+def test_proactive_care_uses_refresh_realtime_and_logout_lifecycle_hooks(
+    client: TestClient,
+) -> None:
+    source = client.get("/portal/proactive-care-experience.js").text
+
+    assert 'id: "proactive-care"' in source
+    assert "order: 130" in source
+    assert "onRefreshComplete:" in source
+    assert "onSectionEnter:" in source
+    assert "onRealtime:" in source
+    assert "onLogout:" in source
+    assert "baseRefreshAllForProactiveCare" not in source
+    assert "baseRenderDashboardForProactiveCare" not in source
+    assert "baseLogoutForProactiveCare" not in source
+    assert 'window.addEventListener("mypets:realtime-cursor"' not in source
+    assert "refreshAll =" not in source
+    assert "renderDashboard =" not in source
+    assert "logout =" not in source
