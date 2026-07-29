@@ -1,9 +1,11 @@
 """Unified customer pending-items projection and direct-action API.
 
 This module does not create another workflow system. It projects existing friendship,
-shared-care, visit and reminder records into one customer-facing queue, then delegates
-mutations to the authoritative feature endpoints so their permission and lifecycle rules
-remain the single source of truth.
+shared-care, visit, party invitation and reminder records into one customer-facing queue,
+then delegates mutations to the authoritative feature endpoints so their permission and
+lifecycle rules remain the single source of truth. Party invitations are intentionally
+read-only here because accepting one requires choosing an eligible managed pet in the
+party experience.
 """
 
 from __future__ import annotations
@@ -12,12 +14,14 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .api import get_principal, get_session
 from .models import Account, Pet
+from .party_models import PetParty, PetPartyMember
+from .party_service import settle_due_parties
 from .reminder_api import (
     ReminderSnoozeRequest,
     complete_occurrence,
@@ -43,6 +47,7 @@ PendingKind = Literal[
     "friend_request",
     "caregiver_invitation",
     "visit_request",
+    "party_invitation",
     "reminder_due",
 ]
 PendingAction = Literal["accept", "reject", "complete", "snooze", "dismiss"]
@@ -188,6 +193,45 @@ def _visit_items(session: Session, account_id: str) -> list[PendingItemView]:
     return items
 
 
+def _party_items(session: Session, account_id: str) -> list[PendingItemView]:
+    rows = list(
+        session.execute(
+            select(PetPartyMember, PetParty)
+            .join(PetParty, PetParty.id == PetPartyMember.party_id)
+            .where(
+                PetPartyMember.account_id == account_id,
+                PetPartyMember.status == "invited",
+                PetParty.status == "open",
+            )
+            .order_by(PetPartyMember.created_at, PetPartyMember.id)
+            .limit(200)
+        ).all()
+    )
+    items: list[PendingItemView] = []
+    for member, party in rows:
+        host_name = _account_name(session, party.host_account_id)
+        host_pet = _pet(session, party.host_pet_id)
+        host_pet_name = host_pet.name if host_pet is not None else "发起人的宠物"
+        note = f" 说明：{party.note}" if party.note else ""
+        items.append(
+            PendingItemView(
+                item_id=party.id,
+                kind="party_invitation",
+                title=f"{host_name} 邀请你参加“{party.title}”",
+                detail=(
+                    f"请进入聚会选择一只自己管理且当前在家的宠物后回应。"
+                    f"本场最多 {party.max_members} 只，约 {party.duration_minutes} 分钟。{note}"
+                ).strip(),
+                actor_display_name=host_name,
+                pet_id=party.host_pet_id,
+                pet_name=host_pet_name,
+                occurred_at=_aware(member.created_at),
+                actions=[],
+            )
+        )
+    return items
+
+
 def _reminder_items(
     session: Session,
     account_id: str,
@@ -233,11 +277,13 @@ def build_pending_items(
 ) -> PendingItemsResponse:
     now = datetime.now(UTC)
     settle_due_visits(session, now=now)
+    settle_due_parties(session, now=now)
     session.flush()
     items = [
         *_friend_items(session, account_id),
         *_caregiver_items(session, account_id),
         *_visit_items(session, account_id),
+        *_party_items(session, account_id),
         *_reminder_items(session, account_id, now=now),
     ]
     items.sort(
@@ -290,6 +336,7 @@ def act_on_pending_item(
         "friend_request": {"accept", "reject"},
         "caregiver_invitation": {"accept", "reject"},
         "visit_request": {"accept", "reject"},
+        "party_invitation": set(),
         "reminder_due": {"complete", "snooze", "dismiss"},
     }
     if action not in allowed[kind]:
