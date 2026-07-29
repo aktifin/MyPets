@@ -42,7 +42,9 @@ function installProactiveCareExperience() {
     dashboardSection.insertBefore(banner, dashboardGrid || dashboardSection.firstChild);
     primary.addEventListener("click", actOnProactiveCareNotice);
     snooze.addEventListener("click", () => acknowledgeProactiveCare("snoozed"));
-    dismiss.addEventListener("click", () => acknowledgeProactiveCare("dismissed_today"));
+    dismiss.addEventListener("click", () => {
+      acknowledgeProactiveCare("dismissed_today");
+    });
   }
 
   const accountSection = $("account-section");
@@ -102,8 +104,14 @@ function installProactiveCareExperience() {
     panel.append(heading, form, formStatus);
     accountSection.append(panel);
     form.addEventListener("submit", saveProactiveCarePreferences);
-    $("proactive-enabled").addEventListener("change", syncProactivePreferenceControls);
-    $("proactive-quiet-enabled").addEventListener("change", syncProactivePreferenceControls);
+    $("proactive-enabled").addEventListener(
+      "change",
+      syncProactivePreferenceControls,
+    );
+    $("proactive-quiet-enabled").addEventListener(
+      "change",
+      syncProactivePreferenceControls,
+    );
   }
 }
 
@@ -129,25 +137,48 @@ function renderProactiveCarePreferences() {
   $("proactive-quiet-enabled").checked = Boolean(value.quiet_hours_enabled);
   $("proactive-quiet-start").value = value.quiet_start || "22:00";
   $("proactive-quiet-end").value = value.quiet_end || "08:00";
-  ensureProactiveSelectValue($("proactive-min-interval"), value.min_interval_minutes || 120, "分钟");
-  ensureProactiveSelectValue($("proactive-max-daily"), value.max_daily_notices || 3, "次");
-  $("proactive-care-setting-status").textContent = value.enabled ? "已开启" : "已关闭";
+  ensureProactiveSelectValue(
+    $("proactive-min-interval"),
+    value.min_interval_minutes || 120,
+    "分钟",
+  );
+  ensureProactiveSelectValue(
+    $("proactive-max-daily"),
+    value.max_daily_notices || 3,
+    "次",
+  );
+  $("proactive-care-setting-status").textContent = value.enabled
+    ? "已开启"
+    : "已关闭";
   syncProactivePreferenceControls();
 }
 
 function syncProactivePreferenceControls() {
   const enabled = Boolean($("proactive-enabled")?.checked);
-  ["proactive-low-state", "proactive-inactivity", "proactive-reminder", "proactive-quiet-enabled", "proactive-min-interval", "proactive-max-daily"].forEach((id) => {
+  [
+    "proactive-low-state",
+    "proactive-inactivity",
+    "proactive-reminder",
+    "proactive-quiet-enabled",
+    "proactive-min-interval",
+    "proactive-max-daily",
+  ].forEach((id) => {
     if ($(id)) $(id).disabled = !enabled;
   });
   const quietEnabled = enabled && Boolean($("proactive-quiet-enabled")?.checked);
-  if ($("proactive-quiet-start")) $("proactive-quiet-start").disabled = !quietEnabled;
-  if ($("proactive-quiet-end")) $("proactive-quiet-end").disabled = !quietEnabled;
+  if ($("proactive-quiet-start")) {
+    $("proactive-quiet-start").disabled = !quietEnabled;
+  }
+  if ($("proactive-quiet-end")) {
+    $("proactive-quiet-end").disabled = !quietEnabled;
+  }
 }
 
 async function loadProactiveCarePreferences() {
   if (!accessToken) return;
-  portalProactiveCareState.preferences = await api("/api/v1/portal/proactive-care/preferences");
+  portalProactiveCareState.preferences = await api(
+    "/api/v1/portal/proactive-care/preferences",
+  );
   renderProactiveCarePreferences();
 }
 
@@ -157,24 +188,33 @@ async function saveProactiveCarePreferences(event) {
   button.disabled = true;
   setStatus($("proactive-care-form-status"), "正在保存…");
   try {
-    portalProactiveCareState.preferences = await api("/api/v1/portal/proactive-care/preferences", {
-      method: "PATCH",
-      json: {
-        enabled: $("proactive-enabled").checked,
-        low_state_enabled: $("proactive-low-state").checked,
-        inactivity_enabled: $("proactive-inactivity").checked,
-        reminder_enabled: $("proactive-reminder").checked,
-        quiet_hours_enabled: $("proactive-quiet-enabled").checked,
-        quiet_start: $("proactive-quiet-start").value,
-        quiet_end: $("proactive-quiet-end").value,
-        min_interval_minutes: Number($("proactive-min-interval").value),
-        max_daily_notices: Number($("proactive-max-daily").value),
+    portalProactiveCareState.preferences = await api(
+      "/api/v1/portal/proactive-care/preferences",
+      {
+        method: "PATCH",
+        json: {
+          enabled: $("proactive-enabled").checked,
+          low_state_enabled: $("proactive-low-state").checked,
+          inactivity_enabled: $("proactive-inactivity").checked,
+          reminder_enabled: $("proactive-reminder").checked,
+          quiet_hours_enabled: $("proactive-quiet-enabled").checked,
+          quiet_start: $("proactive-quiet-start").value,
+          quiet_end: $("proactive-quiet-end").value,
+          min_interval_minutes: Number($("proactive-min-interval").value),
+          max_daily_notices: Number($("proactive-max-daily").value),
+        },
       },
-    });
+    );
     portalProactiveCareState.nextCheckAt = 0;
     renderProactiveCarePreferences();
-    if (!portalProactiveCareState.preferences.enabled) hideProactiveCareNotice();
-    setStatus($("proactive-care-form-status"), "主动关怀设置已同步到其他设备。", "success");
+    if (!portalProactiveCareState.preferences.enabled) {
+      hideProactiveCareNotice();
+    }
+    setStatus(
+      $("proactive-care-form-status"),
+      "主动关怀设置已同步到其他设备。",
+      "success",
+    );
     await evaluateProactiveCare(true);
   } catch (error) {
     setStatus($("proactive-care-form-status"), error.message, "error");
@@ -186,9 +226,17 @@ async function saveProactiveCarePreferences(event) {
 function scheduleProactiveCareEvaluation() {
   window.clearTimeout(portalProactiveCareState.timerId);
   if (!accessToken || !portalProactiveCareState.nextCheckAt) return;
-  const delay = Math.max(15000, Math.min(2147480000, portalProactiveCareState.nextCheckAt - Date.now()));
+  const delay = Math.max(
+    15000,
+    Math.min(
+      2147480000,
+      portalProactiveCareState.nextCheckAt - Date.now(),
+    ),
+  );
   portalProactiveCareState.timerId = window.setTimeout(() => {
-    evaluateProactiveCare(true).catch((error) => setStatus(globalStatus, error.message, "error"));
+    evaluateProactiveCare(true).catch((error) => {
+      setStatus(globalStatus, error.message, "error");
+    });
   }, delay);
 }
 
@@ -208,7 +256,8 @@ async function evaluateProactiveCare(force = false) {
     });
     portalProactiveCareState.preferences = result.preferences;
     portalProactiveCareState.notice = result.notice;
-    portalProactiveCareState.nextCheckAt = Date.parse(result.next_check_at) || (Date.now() + 60 * 60 * 1000);
+    portalProactiveCareState.nextCheckAt =
+      Date.parse(result.next_check_at) || Date.now() + 60 * 60 * 1000;
     renderProactiveCarePreferences();
     renderProactiveCareNotice();
     scheduleProactiveCareEvaluation();
@@ -247,9 +296,16 @@ async function acknowledgeProactiveCare(outcome) {
       },
     });
     hideProactiveCareNotice();
-    portalProactiveCareState.nextCheckAt = Date.now() + (outcome === "snoozed" ? 120 : 30) * 60 * 1000;
+    portalProactiveCareState.nextCheckAt =
+      Date.now() + (outcome === "snoozed" ? 120 : 30) * 60 * 1000;
     scheduleProactiveCareEvaluation();
-    setStatus(globalStatus, outcome === "dismissed_today" ? "今天不再显示这条提示。" : "已稍后提醒。", "success");
+    setStatus(
+      globalStatus,
+      outcome === "dismissed_today"
+        ? "今天不再显示这条提示。"
+        : "已稍后提醒。",
+      "success",
+    );
   } catch (error) {
     setStatus(globalStatus, error.message, "error");
   }
@@ -261,7 +317,7 @@ async function switchToProactiveNoticePet(petId) {
     method: "PATCH",
     json: { selected_pet_id: petId },
   });
-  await refreshPhase1PetData();
+  await refreshPhase1PetData("proactive-pet-switch");
   renderDashboard();
   renderPortalPhase1();
 }
@@ -287,37 +343,32 @@ async function actOnProactiveCareNotice() {
   }
 }
 
-installProactiveCareExperience();
-
-const baseRefreshAllForProactiveCare = refreshAll;
-refreshAll = async function refreshAllWithProactiveCare() {
-  await baseRefreshAllForProactiveCare();
+async function refreshProactiveCareLifecycle() {
   await loadProactiveCarePreferences();
   await evaluateProactiveCare();
-};
-
-const baseRenderDashboardForProactiveCare = renderDashboard;
-renderDashboard = function renderDashboardWithProactiveCare() {
-  baseRenderDashboardForProactiveCare();
-  renderProactiveCareNotice();
-};
-
-const baseLogoutForProactiveCare = logout;
-logout = function logoutWithProactiveCare(message = "", kind = "") {
-  window.clearTimeout(portalProactiveCareState.timerId);
-  portalProactiveCareState.preferences = null;
-  portalProactiveCareState.notice = null;
-  portalProactiveCareState.nextCheckAt = 0;
-  baseLogoutForProactiveCare(message, kind);
-  renderProactiveCareNotice();
-};
-
-window.addEventListener("mypets:realtime-cursor", () => {
-  portalProactiveCareState.nextCheckAt = 0;
-  evaluateProactiveCare(true).catch((error) => setStatus(globalStatus, error.message, "error"));
-});
-
-if (dashboard) {
-  Promise.all([loadProactiveCarePreferences(), evaluateProactiveCare(true)])
-    .catch((error) => setStatus(globalStatus, error.message, "error"));
 }
+
+portalRuntime.registerFeature({
+  id: "proactive-care",
+  label: "主动关怀",
+  order: 130,
+  mount: installProactiveCareExperience,
+  onRefreshComplete: refreshProactiveCareLifecycle,
+  onSectionEnter: ({ sectionId }) => {
+    if (sectionId === "dashboard-section") renderProactiveCareNotice();
+    if (sectionId === "account-section") renderProactiveCarePreferences();
+  },
+  onRealtime: async () => {
+    portalProactiveCareState.nextCheckAt = 0;
+    await evaluateProactiveCare(true);
+  },
+  onLogout: () => {
+    window.clearTimeout(portalProactiveCareState.timerId);
+    portalProactiveCareState.preferences = null;
+    portalProactiveCareState.notice = null;
+    portalProactiveCareState.nextCheckAt = 0;
+    portalProactiveCareState.evaluating = false;
+    portalProactiveCareState.timerId = 0;
+    renderProactiveCareNotice();
+  },
+});
