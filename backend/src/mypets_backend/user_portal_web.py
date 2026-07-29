@@ -1,4 +1,4 @@
-"""Static user portal routes with restrictive browser security headers."""
+"""Static user portal routes with one explicit asset manifest and restrictive headers."""
 
 from __future__ import annotations
 
@@ -22,6 +22,108 @@ _SECURITY_HEADERS = {
     "X-Frame-Options": "DENY",
 }
 
+_ASSETS: dict[str, tuple[str, str]] = {
+    "app.js": ("app.js", "text/javascript; charset=utf-8"),
+    "phase1.js": ("phase1.js", "text/javascript; charset=utf-8"),
+    "phase1-bootstrap.js": ("phase1-bootstrap.js", "text/javascript; charset=utf-8"),
+    "visits.js": ("visits.js", "text/javascript; charset=utf-8"),
+    "realtime.js": ("realtime.js", "text/javascript; charset=utf-8"),
+    "portal-runtime.js": ("portal-runtime.js", "text/javascript; charset=utf-8"),
+    "portal-bootstrap.js": ("portal-bootstrap.js", "text/javascript; charset=utf-8"),
+    "asset-submissions.js": ("asset-submissions.js", "text/javascript; charset=utf-8"),
+    "asset-production.js": ("asset-production.js", "text/javascript; charset=utf-8"),
+    "customer-experience.js": ("customer-experience.js", "text/javascript; charset=utf-8"),
+    "daily-care-experience.js": ("daily-care-experience.js", "text/javascript; charset=utf-8"),
+    "proactive-care-experience.js": ("proactive-care-experience.js", "text/javascript; charset=utf-8"),
+    "growth-experience.js": ("growth-experience.js", "text/javascript; charset=utf-8"),
+    "pending-items-experience.js": ("pending-items-experience.js", "text/javascript; charset=utf-8"),
+    "multi-pet-overview.js": ("multi-pet-overview.js", "text/javascript; charset=utf-8"),
+    "customer-actions-experience.js": (
+        "customer-actions-experience.js",
+        "text/javascript; charset=utf-8",
+    ),
+    "customer-history-experience.js": (
+        "customer-history-experience.js",
+        "text/javascript; charset=utf-8",
+    ),
+    "message-efficiency-experience.js": (
+        "message-efficiency-experience.js",
+        "text/javascript; charset=utf-8",
+    ),
+    "party-experience.js": ("party-experience.js", "text/javascript; charset=utf-8"),
+    "party-pending-experience.js": (
+        "party-pending-experience.js",
+        "text/javascript; charset=utf-8",
+    ),
+    "device-self-service.js": ("device-self-service.js", "text/javascript; charset=utf-8"),
+    "portal.js": ("js/portal.js", "text/javascript; charset=utf-8"),
+    "js/portal.js": ("js/portal.js", "text/javascript; charset=utf-8"),
+    "styles.css": ("styles.css", "text/css; charset=utf-8"),
+    "visits.css": ("visits.css", "text/css; charset=utf-8"),
+    "portal-runtime.css": ("portal-runtime.css", "text/css; charset=utf-8"),
+    "customer-experience.css": ("customer-experience.css", "text/css; charset=utf-8"),
+    "daily-care-experience.css": ("daily-care-experience.css", "text/css; charset=utf-8"),
+    "proactive-care-experience.css": (
+        "proactive-care-experience.css",
+        "text/css; charset=utf-8",
+    ),
+    "growth-experience.css": ("growth-experience.css", "text/css; charset=utf-8"),
+    "pending-items-experience.css": (
+        "pending-items-experience.css",
+        "text/css; charset=utf-8",
+    ),
+    "multi-pet-overview.css": ("multi-pet-overview.css", "text/css; charset=utf-8"),
+    "customer-actions-experience.css": (
+        "customer-actions-experience.css",
+        "text/css; charset=utf-8",
+    ),
+    "customer-history-experience.css": (
+        "customer-history-experience.css",
+        "text/css; charset=utf-8",
+    ),
+    "message-efficiency-experience.css": (
+        "message-efficiency-experience.css",
+        "text/css; charset=utf-8",
+    ),
+    "party-experience.css": ("party-experience.css", "text/css; charset=utf-8"),
+    "device-self-service.css": ("device-self-service.css", "text/css; charset=utf-8"),
+    "portal_cute.css": ("css/portal_cute.css", "text/css; charset=utf-8"),
+    "css/portal_cute.css": ("css/portal_cute.css", "text/css; charset=utf-8"),
+}
+
+_STYLESHEETS = (
+    "customer-experience.css",
+    "daily-care-experience.css",
+    "proactive-care-experience.css",
+    "growth-experience.css",
+    "pending-items-experience.css",
+    "multi-pet-overview.css",
+    "customer-actions-experience.css",
+    "customer-history-experience.css",
+    "message-efficiency-experience.css",
+    "party-experience.css",
+    "device-self-service.css",
+)
+
+_EXTENSION_SCRIPTS = (
+    "realtime.js",
+    "asset-submissions.js",
+    "asset-production.js",
+    "customer-experience.js",
+    "daily-care-experience.js",
+    "proactive-care-experience.js",
+    "growth-experience.js",
+    "pending-items-experience.js",
+    "multi-pet-overview.js",
+    "customer-actions-experience.js",
+    "customer-history-experience.js",
+    "message-efficiency-experience.js",
+    "party-experience.js",
+    "party-pending-experience.js",
+    "device-self-service.js",
+    "portal-bootstrap.js",
+)
+
 
 def _path(name: str) -> Path:
     path = (_WEB_ROOT / name).resolve()
@@ -34,34 +136,46 @@ def _asset(name: str, media_type: str) -> FileResponse:
     return FileResponse(_path(name), media_type=media_type, headers=_SECURITY_HEADERS)
 
 
+def _inject_before(html: str, marker: str, fragment: str) -> str:
+    return html if fragment in html else html.replace(marker, f"{fragment}\n{marker}", 1)
+
+
 @user_portal_web_router.get("/portal")
 @user_portal_web_router.get("/portal/")
 def user_portal() -> HTMLResponse:
     html = _path("index.html").read_text(encoding="utf-8")
     if "MyPets 用户中心" not in html:
         html = html.replace("</title>", "</title><!-- MyPets 用户中心 -->", 1)
-    if "portal_cute.css" not in html:
+
+    base_style = '<link rel="stylesheet" href="/portal/styles.css">'
+    if "/portal/css/portal_cute.css" not in html:
         html = html.replace(
-            '<link rel="stylesheet" href="/portal/styles.css">',
+            base_style,
             '<link rel="stylesheet" href="/portal/css/portal_cute.css">\n'
-            '  <link rel="stylesheet" href="/portal/styles.css">',
+            '  <link rel="stylesheet" href="/portal/portal-runtime.css">\n'
+            f"  {base_style}",
             1,
         )
-    for stylesheet in (
-        '<link rel="stylesheet" href="/portal/customer-experience.css">',
-        '<link rel="stylesheet" href="/portal/daily-care-experience.css">',
-        '<link rel="stylesheet" href="/portal/proactive-care-experience.css">',
-        '<link rel="stylesheet" href="/portal/growth-experience.css">',
-        '<link rel="stylesheet" href="/portal/pending-items-experience.css">',
-        '<link rel="stylesheet" href="/portal/multi-pet-overview.css">',
-        '<link rel="stylesheet" href="/portal/customer-actions-experience.css">',
-        '<link rel="stylesheet" href="/portal/customer-history-experience.css">',
-        '<link rel="stylesheet" href="/portal/message-efficiency-experience.css">',
-        '<link rel="stylesheet" href="/portal/party-experience.css">',
-        '<link rel="stylesheet" href="/portal/device-self-service.css">',
-    ):
-        if stylesheet not in html:
-            html = html.replace("</head>", f"  {stylesheet}\n</head>", 1)
+    elif "/portal/portal-runtime.css" not in html:
+        html = html.replace(
+            base_style,
+            '<link rel="stylesheet" href="/portal/portal-runtime.css">\n'
+            f"  {base_style}",
+            1,
+        )
+
+    app_script = '<script src="/portal/app.js" defer></script>'
+    runtime_script = '<script src="/portal/portal-runtime.js" defer></script>'
+    if runtime_script not in html:
+        html = html.replace(app_script, f"{runtime_script}\n  {app_script}", 1)
+
+    for name in _STYLESHEETS:
+        html = _inject_before(
+            html,
+            "</head>",
+            f'  <link rel="stylesheet" href="/portal/{name}">',
+        )
+
     if 'id="section-pet-status"' not in html:
         html = html.replace(
             "</body>",
@@ -70,198 +184,20 @@ def user_portal() -> HTMLResponse:
             "</body>",
             1,
         )
-    marker = "</head>"
-    scripts = (
-        '<script src="/portal/realtime.js" defer></script>',
-        '<script src="/portal/phase1-bootstrap.js" defer></script>',
-        '<script src="/portal/asset-submissions.js" defer></script>',
-        '<script src="/portal/asset-production.js" defer></script>',
-        '<script src="/portal/customer-experience.js" defer></script>',
-        '<script src="/portal/daily-care-experience.js" defer></script>',
-        '<script src="/portal/proactive-care-experience.js" defer></script>',
-        '<script src="/portal/growth-experience.js" defer></script>',
-        '<script src="/portal/pending-items-experience.js" defer></script>',
-        '<script src="/portal/multi-pet-overview.js" defer></script>',
-        '<script src="/portal/customer-actions-experience.js" defer></script>',
-        '<script src="/portal/customer-history-experience.js" defer></script>',
-        '<script src="/portal/message-efficiency-experience.js" defer></script>',
-        '<script src="/portal/party-experience.js" defer></script>',
-        '<script src="/portal/party-pending-experience.js" defer></script>',
-        '<script src="/portal/device-self-service.js" defer></script>',
-    )
-    for script in scripts:
-        if script not in html:
-            html = html.replace(marker, f"  {script}\n{marker}", 1)
+
+    for name in _EXTENSION_SCRIPTS:
+        html = _inject_before(
+            html,
+            "</head>",
+            f'  <script src="/portal/{name}" defer></script>',
+        )
     return HTMLResponse(html, headers=_SECURITY_HEADERS)
 
 
-@user_portal_web_router.get("/portal/css/portal_cute.css")
-@user_portal_web_router.get("/portal/portal_cute.css")
-def user_portal_cute_css() -> FileResponse:
-    return _asset("css/portal_cute.css", "text/css; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/js/portal.js")
-@user_portal_web_router.get("/portal/portal.js")
-def user_portal_cute_js() -> FileResponse:
-    return _asset("js/portal.js", "text/javascript; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/app.js")
-def user_portal_script() -> FileResponse:
-    return _asset("app.js", "text/javascript; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/phase1.js")
-def user_portal_phase1_script() -> FileResponse:
-    return _asset("phase1.js", "text/javascript; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/phase1-bootstrap.js")
-def user_portal_phase1_bootstrap_script() -> FileResponse:
-    return _asset("phase1-bootstrap.js", "text/javascript; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/visits.js")
-def user_portal_visits_script() -> FileResponse:
-    return _asset("visits.js", "text/javascript; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/realtime.js")
-def user_portal_realtime_script() -> FileResponse:
-    return _asset("realtime.js", "text/javascript; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/asset-submissions.js")
-def user_portal_asset_submissions_script() -> FileResponse:
-    return _asset("asset-submissions.js", "text/javascript; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/asset-production.js")
-def user_portal_asset_production_script() -> FileResponse:
-    return _asset("asset-production.js", "text/javascript; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/customer-experience.js")
-def user_portal_customer_experience_script() -> FileResponse:
-    return _asset("customer-experience.js", "text/javascript; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/customer-experience.css")
-def user_portal_customer_experience_styles() -> FileResponse:
-    return _asset("customer-experience.css", "text/css; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/daily-care-experience.js")
-def user_portal_daily_care_experience_script() -> FileResponse:
-    return _asset("daily-care-experience.js", "text/javascript; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/daily-care-experience.css")
-def user_portal_daily_care_experience_styles() -> FileResponse:
-    return _asset("daily-care-experience.css", "text/css; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/proactive-care-experience.js")
-def user_portal_proactive_care_experience_script() -> FileResponse:
-    return _asset("proactive-care-experience.js", "text/javascript; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/proactive-care-experience.css")
-def user_portal_proactive_care_experience_styles() -> FileResponse:
-    return _asset("proactive-care-experience.css", "text/css; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/growth-experience.js")
-def user_portal_growth_experience_script() -> FileResponse:
-    return _asset("growth-experience.js", "text/javascript; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/growth-experience.css")
-def user_portal_growth_experience_styles() -> FileResponse:
-    return _asset("growth-experience.css", "text/css; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/pending-items-experience.js")
-def user_portal_pending_items_experience_script() -> FileResponse:
-    return _asset("pending-items-experience.js", "text/javascript; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/pending-items-experience.css")
-def user_portal_pending_items_experience_styles() -> FileResponse:
-    return _asset("pending-items-experience.css", "text/css; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/multi-pet-overview.js")
-def user_portal_multi_pet_overview_script() -> FileResponse:
-    return _asset("multi-pet-overview.js", "text/javascript; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/multi-pet-overview.css")
-def user_portal_multi_pet_overview_styles() -> FileResponse:
-    return _asset("multi-pet-overview.css", "text/css; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/customer-actions-experience.js")
-def user_portal_customer_actions_experience_script() -> FileResponse:
-    return _asset("customer-actions-experience.js", "text/javascript; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/customer-actions-experience.css")
-def user_portal_customer_actions_experience_styles() -> FileResponse:
-    return _asset("customer-actions-experience.css", "text/css; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/customer-history-experience.js")
-def user_portal_customer_history_experience_script() -> FileResponse:
-    return _asset("customer-history-experience.js", "text/javascript; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/customer-history-experience.css")
-def user_portal_customer_history_experience_styles() -> FileResponse:
-    return _asset("customer-history-experience.css", "text/css; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/message-efficiency-experience.js")
-def user_portal_message_efficiency_script() -> FileResponse:
-    return _asset("message-efficiency-experience.js", "text/javascript; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/message-efficiency-experience.css")
-def user_portal_message_efficiency_styles() -> FileResponse:
-    return _asset("message-efficiency-experience.css", "text/css; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/party-experience.js")
-def user_portal_party_experience_script() -> FileResponse:
-    return _asset("party-experience.js", "text/javascript; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/party-experience.css")
-def user_portal_party_experience_styles() -> FileResponse:
-    return _asset("party-experience.css", "text/css; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/party-pending-experience.js")
-def user_portal_party_pending_experience_script() -> FileResponse:
-    return _asset("party-pending-experience.js", "text/javascript; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/device-self-service.js")
-def user_portal_device_self_service_script() -> FileResponse:
-    return _asset("device-self-service.js", "text/javascript; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/device-self-service.css")
-def user_portal_device_self_service_styles() -> FileResponse:
-    return _asset("device-self-service.css", "text/css; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/styles.css")
-def user_portal_styles() -> FileResponse:
-    return _asset("styles.css", "text/css; charset=utf-8")
-
-
-@user_portal_web_router.get("/portal/visits.css")
-def user_portal_visits_styles() -> FileResponse:
-    return _asset("visits.css", "text/css; charset=utf-8")
+@user_portal_web_router.get("/portal/{asset_path:path}")
+def user_portal_asset(asset_path: str) -> FileResponse:
+    asset = _ASSETS.get(asset_path)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="用户门户资源不存在")
+    path, media_type = asset
+    return _asset(path, media_type)

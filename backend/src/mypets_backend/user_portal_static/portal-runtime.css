@@ -1,0 +1,44 @@
+.portal-runtime-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid #efc97f;
+  border-radius: 14px;
+  background: #fff8e8;
+  color: #6f4d13;
+}
+
+.portal-runtime-status[hidden] {
+  display: none;
+}
+
+.portal-runtime-status-copy {
+  min-width: 0;
+  line-height: 1.5;
+}
+
+.portal-runtime-status button {
+  flex: 0 0 auto;
+}
+
+.workspace:focus {
+  outline: none;
+}
+
+.main-tab[aria-current="page"] {
+  position: relative;
+}
+
+@media (max-width: 620px) {
+  .portal-runtime-status {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .portal-runtime-status button {
+    width: 100%;
+  }
+}

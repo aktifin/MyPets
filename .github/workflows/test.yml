@@ -113,6 +113,8 @@ jobs:
           node --check src/mypets_backend/admin_console_static/app.js
           && node --check src/mypets_backend/admin_console_static/asset-submissions.js
           && node --check src/mypets_backend/admin_console_static/asset-production.js
+          && node --check src/mypets_backend/user_portal_static/portal-runtime.js
+          && node --check src/mypets_backend/user_portal_static/portal-bootstrap.js
           && node --check src/mypets_backend/user_portal_static/app.js
           && node --check src/mypets_backend/user_portal_static/phase1.js
           && node --check src/mypets_backend/user_portal_static/phase1-bootstrap.js

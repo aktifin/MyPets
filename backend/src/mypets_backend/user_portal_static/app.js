@@ -17,8 +17,12 @@ const logoutButton = $("logout-button");
 const sessionLabel = $("session-label");
 const authStatus = $("auth-status");
 const globalStatus = $("global-status");
+const portalRuntime = window.MyPetsPortal;
+
+if (!portalRuntime) throw new Error("MyPets 前端运行时未加载");
 
 function setStatus(node, message, kind = "") {
+  if (!node) return;
   node.textContent = message || "";
   node.classList.remove("error", "success");
   if (kind) node.classList.add(kind);
@@ -48,7 +52,9 @@ async function api(path, options = {}) {
     else payload = { detail: await response.text() };
   }
   if (!response.ok) {
-    if (response.status === 401 && accessToken) logout("登录已失效，请重新登录。", "error");
+    if (response.status === 401 && accessToken) {
+      logout("登录已失效，请重新登录。", "error");
+    }
     throw new Error(detailText(payload, `请求失败（${response.status}）`));
   }
   return payload;
@@ -138,6 +144,12 @@ function enterApp() {
 function logout(message = "", kind = "") {
   accessToken = "";
   dashboard = null;
+  socialState = {
+    friends: [],
+    requests: { incoming: [], outgoing: [] },
+    blocks: [],
+    invitations: { incoming: [], outgoing: [] },
+  };
   sessionStorage.removeItem(TOKEN_KEY);
   appView.hidden = true;
   authView.hidden = false;
@@ -145,13 +157,17 @@ function logout(message = "", kind = "") {
   sessionLabel.textContent = "尚未登录";
   setStatus(globalStatus, "");
   setStatus(authStatus, message, kind);
+  portalRuntime.sessionEnded({ message, kind });
 }
 
 async function login(username, password) {
   const body = new URLSearchParams({ username, password });
   const response = await fetch("/api/v1/auth/token", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+    },
     body,
   });
   const payload = await response.json();
@@ -159,7 +175,7 @@ async function login(username, password) {
   accessToken = payload.access_token;
   sessionStorage.setItem(TOKEN_KEY, accessToken);
   enterApp();
-  await refreshAll();
+  await refreshAll({ reason: "login" });
 }
 
 async function registerAccount(username, displayName, password) {
@@ -170,7 +186,7 @@ async function registerAccount(username, displayName, password) {
   accessToken = payload.access_token;
   sessionStorage.setItem(TOKEN_KEY, accessToken);
   enterApp();
-  await refreshAll();
+  await refreshAll({ reason: "register" });
 }
 
 function selectedPortalPet() {
@@ -233,19 +249,27 @@ function renderPets() {
       [
         `${roleLabel(item.relation.role)} · ${personalityLabel(pet.personality_type)}`,
         `成长 ${pet.stats.growth_stage} / Lv.${pet.stats.growth_level} · 羁绊 Lv.${pet.stats.bond_level}`,
-        `${visibilityLabel(item.privacy.visibility)} · ${item.privacy.allow_remote_care ? "允许远程照料" : "关闭远程照料"}`,
+        `${visibilityLabel(item.privacy.visibility)} · ${
+          item.privacy.allow_remote_care ? "允许远程照料" : "关闭远程照料"
+        }`,
       ],
       item.selected,
     );
     if (!item.selected) {
-      built.actions.append(actionButton("设为 Web 当前宠物", async () => {
-        dashboard = await api("/api/v1/portal/preference", {
-          method: "PATCH",
-          json: { selected_pet_id: pet.pet_id },
-        });
-        renderDashboard();
-        setStatus(globalStatus, `已选择 ${pet.name}。此选择不覆盖各 PC 设备的当前宠物。`, "success");
-      }));
+      built.actions.append(
+        actionButton("设为 Web 当前宠物", async () => {
+          dashboard = await api("/api/v1/portal/preference", {
+            method: "PATCH",
+            json: { selected_pet_id: pet.pet_id },
+          });
+          renderDashboard();
+          setStatus(
+            globalStatus,
+            `已选择 ${pet.name}。此选择不覆盖各 PC 设备的当前宠物。`,
+            "success",
+          );
+        }),
+      );
     }
     container.append(built.card);
   });
@@ -296,18 +320,38 @@ function renderFriends() {
   }
   socialState.friends.forEach((item) => {
     const friend = item.friend;
-    const built = itemCard(friend.display_name, [`@${friend.username}`, `好友关系建立于 ${new Date(item.created_at).toLocaleString()}`]);
+    const built = itemCard(friend.display_name, [
+      `@${friend.username}`,
+      `好友关系建立于 ${new Date(item.created_at).toLocaleString()}`,
+    ]);
     built.actions.append(
-      actionButton("解除好友", async () => {
-        await api(`/api/v1/friends/${encodeURIComponent(friend.account_id)}`, { method: "DELETE" });
-        await refreshSocial();
-        setStatus(globalStatus, `已解除与 ${friend.display_name} 的好友关系。`, "success");
-      }, "secondary"),
-      actionButton("屏蔽", async () => {
-        await api("/api/v1/blocks", { method: "POST", json: { username: friend.username } });
-        await Promise.all([refreshSocial(), refreshDashboard()]);
-        setStatus(globalStatus, `已屏蔽 ${friend.display_name}，相关共享宠物访问已撤销。`, "success");
-      }, "danger"),
+      actionButton(
+        "解除好友",
+        async () => {
+          await api(`/api/v1/friends/${encodeURIComponent(friend.account_id)}`, {
+            method: "DELETE",
+          });
+          await refreshSocial();
+          setStatus(globalStatus, `已解除与 ${friend.display_name} 的好友关系。`, "success");
+        },
+        "secondary",
+      ),
+      actionButton(
+        "屏蔽",
+        async () => {
+          await api("/api/v1/blocks", {
+            method: "POST",
+            json: { username: friend.username },
+          });
+          await Promise.all([refreshSocial(), refreshDashboard()]);
+          setStatus(
+            globalStatus,
+            `已屏蔽 ${friend.display_name}，相关共享宠物访问已撤销。`,
+            "success",
+          );
+        },
+        "danger",
+      ),
     );
     container.append(built.card);
   });
@@ -316,34 +360,54 @@ function renderFriends() {
 function renderFriendRequests() {
   const incoming = $("incoming-requests");
   incoming.replaceChildren();
-  if (!socialState.requests.incoming.length) empty(incoming, "没有待处理的收到申请。");
+  if (!socialState.requests.incoming.length) {
+    empty(incoming, "没有待处理的收到申请。");
+  }
   socialState.requests.incoming.forEach((item) => {
     const built = itemCard(item.sender.display_name, [`@${item.sender.username}`]);
     built.actions.append(
       actionButton("接受", async () => {
-        await api(`/api/v1/friend-requests/${encodeURIComponent(item.request_id)}/accept`, { method: "POST" });
+        await api(`/api/v1/friend-requests/${encodeURIComponent(item.request_id)}/accept`, {
+          method: "POST",
+        });
         await refreshSocial();
         setStatus(globalStatus, "好友申请已接受。", "success");
       }),
-      actionButton("拒绝", async () => {
-        await api(`/api/v1/friend-requests/${encodeURIComponent(item.request_id)}/reject`, { method: "POST" });
-        await refreshSocial();
-        setStatus(globalStatus, "好友申请已拒绝。", "success");
-      }, "secondary"),
+      actionButton(
+        "拒绝",
+        async () => {
+          await api(`/api/v1/friend-requests/${encodeURIComponent(item.request_id)}/reject`, {
+            method: "POST",
+          });
+          await refreshSocial();
+          setStatus(globalStatus, "好友申请已拒绝。", "success");
+        },
+        "secondary",
+      ),
     );
     incoming.append(built.card);
   });
 
   const outgoing = $("outgoing-requests");
   outgoing.replaceChildren();
-  if (!socialState.requests.outgoing.length) empty(outgoing, "没有待处理的发出申请。");
+  if (!socialState.requests.outgoing.length) {
+    empty(outgoing, "没有待处理的发出申请。");
+  }
   socialState.requests.outgoing.forEach((item) => {
     const built = itemCard(item.recipient.display_name, [`@${item.recipient.username}`]);
-    built.actions.append(actionButton("取消申请", async () => {
-      await api(`/api/v1/friend-requests/${encodeURIComponent(item.request_id)}/cancel`, { method: "POST" });
-      await refreshSocial();
-      setStatus(globalStatus, "好友申请已取消。", "success");
-    }, "secondary"));
+    built.actions.append(
+      actionButton(
+        "取消申请",
+        async () => {
+          await api(`/api/v1/friend-requests/${encodeURIComponent(item.request_id)}/cancel`, {
+            method: "POST",
+          });
+          await refreshSocial();
+          setStatus(globalStatus, "好友申请已取消。", "success");
+        },
+        "secondary",
+      ),
+    );
     outgoing.append(built.card);
   });
 }
@@ -358,11 +422,23 @@ function renderBlocks() {
   socialState.blocks.forEach((item) => {
     const account = item.account;
     const built = itemCard(account.display_name, [`@${account.username}`]);
-    built.actions.append(actionButton("解除屏蔽", async () => {
-      await api(`/api/v1/blocks/${encodeURIComponent(account.account_id)}`, { method: "DELETE" });
-      await refreshSocial();
-      setStatus(globalStatus, `已解除对 ${account.display_name} 的屏蔽。历史好友和共享关系不会自动恢复。`, "success");
-    }, "secondary"));
+    built.actions.append(
+      actionButton(
+        "解除屏蔽",
+        async () => {
+          await api(`/api/v1/blocks/${encodeURIComponent(account.account_id)}`, {
+            method: "DELETE",
+          });
+          await refreshSocial();
+          setStatus(
+            globalStatus,
+            `已解除对 ${account.display_name} 的屏蔽。历史好友和共享关系不会自动恢复。`,
+            "success",
+          );
+        },
+        "secondary",
+      ),
+    );
     container.append(built.card);
   });
 }
@@ -375,41 +451,72 @@ function invitationTitle(item, incoming) {
 function renderInvitations() {
   const incoming = $("incoming-invitations");
   incoming.replaceChildren();
-  if (!socialState.invitations.incoming.length) empty(incoming, "没有待处理的共同照料邀请。");
+  if (!socialState.invitations.incoming.length) {
+    empty(incoming, "没有待处理的共同照料邀请。");
+  }
   socialState.invitations.incoming.forEach((item) => {
-    const built = itemCard(invitationTitle(item, true), [`角色：${roleLabel(item.role)}`, `邀请人：@${item.invited_by.username}`]);
+    const built = itemCard(invitationTitle(item, true), [
+      `角色：${roleLabel(item.role)}`,
+      `邀请人：@${item.invited_by.username}`,
+    ]);
     built.actions.append(
       actionButton("接受", async () => {
-        await api(`/api/v1/caregiver-invitations/${encodeURIComponent(item.invitation_id)}/accept`, { method: "POST" });
+        await api(
+          `/api/v1/caregiver-invitations/${encodeURIComponent(item.invitation_id)}/accept`,
+          { method: "POST" },
+        );
         await Promise.all([refreshSocial(), refreshDashboard()]);
         setStatus(globalStatus, `已接受 ${item.pet.name} 的共同照料邀请。`, "success");
       }),
-      actionButton("拒绝", async () => {
-        await api(`/api/v1/caregiver-invitations/${encodeURIComponent(item.invitation_id)}/reject`, { method: "POST" });
-        await refreshSocial();
-        setStatus(globalStatus, "共同照料邀请已拒绝。", "success");
-      }, "secondary"),
+      actionButton(
+        "拒绝",
+        async () => {
+          await api(
+            `/api/v1/caregiver-invitations/${encodeURIComponent(item.invitation_id)}/reject`,
+            { method: "POST" },
+          );
+          await refreshSocial();
+          setStatus(globalStatus, "共同照料邀请已拒绝。", "success");
+        },
+        "secondary",
+      ),
     );
     incoming.append(built.card);
   });
 
   const outgoing = $("outgoing-invitations");
   outgoing.replaceChildren();
-  if (!socialState.invitations.outgoing.length) empty(outgoing, "没有待处理的已发出邀请。");
+  if (!socialState.invitations.outgoing.length) {
+    empty(outgoing, "没有待处理的已发出邀请。");
+  }
   socialState.invitations.outgoing.forEach((item) => {
-    const built = itemCard(invitationTitle(item, false), [`角色：${roleLabel(item.role)}`, `受邀人：@${item.invited_account.username}`]);
-    built.actions.append(actionButton("取消邀请", async () => {
-      await api(`/api/v1/caregiver-invitations/${encodeURIComponent(item.invitation_id)}/cancel`, { method: "POST" });
-      await refreshSocial();
-      setStatus(globalStatus, "共同照料邀请已取消。", "success");
-    }, "secondary"));
+    const built = itemCard(invitationTitle(item, false), [
+      `角色：${roleLabel(item.role)}`,
+      `受邀人：@${item.invited_account.username}`,
+    ]);
+    built.actions.append(
+      actionButton(
+        "取消邀请",
+        async () => {
+          await api(
+            `/api/v1/caregiver-invitations/${encodeURIComponent(item.invitation_id)}/cancel`,
+            { method: "POST" },
+          );
+          await refreshSocial();
+          setStatus(globalStatus, "共同照料邀请已取消。", "success");
+        },
+        "secondary",
+      ),
+    );
     outgoing.append(built.card);
   });
 }
 
 $("show-login").addEventListener("click", () => showLoginForm(true));
 $("show-register").addEventListener("click", () => showLoginForm(false));
-logoutButton.addEventListener("click", () => logout("已退出当前浏览器会话。", "success"));
+logoutButton.addEventListener("click", () => {
+  logout("已退出当前浏览器会话。", "success");
+});
 
 $("login-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -470,7 +577,10 @@ $("password-form").addEventListener("submit", async (event) => {
 $("create-pet-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
-    const key = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+    const key =
+      typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random()}`;
     const pet = await api("/api/v1/pets", {
       method: "POST",
       headers: { "Idempotency-Key": `portal-pet-${key}` },
@@ -552,13 +662,16 @@ $("caregiver-invite-form").addEventListener("submit", async (event) => {
   const selected = selectedPortalPet();
   if (!selected || !selected.can_configure) return;
   try {
-    await api(`/api/v1/pets/${encodeURIComponent(selected.pet.pet_id)}/caregiver-invitations`, {
-      method: "POST",
-      json: {
-        username: $("invite-username").value.trim(),
-        role: $("invite-role").value,
+    await api(
+      `/api/v1/pets/${encodeURIComponent(selected.pet.pet_id)}/caregiver-invitations`,
+      {
+        method: "POST",
+        json: {
+          username: $("invite-username").value.trim(),
+          role: $("invite-role").value,
+        },
       },
-    });
+    );
     $("invite-username").value = "";
     await refreshSocial();
     setStatus(globalStatus, "共同照料邀请已发送。", "success");
@@ -585,23 +698,18 @@ $("refresh-social").addEventListener("click", async () => {
   }
 });
 
-document.querySelectorAll(".main-tab").forEach((button) => {
-  button.addEventListener("click", () => {
-    document.querySelectorAll(".main-tab").forEach((item) => item.classList.remove("active"));
-    button.classList.add("active");
-    ["account-section", "pets-section", "friends-section"].forEach((id) => {
-      $(id).hidden = id !== button.dataset.section;
-    });
-  });
+portalRuntime.configure({
+  hasSession: () => Boolean(accessToken),
+  enter: enterApp,
+  showLogin: () => showLoginForm(true),
+  onError: (error) => {
+    if (accessToken) setStatus(globalStatus, error.message, "error");
+  },
 });
 
-(async () => {
-  showLoginForm(true);
-  if (!accessToken) return;
-  enterApp();
-  try {
-    await refreshAll();
-  } catch (error) {
+window.setTimeout(() => {
+  portalRuntime.start().catch((error) => {
     if (accessToken) setStatus(globalStatus, error.message, "error");
-  }
-})();
+    else setStatus(authStatus, "用户门户初始化失败，请刷新页面重试。", "error");
+  });
+}, 0);
