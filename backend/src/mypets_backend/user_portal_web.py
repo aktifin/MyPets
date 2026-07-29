@@ -58,6 +58,7 @@ def user_portal() -> HTMLResponse:
         '<link rel="stylesheet" href="/portal/customer-history-experience.css">',
         '<link rel="stylesheet" href="/portal/message-efficiency-experience.css">',
         '<link rel="stylesheet" href="/portal/party-experience.css">',
+        '<link rel="stylesheet" href="/portal/device-self-service.css">',
     ):
         if stylesheet not in html:
             html = html.replace("</head>", f"  {stylesheet}\n</head>", 1)
@@ -86,6 +87,7 @@ def user_portal() -> HTMLResponse:
         '<script src="/portal/message-efficiency-experience.js" defer></script>',
         '<script src="/portal/party-experience.js" defer></script>',
         '<script src="/portal/party-pending-experience.js" defer></script>',
+        '<script src="/portal/device-self-service.js" defer></script>',
     )
     for script in scripts:
         if script not in html:
@@ -243,6 +245,16 @@ def user_portal_party_experience_styles() -> FileResponse:
 @user_portal_web_router.get("/portal/party-pending-experience.js")
 def user_portal_party_pending_experience_script() -> FileResponse:
     return _asset("party-pending-experience.js", "text/javascript; charset=utf-8")
+
+
+@user_portal_web_router.get("/portal/device-self-service.js")
+def user_portal_device_self_service_script() -> FileResponse:
+    return _asset("device-self-service.js", "text/javascript; charset=utf-8")
+
+
+@user_portal_web_router.get("/portal/device-self-service.css")
+def user_portal_device_self_service_styles() -> FileResponse:
+    return _asset("device-self-service.css", "text/css; charset=utf-8")
 
 
 @user_portal_web_router.get("/portal/styles.css")
