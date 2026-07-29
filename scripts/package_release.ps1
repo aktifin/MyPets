@@ -32,7 +32,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "PyInstaller 构建失败。"
 }
 
-$source = Join-Path $distRoot "OnePicDesktopPet"
+$source = Join-Path $distRoot "MyPets"
 if (-not (Test-Path $source)) {
     throw "未找到 PyInstaller 输出目录：$source"
 }
@@ -55,7 +55,7 @@ $releaseNote = @"
 MyPets Windows 客户端 $version
 
 本压缩包仅包含 Windows 桌面客户端，不包含正式云端服务。
-请完整解压后运行 OnePicDesktopPet.exe，不要只复制单个 EXE。
+请完整解压后运行 MyPets.exe，不要只复制单个 EXE。
 详细说明见 使用说明.md。
 "@
 Set-Content -Path (Join-Path $staging "发布说明.txt") -Value $releaseNote -Encoding UTF8
