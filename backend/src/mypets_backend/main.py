@@ -58,6 +58,7 @@ from .pet_care_api import pet_care_router
 from .portal_experience_api import portal_experience_router
 from .proactive_care_api import proactive_care_router
 from .realtime_api import realtime_router
+from .release import APP_VERSION, RELEASE_CHANNEL
 from .reminder_api import reminder_router
 from .reminder_integration_api import reminder_integration_router
 from .reminder_snapshot_api import reminder_snapshot_router
@@ -104,7 +105,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="MyPets API",
-        version="0.2.0-alpha",
+        version=APP_VERSION,
         description=(
             "Server-authoritative accounts, user Web portal, pets, friendship, shared care, "
             "asynchronous pet visits, minimal multi-pet parties with a capped desktop scene, customer "
@@ -186,7 +187,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health")
     def health() -> dict[str, str]:
-        return {"status": "ok"}
+        return {
+            "status": "ok",
+            "version": APP_VERSION,
+            "channel": RELEASE_CHANNEL,
+        }
 
     return app
 
