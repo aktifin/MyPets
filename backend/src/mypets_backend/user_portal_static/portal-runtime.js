@@ -20,6 +20,7 @@
     navigationInstalled: false,
     runtimePanel: null,
     extensionsReady: false,
+    sectionHookPromise: Promise.resolve(),
   };
 
   function featureList() {
@@ -99,6 +100,14 @@
     } catch (error) {
       recordFailure(key, feature.label || feature.id, error);
     }
+  }
+
+  async function runFeatureHook(hook, context = {}) {
+    const value = { ...context, runtime: api };
+    for (const feature of featureList()) {
+      await invokeFeature(feature, hook, value);
+    }
+    return value;
   }
 
   async function mountFeature(feature) {
@@ -182,14 +191,10 @@
           recordFailure("runtime:refresh", "基础数据", error);
           throw error;
         }
-        const context = {
-          runtime: api,
+        const context = await runFeatureHook("onRefreshComplete", {
           reason: options.reason || "refresh",
           activeSection: state.activeSection,
-        };
-        for (const feature of featureList()) {
-          await invokeFeature(feature, "onRefreshComplete", context);
-        }
+        });
         window.dispatchEvent(
           new CustomEvent("mypets:portal-refreshed", { detail: context }),
         );
@@ -202,6 +207,12 @@
 
   function sectionExists(sectionId) {
     return Boolean(sectionId && document.getElementById(sectionId));
+  }
+
+  function queueSectionHook(detail) {
+    state.sectionHookPromise = state.sectionHookPromise
+      .then(() => runFeatureHook("onSectionEnter", detail))
+      .catch((error) => recordFailure("runtime:section", "页面切换", error));
   }
 
   function navigate(sectionId, options = {}) {
@@ -233,9 +244,7 @@
       previousSectionId,
     };
     window.dispatchEvent(new CustomEvent("mypets:section-change", { detail }));
-    for (const feature of featureList()) {
-      invokeFeature(feature, "onSectionEnter", { ...detail, runtime: api });
-    }
+    queueSectionHook(detail);
     return true;
   }
 
@@ -254,9 +263,7 @@
       state.refreshQueued = false;
       failures.clear();
       renderRuntimeStatus();
-      for (const feature of featureList()) {
-        await invokeFeature(feature, "onLogout", { ...context, runtime: api });
-      }
+      await runFeatureHook("onLogout", context);
       window.dispatchEvent(
         new CustomEvent("mypets:session-ended", { detail: context }),
       );
@@ -304,14 +311,15 @@
   }
 
   window.addEventListener("mypets:realtime-cursor", (event) => {
-    for (const feature of featureList()) {
-      invokeFeature(feature, "onRealtime", { event, runtime: api });
-    }
+    runFeatureHook("onRealtime", { event }).catch((error) => {
+      recordFailure("runtime:realtime", "实时更新", error);
+    });
   });
 
   const api = Object.freeze({
     configure,
     registerFeature,
+    runFeatureHook,
     markExtensionsReady,
     requestRefresh,
     navigate,
