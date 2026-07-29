@@ -5,6 +5,10 @@
 
   const features = new Map();
   const failures = new Map();
+  let resolveExtensionsReady;
+  const extensionsReadyPromise = new Promise((resolve) => {
+    resolveExtensionsReady = resolve;
+  });
   const state = {
     adapters: null,
     started: false,
@@ -15,6 +19,7 @@
     activeSection: "dashboard-section",
     navigationInstalled: false,
     runtimePanel: null,
+    extensionsReady: false,
   };
 
   function featureList() {
@@ -50,8 +55,11 @@
     panel.append(copy, retry);
 
     const globalStatus = document.getElementById("global-status");
-    if (globalStatus?.parentElement === appView) globalStatus.insertAdjacentElement("afterend", panel);
-    else appView.prepend(panel);
+    if (globalStatus?.parentElement === appView) {
+      globalStatus.insertAdjacentElement("afterend", panel);
+    } else {
+      appView.prepend(panel);
+    }
     state.runtimePanel = panel;
     return panel;
   }
@@ -69,7 +77,10 @@
   }
 
   function recordFailure(key, label, error) {
-    failures.set(key, { label, message: String(error?.message || error || "未知错误") });
+    failures.set(key, {
+      label,
+      message: String(error?.message || error || "未知错误"),
+    });
     console.error(`[MyPetsPortal] ${key}`, error);
     renderRuntimeStatus();
   }
@@ -118,6 +129,18 @@
     state.adapters = { ...adapters };
   }
 
+  function markExtensionsReady() {
+    if (state.extensionsReady) return;
+    state.extensionsReady = true;
+    resolveExtensionsReady();
+    window.dispatchEvent(new CustomEvent("mypets:extensions-ready"));
+  }
+
+  async function waitForExtensionsReady() {
+    if (state.extensionsReady) return;
+    await extensionsReadyPromise;
+  }
+
   function captureLegacyRefresh() {
     const candidate = window.refreshAll;
     if (typeof candidate !== "function" || candidate === requestRefresh) return;
@@ -144,9 +167,10 @@
       return state.refreshPromise;
     }
 
-    const options = args.length === 1 && args[0] && typeof args[0] === "object"
-      ? args[0]
-      : { reason: "legacy", args };
+    const options =
+      args.length === 1 && args[0] && typeof args[0] === "object"
+        ? args[0]
+        : { reason: "legacy", args };
     state.refreshPromise = (async () => {
       do {
         state.refreshQueued = false;
@@ -166,7 +190,9 @@
         for (const feature of featureList()) {
           await invokeFeature(feature, "onRefreshComplete", context);
         }
-        window.dispatchEvent(new CustomEvent("mypets:portal-refreshed", { detail: context }));
+        window.dispatchEvent(
+          new CustomEvent("mypets:portal-refreshed", { detail: context }),
+        );
       } while (state.refreshQueued);
     })().finally(() => {
       state.refreshPromise = null;
@@ -189,18 +215,22 @@
     });
     document.querySelectorAll(".main-tab[data-section]").forEach((button) => {
       button.classList.toggle("active", button.dataset.section === sectionId);
-      if (button.dataset.section === sectionId) button.setAttribute("aria-current", "page");
-      else button.removeAttribute("aria-current");
+      if (button.dataset.section === sectionId) {
+        button.setAttribute("aria-current", "page");
+      } else {
+        button.removeAttribute("aria-current");
+      }
     });
     const more = document.getElementById("portal-more-navigation");
     if (more) more.open = false;
+    const previousSectionId = state.activeSection;
     state.activeSection = sectionId;
     if (options.focus !== false) target.focus({ preventScroll: true });
 
     const detail = {
       sectionId,
       source: options.source || "runtime",
-      previousSectionId: options.previousSectionId || "",
+      previousSectionId,
     };
     window.dispatchEvent(new CustomEvent("mypets:section-change", { detail }));
     for (const feature of featureList()) {
@@ -227,13 +257,16 @@
       for (const feature of featureList()) {
         await invokeFeature(feature, "onLogout", { ...context, runtime: api });
       }
-      window.dispatchEvent(new CustomEvent("mypets:session-ended", { detail: context }));
+      window.dispatchEvent(
+        new CustomEvent("mypets:session-ended", { detail: context }),
+      );
     });
   }
 
   async function start() {
     if (state.startPromise) return state.startPromise;
     state.startPromise = (async () => {
+      await waitForExtensionsReady();
       if (!state.adapters) throw new Error("用户门户运行时尚未配置");
       installNavigation();
       captureLegacyRefresh();
@@ -242,18 +275,28 @@
       state.started = true;
       state.adapters.showLogin?.();
 
-      const active = document.querySelector(".main-tab.active[data-section]")?.dataset.section;
+      const active = document.querySelector(
+        ".main-tab.active[data-section]",
+      )?.dataset.section;
       if (active && sectionExists(active)) state.activeSection = active;
       if (state.adapters.hasSession()) {
         state.adapters.enter?.();
-        navigate(state.activeSection, { force: true, focus: false, source: "startup" });
+        navigate(state.activeSection, {
+          force: true,
+          focus: false,
+          source: "startup",
+        });
         try {
           await requestRefresh({ reason: "startup" });
         } catch (error) {
           state.adapters.onError?.(error);
         }
       } else {
-        navigate(state.activeSection, { force: true, focus: false, source: "anonymous" });
+        navigate(state.activeSection, {
+          force: true,
+          focus: false,
+          source: "anonymous",
+        });
       }
       window.dispatchEvent(new CustomEvent("mypets:portal-ready"));
     })();
@@ -269,6 +312,7 @@
   const api = Object.freeze({
     configure,
     registerFeature,
+    markExtensionsReady,
     requestRefresh,
     navigate,
     sessionEnded,
