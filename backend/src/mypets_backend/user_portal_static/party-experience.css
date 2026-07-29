@@ -3,6 +3,45 @@
   gap: 1rem;
 }
 
+.party-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.party-hero::after {
+  content: "🐾";
+  position: absolute;
+  right: 2rem;
+  bottom: -2.2rem;
+  font-size: 7rem;
+  opacity: 0.06;
+  transform: rotate(-12deg);
+  pointer-events: none;
+}
+
+.party-hero-copy {
+  max-width: 700px;
+}
+
+.party-hero-copy h2,
+.party-social-card h3,
+.party-scene-card h3,
+.party-empty-state h3 {
+  margin: 0;
+}
+
+.party-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  position: relative;
+  z-index: 1;
+}
+
 .party-create-panel .party-create-form {
   align-items: end;
 }
@@ -13,6 +52,17 @@
   gap: 0.8rem;
 }
 
+.party-summary-card {
+  min-height: 88px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.party-summary-card strong {
+  font-size: 1.9rem;
+}
+
 .party-list-panel[hidden],
 .party-workspace[hidden] {
   display: none;
@@ -20,27 +70,25 @@
 
 .party-list {
   display: grid;
-  gap: 0.75rem;
+  gap: 0.9rem;
 }
 
-.party-invite-form {
-  margin-top: 0.75rem;
-}
-
-.party-pet-select {
-  width: 100%;
-  margin-top: 0.75rem;
-}
-
+.party-social-card,
 .party-scene-card {
   border: 1px solid var(--line, #d8d8d8);
-  border-radius: 18px;
+  border-radius: 20px;
   padding: 1rem;
   background: var(--surface, #fff);
   display: grid;
-  gap: 1rem;
+  gap: 0.9rem;
 }
 
+.party-social-card.status-active,
+.party-scene-card {
+  box-shadow: 0 14px 34px rgba(52, 64, 84, 0.08);
+}
+
+.party-social-card-header,
 .party-scene-header {
   display: flex;
   justify-content: space-between;
@@ -48,9 +96,165 @@
   align-items: flex-start;
 }
 
-.party-scene-header h3,
-.party-member-card strong {
-  margin: 0;
+.party-status-pill,
+.party-scene-badge,
+.party-member-activity {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.party-status-pill {
+  margin-bottom: 0.45rem;
+  background: var(--surface-soft, #f5f6f8);
+}
+
+.status-active .party-status-pill,
+.party-scene-badge {
+  background: #ecfdf3;
+  color: #067647;
+}
+
+.status-open .party-status-pill {
+  background: #fffaeb;
+  color: #b54708;
+}
+
+.status-completed .party-status-pill {
+  background: #eff8ff;
+  color: #175cd3;
+}
+
+.status-cancelled .party-status-pill {
+  background: #f2f4f7;
+  color: #667085;
+}
+
+.party-state-copy,
+.party-note,
+.party-member-owner {
+  margin: 0.35rem 0 0;
+  color: var(--muted, #667085);
+}
+
+.party-capacity {
+  min-width: 72px;
+  border-radius: 16px;
+  padding: 0.65rem;
+  text-align: center;
+  background: var(--surface-soft, #f8f8f8);
+}
+
+.party-capacity strong,
+.party-capacity span {
+  display: block;
+}
+
+.party-capacity strong {
+  font-size: 1.35rem;
+}
+
+.party-capacity span {
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  color: var(--muted, #667085);
+}
+
+.party-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  font-size: 0.86rem;
+  color: var(--muted, #667085);
+}
+
+.party-member-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.party-member-chip {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  column-gap: 0.4rem;
+  min-width: 132px;
+  border: 1px solid var(--line, #d8d8d8);
+  border-radius: 14px;
+  padding: 0.55rem 0.65rem;
+  background: var(--surface-soft, #f8f8f8);
+}
+
+.party-member-chip small {
+  grid-column: 2;
+  color: var(--muted, #667085);
+}
+
+.party-chip-avatar {
+  grid-row: 1 / span 2;
+  font-size: 1.45rem;
+}
+
+.party-invite-form,
+.party-accept-select {
+  margin-top: 0.15rem;
+}
+
+.party-accept-select {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--muted, #667085);
+}
+
+.party-pet-select {
+  width: 100%;
+}
+
+.party-card-actions,
+.party-scene-actions {
+  align-items: center;
+}
+
+.party-stage {
+  border-radius: 22px;
+  padding: 1rem;
+  min-height: 230px;
+  display: grid;
+  align-content: center;
+  gap: 1rem;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(255, 255, 255, 0.85), transparent 28%),
+    linear-gradient(145deg, #fff9ef, #f3f8ff);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.party-stage.activity-rest_together {
+  background: linear-gradient(145deg, #f7f5ff, #eef6ff);
+}
+
+.party-stage.activity-group_photo {
+  background: linear-gradient(145deg, #fff2f7, #fff9ec);
+}
+
+.party-stage.activity-greet_circle {
+  background: linear-gradient(145deg, #f0fff7, #f5fbff);
+}
+
+.party-activity-banner {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.6rem;
+  text-align: center;
+}
+
+.party-activity-icon {
+  font-size: 1.7rem;
 }
 
 .party-member-grid {
@@ -60,9 +264,9 @@
 }
 
 .party-member-card {
-  min-height: 128px;
-  border: 1px solid var(--line, #d8d8d8);
-  border-radius: 16px;
+  min-height: 138px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 18px;
   padding: 0.9rem;
   display: flex;
   flex-direction: column;
@@ -70,16 +274,41 @@
   align-items: center;
   gap: 0.35rem;
   text-align: center;
-  background: var(--surface-soft, #f8f8f8);
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(4px);
+}
+
+.party-member-card:nth-child(2n) {
+  transform: translateY(8px);
 }
 
 .party-member-avatar {
-  font-size: 2rem;
+  font-size: 2.5rem;
   line-height: 1;
 }
 
-.party-scene-actions {
+.party-member-activity {
+  margin-top: 0.3rem;
+  background: #f2f4f7;
+  color: #475467;
+}
+
+.party-empty-state {
+  min-height: 170px;
+  border: 1px dashed var(--line, #d0d5dd);
+  border-radius: 18px;
+  padding: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   align-items: center;
+  gap: 0.45rem;
+  text-align: center;
+  background: var(--surface-soft, #f8f8f8);
+}
+
+.party-empty-icon {
+  font-size: 2.4rem;
 }
 
 .party-timeline {
@@ -91,8 +320,13 @@
 }
 
 .party-timeline-entry {
-  border-left: 3px solid currentColor;
-  padding: 0.25rem 0 0.25rem 0.85rem;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.7rem;
+  border: 1px solid var(--line, #e4e7ec);
+  border-radius: 14px;
+  padding: 0.8rem;
+  background: var(--surface, #fff);
 }
 
 .party-timeline-entry p {
@@ -100,13 +334,42 @@
 }
 
 .party-timeline-entry.kind-interaction {
-  border-left-width: 5px;
+  border-color: rgba(12, 106, 89, 0.28);
+  background: #f6fef9;
+}
+
+.party-timeline-icon {
+  font-size: 1.35rem;
 }
 
 @media (max-width: 920px) {
   .party-summary-grid,
   .party-member-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .party-hero {
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 680px) {
+  .party-hero,
+  .party-social-card-header,
+  .party-scene-header {
+    flex-direction: column;
+  }
+
+  .party-hero-actions,
+  .party-card-actions,
+  .party-scene-actions {
+    width: 100%;
+  }
+
+  .party-hero-actions button,
+  .party-card-actions button,
+  .party-scene-actions button {
+    flex: 1 1 160px;
   }
 }
 
@@ -116,7 +379,11 @@
     grid-template-columns: 1fr;
   }
 
-  .party-scene-header {
-    flex-direction: column;
+  .party-member-card:nth-child(2n) {
+    transform: none;
+  }
+
+  .party-member-chip {
+    width: 100%;
   }
 }
