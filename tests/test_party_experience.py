@@ -64,7 +64,11 @@ def _party_payload(*, status: str = "active") -> dict[str, object]:
                     "username": "host",
                     "display_name": "发起人",
                 },
-                "pet": {"pet_id": "pet-host", "name": "团子"},
+                "pet": {
+                    "pet_id": "pet-host",
+                    "name": "团子",
+                    "template_id": "official.cat.white",
+                },
                 "role": "host",
                 "status": "joined",
                 "is_current_account": True,
@@ -79,7 +83,11 @@ def _party_payload(*, status: str = "active") -> dict[str, object]:
                     "username": "one",
                     "display_name": "好友一",
                 },
-                "pet": {"pet_id": "pet-one", "name": "小白"},
+                "pet": {
+                    "pet_id": "pet-one",
+                    "name": "小白",
+                    "template_id": "official.dog.corgi",
+                },
                 "role": "member",
                 "status": "joined",
                 "is_current_account": False,
@@ -94,7 +102,11 @@ def _party_payload(*, status: str = "active") -> dict[str, object]:
                     "username": "two",
                     "display_name": "好友二",
                 },
-                "pet": {"pet_id": "pet-two", "name": "豆包"},
+                "pet": {
+                    "pet_id": "pet-two",
+                    "name": "豆包",
+                    "template_id": "official.rabbit.gray",
+                },
                 "role": "member",
                 "status": "joined",
                 "is_current_account": False,
@@ -111,7 +123,16 @@ def _party_payload(*, status: str = "active") -> dict[str, object]:
                 "detail": "全部成员进入同一个聚会场景，桌面常驻窗口仍最多显示两只宠物。",
                 "occurred_at": "2026-07-28T12:10:00+00:00",
                 "actor_display_name": "发起人",
-            }
+            },
+            {
+                "event_id": "event-2",
+                "kind": "interaction",
+                "title": "一起玩耍",
+                "detail": "参加聚会的宠物完成了一次集体玩耍。",
+                "occurred_at": "2026-07-28T12:15:00+00:00",
+                "actor_display_name": "发起人",
+                "action": "play_together",
+            },
         ],
     }
 
@@ -155,7 +176,7 @@ def test_party_client_uses_one_request_facade_without_sync_runtime() -> None:
     assert not hasattr(client, "message_cache")
 
 
-def test_party_dialog_keeps_all_members_in_one_management_window() -> None:
+def test_party_dialog_renders_members_in_one_social_scene() -> None:
     app = QApplication.instance() or QApplication([])
     dialog = PartyDialog()
     created: list[tuple[str, str, int, int]] = []
@@ -176,6 +197,7 @@ def test_party_dialog_keeps_all_members_in_one_management_window() -> None:
 
     assert DESKTOP_PARTY_WINDOW_LIMIT == 2
     assert dialog.findChildren(QDialog) == []
+    assert dialog.windowTitle() == "宠物小聚场景"
     dialog.create_button.click()
     assert created == [("pet-host", "宠物小聚会", 60, 4)]
 
@@ -188,9 +210,11 @@ def test_party_dialog_keeps_all_members_in_one_management_window() -> None:
     assert details == ["party-1"]
 
     dialog.set_detail(party)
-    assert dialog.member_table.rowCount() == 3
-    assert dialog.party_meta_label.text().endswith("桌面常驻上限 2 只")
-    assert "最多显示两只" in dialog.timeline_list.item(0).text()
+    app.processEvents()
+    assert len(dialog.member_cards) == 3
+    assert "3 只宠物正在同一个场景中玩耍" in dialog.party_meta_label.text()
+    assert "一起玩耍" in dialog.activity_label.text()
+    assert "一起玩耍" in dialog.timeline_list.item(1).text()
     assert dialog.end_button.isEnabled() is True
     assert all(button.isEnabled() for button in dialog.interaction_buttons.values())
 
@@ -198,6 +222,24 @@ def test_party_dialog_keeps_all_members_in_one_management_window() -> None:
     assert interactions
     assert interactions[-1][0:2] == ("party-1", "play_together")
     assert interactions[-1][2].startswith("desktop-party-play_together-")
+
+    dialog.close()
+    app.processEvents()
+
+
+def test_party_dialog_has_actionable_empty_state_without_extra_windows() -> None:
+    app = QApplication.instance() or QApplication([])
+    dialog = PartyDialog()
+    dialog.set_current_pet("pet-host", "团子", available=True)
+    dialog.set_snapshot({"invitations": [], "open": [], "active": [], "history": []})
+    dialog.show()
+    app.processEvents()
+
+    assert dialog.party_list.count() == 0
+    assert dialog.party_title_label.text() == "还没有宠物聚会"
+    assert "发起第一场聚会" in dialog.activity_label.text()
+    assert dialog.create_button.isEnabled() is True
+    assert dialog.findChildren(QDialog) == []
 
     dialog.close()
     app.processEvents()
