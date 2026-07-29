@@ -20,6 +20,7 @@ from .party_api import (
     PartyTimelineEntryView,
     PartyView,
     _account,
+    _aware,
     _blocked,
     _friendship,
     _party,
@@ -114,12 +115,14 @@ def _restricted_timeline(
 
     entries = [item for item in full_timeline if item.event_id in allowed_ids]
     if current.status == "expired":
-        occurred_at = (
+        raw_occurred_at = (
             current.responded_at
             or party.started_at
             or party.ended_at
             or current.created_at
         )
+        occurred_at = _aware(raw_occurred_at)
+        assert occurred_at is not None
         if party.completion_reason == "party_cancelled":
             detail = "聚会在开始前取消，本次邀请已失效。"
         elif party.started_at is not None:
