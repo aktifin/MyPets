@@ -15,6 +15,9 @@ def test_party_portal_assets_are_injected_and_secured(client: TestClient) -> Non
     assert script.status_code == 200
     assert script.headers["x-content-type-options"] == "nosniff"
     assert "desktop_window_limit" in script.text
+    assert "partySceneGuard" in script.text
+    assert "邀请好友一起玩" in script.text
+    assert "同一聚会场景" in script.text
     assert "window.open" not in script.text
     assert "new Worker" not in script.text
     assert "WebSocket" not in script.text
@@ -23,3 +26,5 @@ def test_party_portal_assets_are_injected_and_secured(client: TestClient) -> Non
     assert stylesheet.status_code == 200
     assert ".party-member-grid" in stylesheet.text
     assert ".party-scene-card" in stylesheet.text
+    assert ".party-empty-state" in stylesheet.text
+    assert ".party-activity-banner" in stylesheet.text
