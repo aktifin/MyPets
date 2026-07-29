@@ -6,9 +6,10 @@
 - 输出统一发布版本；
 - 启动包含首次运行引导、点击宠物快捷养宠面板、成长目标与纪念册、统一待处理事项、
   多宠状态总览、照料后下一宠提示、双宠并排布局、主动关怀、串门时间线、消息搜索、
-  未读定位、可配置快捷回复、待办直达详情、客户处理记录、好友、共同照料、提醒和
-  单窗口多宠物聚会场景的 Qt 应用；
+  未读定位、可配置快捷回复、待办直达详情、客户处理记录、好友、共同照料、提醒、
+  单窗口多宠物聚会场景以及帮助与诊断入口的 Qt 应用；
 - 聚会场景只使用一个管理对话框，不创建额外宠物运行时，桌面常驻宠物仍最多两只；
+- 诊断包不包含密码、访问令牌、设备密钥、消息正文、本地数据库或宠物原图；
 - 不包含窗口、行为或配置业务逻辑。
 
 使用示例：
@@ -21,7 +22,7 @@ from __future__ import annotations
 
 import argparse
 
-from onepic_desktop_pet.party_app import run
+from onepic_desktop_pet.diagnostics_app import run
 from onepic_desktop_pet.release import APP_NAME, APP_VERSION
 
 
