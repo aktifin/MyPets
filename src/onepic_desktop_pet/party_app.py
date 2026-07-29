@@ -8,6 +8,7 @@ from PySide6.QtGui import QAction
 from .message_efficiency_app import MessageEfficiencyApplication
 from .party_client import PartyClient
 from .party_dialog import PartyDialog
+from .party_pending_dialog import PartyPendingItemsDialog
 
 
 class PartyApplication(MessageEfficiencyApplication):
@@ -36,6 +37,31 @@ class PartyApplication(MessageEfficiencyApplication):
         else:
             menu.addAction(self.party_action)
         self._refresh_party_action()
+
+    def open_pending_items_dialog(self) -> None:
+        if self._pending_items_dialog is None:
+            dialog = PartyPendingItemsDialog()
+            dialog.refresh_requested.connect(self.refresh_pending_items)
+            dialog.action_requested.connect(self._act_on_pending_item)
+            dialog.detail_requested.connect(self._open_pending_detail)
+            self._pending_items_dialog = dialog
+        self._sync_pending_items_dialog()
+        self._pending_items_dialog.show()
+        self._pending_items_dialog.raise_()
+        self._pending_items_dialog.activateWindow()
+        self.refresh_pending_items()
+
+    def _open_pending_detail(self, payload: object) -> None:
+        if isinstance(payload, dict) and str(payload.get("kind") or "") == "party_invitation":
+            party_id = str(payload.get("item_id") or "")
+            if party_id:
+                self.open_party_dialog()
+                QTimer.singleShot(
+                    50,
+                    lambda value=party_id: self.party_client.load_detail(value),
+                )
+            return
+        super()._open_pending_detail(payload)
 
     def open_party_dialog(self) -> None:
         if self._party_dialog is None:
@@ -112,6 +138,7 @@ class PartyApplication(MessageEfficiencyApplication):
         self.cloud_session.sync_now()
         QTimer.singleShot(150, self.party_client.refresh)
         QTimer.singleShot(250, self._sync_party_context)
+        QTimer.singleShot(300, self.refresh_pending_items)
 
     @staticmethod
     def _party_success_message(operation: str) -> str:
