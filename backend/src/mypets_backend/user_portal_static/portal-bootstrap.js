@@ -7,6 +7,26 @@
     return;
   }
 
+  function renderMigratedProjections() {
+    if (typeof renderDailyCareIntegrations === "function") {
+      renderDailyCareIntegrations();
+    }
+    if (typeof renderGrowthExperience === "function") {
+      renderGrowthExperience();
+    }
+    if (typeof renderProactiveCareNotice === "function") {
+      renderProactiveCareNotice();
+    }
+  }
+
+  runtime.registerFeature({
+    id: "legacy-render-projection-bridge",
+    label: "首页扩展展示",
+    order: 900,
+    onDashboardRenderComplete: renderMigratedProjections,
+    onPhase1RenderComplete: renderMigratedProjections,
+  });
+
   let renderHookPromise = Promise.resolve();
   const queueRenderHook = (hook) => {
     renderHookPromise = renderHookPromise
