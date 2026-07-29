@@ -96,7 +96,9 @@ def test_diagnostic_bundle_only_contains_snapshot_readme_and_bounded_logs(
         assert "private-access-token" not in diagnostics
         assert "private-device-secret" not in diagnostics
         assert "must not be exported" not in diagnostics
-        assert archive.read("logs/mypets.log").decode("utf-8") == "safe diagnostic log\n"
+        assert archive.read("logs/mypets.log").decode("utf-8").splitlines() == [
+            "safe diagnostic log"
+        ]
 
 
 def test_diagnostic_summary_is_user_readable(monkeypatch, tmp_path: Path) -> None:
