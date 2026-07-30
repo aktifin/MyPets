@@ -99,6 +99,14 @@ async function actOnPendingItem(item, action) {
   setStatus(globalStatus, payload.message || "待处理事项已更新。", "success");
 }
 
+function completePendingItemsRender() {
+  portalRuntime.applyFeatureHook("onPendingItemsRenderComplete", {
+    items: pendingItemsState.items,
+    count: pendingItemsState.count,
+    urgentCount: pendingItemsState.urgentCount,
+  });
+}
+
 function renderPendingItems() {
   ensurePendingItemsPanel();
   const count = $("pending-items-count");
@@ -116,6 +124,7 @@ function renderPendingItems() {
   list.replaceChildren();
   if (!pendingItemsState.items.length) {
     empty(list, "当前没有需要处理的事项。新的邀请、申请和到期提醒会集中显示在这里。");
+    completePendingItemsRender();
     return;
   }
 
@@ -153,6 +162,7 @@ function renderPendingItems() {
     card.append(body, actions);
     list.append(card);
   });
+  completePendingItemsRender();
 }
 
 async function refreshPendingItems() {

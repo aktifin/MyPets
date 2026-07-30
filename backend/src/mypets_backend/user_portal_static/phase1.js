@@ -237,9 +237,22 @@ function renderPetDetails() {
 
 function filteredConversations() {
   const filter = $("message-category-filter").value;
-  return portalPhase1State.conversations.filter(
+  const values = portalPhase1State.conversations.filter(
     (item) => filter === "all" || item.category === filter,
   );
+  const projection = portalRuntime.applyFeatureHook("onFilterConversations", {
+    filter,
+    conversations: portalPhase1State.conversations,
+    values,
+  });
+  return Array.isArray(projection.values) ? projection.values : values;
+}
+
+function completeConversationRender(values) {
+  portalRuntime.applyFeatureHook("onConversationsRenderComplete", {
+    conversations: values,
+    activeConversationId: portalPhase1State.activeConversationId,
+  });
 }
 
 function renderConversations() {
@@ -254,6 +267,7 @@ function renderConversations() {
   const values = filteredConversations();
   if (!values.length) {
     empty(container, "当前分类暂无会话。");
+    completeConversationRender(values);
     return;
   }
   values.forEach((conversation) => {
@@ -270,9 +284,36 @@ function renderConversations() {
     built.actions.append(actionButton("查看", () => openConversation(conversation)));
     container.append(built.card);
   });
+  completeConversationRender(values);
 }
 
-async function openConversation(conversation) {
+async function completeConversationOpen(conversation, messages, options, source) {
+  return portalRuntime.runFeatureHook("onConversationOpenComplete", {
+    conversation,
+    messages,
+    options,
+    source,
+  });
+}
+
+async function openConversation(conversation, options = {}) {
+  const request = await portalRuntime.runFeatureHook("onConversationOpenRequest", {
+    conversation,
+    options,
+    handled: false,
+    result: null,
+    messages: [],
+  });
+  if (request.handled) {
+    await completeConversationOpen(
+      request.conversation || conversation,
+      Array.isArray(request.messages) ? request.messages : [],
+      request.options || options,
+      "feature",
+    );
+    return request.result;
+  }
+
   portalPhase1State.activeConversationId = conversation.conversation_id;
   $("message-detail-title").textContent = conversation.title;
   const response = await api(
@@ -299,6 +340,12 @@ async function openConversation(conversation) {
     await refreshPhase1Messages();
   }
   renderConversations();
+  await completeConversationOpen(conversation, items, options, "core");
+  return response;
+}
+
+function completeReminderRender(items) {
+  portalRuntime.applyFeatureHook("onRemindersRenderComplete", { reminders: items });
 }
 
 function renderReminders() {
@@ -320,6 +367,7 @@ function renderReminders() {
   container.replaceChildren();
   if (!items.length) {
     empty(container, "暂无提醒。配置 MyReminder 后会在此同步展示。");
+    completeReminderRender(items);
     return;
   }
   items
@@ -334,6 +382,7 @@ function renderReminders() {
       ]);
       container.append(built.card);
     });
+  completeReminderRender(items);
 }
 
 function renderPortalPhase1() {

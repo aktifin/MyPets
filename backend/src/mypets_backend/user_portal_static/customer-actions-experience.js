@@ -24,17 +24,8 @@ function customerActionRandom(prefix) {
   return `${prefix}-${random}`;
 }
 
-function activateCustomerSection(sectionId) {
-  if (typeof activatePortalSection === "function") {
-    activatePortalSection(sectionId);
-    return;
-  }
-  document.querySelectorAll(".workspace").forEach((section) => {
-    section.hidden = section.id !== sectionId;
-  });
-  document.querySelectorAll(".main-tab[data-section]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.section === sectionId);
-  });
+function activateCustomerSection(sectionId, source = "customer-target") {
+  return portalRuntime.navigate(sectionId, { source });
 }
 
 function ensureMessageActions() {
@@ -105,16 +96,29 @@ function quickReplyValues(conversation) {
   return ["收到", "好的，谢谢", "我稍后回复你"];
 }
 
+function renderConversationTarget() {
+  const target = customerActionsState.conversationTarget;
+  const row = $("message-related-row");
+  const button = $("message-related-target");
+  if (!row || !button) return;
+  row.hidden = !target || target.kind === "none";
+  if (!row.hidden) button.textContent = target.label || "查看相关详情";
+}
+
 function renderMessageActions(conversation) {
   ensureMessageActions();
+  const previousId = customerActionsState.activeConversation?.conversation_id || "";
+  const nextId = conversation?.conversation_id || "";
+  const changed = previousId !== nextId;
   customerActionsState.activeConversation = conversation || null;
-  customerActionsState.conversationTarget = null;
+  if (changed) customerActionsState.conversationTarget = null;
+
   const panel = $("message-compose-actions");
   const quick = $("message-quick-replies");
   const targetRow = $("message-related-row");
   if (!panel || !quick || !targetRow) return;
 
-  targetRow.hidden = true;
+  renderConversationTarget();
   quick.replaceChildren();
   const writable = Boolean(conversation && conversation.kind === "direct");
   panel.hidden = !writable;
@@ -135,39 +139,49 @@ function renderMessageActions(conversation) {
       quick.append(button);
     });
   }
-  if (conversation) loadConversationTarget(conversation.conversation_id).catch(() => {});
+  if (conversation && (changed || !customerActionsState.conversationTarget)) {
+    loadConversationTarget(conversation.conversation_id).catch(() => {});
+  }
+  portalRuntime.applyFeatureHook("onMessageActionsRenderComplete", {
+    conversation: conversation || null,
+  });
 }
 
 async function sendCustomerConversationMessage(content) {
   const conversation = customerActionsState.activeConversation;
-  if (!conversation || conversation.kind !== "direct") throw new Error("请先选择一个可回复的会话。");
+  if (!conversation || conversation.kind !== "direct") {
+    throw new Error("请先选择一个可回复的会话。");
+  }
   const selected = selectedPortalPet();
-  await api(`/api/v1/conversations/${encodeURIComponent(conversation.conversation_id)}/messages`, {
-    method: "POST",
-    headers: { "Idempotency-Key": customerActionRandom("portal-message") },
-    json: {
-      content,
-      sender_pet_id: selected?.pet?.pet_id || null,
+  const response = await api(
+    `/api/v1/conversations/${encodeURIComponent(conversation.conversation_id)}/messages`,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": customerActionRandom("portal-message") },
+      json: {
+        content,
+        sender_pet_id: selected?.pet?.pet_id || null,
+      },
     },
-  });
+  );
   await refreshPhase1Messages();
   const refreshed = portalPhase1State.conversations.find(
     (item) => item.conversation_id === conversation.conversation_id,
   ) || conversation;
-  await baseOpenConversationForCustomerActions(refreshed);
-  renderMessageActions(refreshed);
+  await openConversation(refreshed, {
+    anchorSequence: Number(response?.message?.sequence_number || 0),
+    source: "message-send",
+  });
   setStatus(globalStatus, "消息已发送。", "success");
 }
 
 async function loadConversationTarget(conversationId) {
-  const target = await api(`/api/v1/conversations/${encodeURIComponent(conversationId)}/target`);
+  const target = await api(
+    `/api/v1/conversations/${encodeURIComponent(conversationId)}/target`,
+  );
   if (customerActionsState.activeConversation?.conversation_id !== conversationId) return;
   customerActionsState.conversationTarget = target;
-  const row = $("message-related-row");
-  const button = $("message-related-target");
-  if (!row || !button) return;
-  row.hidden = !target || target.kind === "none";
-  if (!row.hidden) button.textContent = target.label || "查看相关详情";
+  renderConversationTarget();
 }
 
 function ensureVisitTimelinePanel() {
@@ -203,7 +217,7 @@ function ensureVisitTimelinePanel() {
   return panel;
 }
 
-function renderVisitTimeline(payload) {
+function renderVisitTimeline(payload, options = {}) {
   const panel = ensureVisitTimelinePanel();
   const summary = $("visit-timeline-summary");
   const list = $("visit-timeline-list");
@@ -218,7 +232,11 @@ function renderVisitTimeline(payload) {
   }
   entries.forEach((entry) => {
     const item = node("li", "", `visit-timeline-entry kind-${entry.kind}`);
-    const marker = node("span", visitTimelineKindLabels[entry.kind] || entry.kind, "visit-timeline-kind");
+    const marker = node(
+      "span",
+      visitTimelineKindLabels[entry.kind] || entry.kind,
+      "visit-timeline-kind",
+    );
     const body = node("div", "", "visit-timeline-body");
     body.append(
       node("strong", entry.title),
@@ -232,14 +250,19 @@ function renderVisitTimeline(payload) {
     item.append(marker, body);
     list.append(item);
   });
-  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (options.scroll !== false) {
+    panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 }
 
-async function openVisitTimeline(visitId) {
+async function openVisitTimeline(visitId, options = {}) {
   if (!visitId) return;
-  activateCustomerSection("visits-section");
+  if (options.navigate !== false) {
+    activateCustomerSection("visits-section", options.source || "visit-timeline");
+  }
   const payload = await api(`/api/v1/visits/${encodeURIComponent(visitId)}/timeline`);
-  renderVisitTimeline(payload);
+  renderVisitTimeline(payload, options);
+  return payload;
 }
 
 function appendVisitTimelineButtons(container, visits) {
@@ -249,7 +272,8 @@ function appendVisitTimelineButtons(container, visits) {
     const card = cards[index];
     if (!card || card.querySelector(".visit-timeline-button")) return;
     card.dataset.visitId = visit.visit_id;
-    const actions = card.querySelector(".item-actions") || card.querySelector(".pending-item-actions");
+    const actions = card.querySelector(".item-actions")
+      || card.querySelector(".pending-item-actions");
     const button = node("button", "查看时间线", "secondary visit-timeline-button");
     button.type = "button";
     button.addEventListener("click", async () => {
@@ -267,10 +291,10 @@ function appendVisitTimelineButtons(container, visits) {
   });
 }
 
-function assignReminderTargets() {
+function assignReminderTargets(reminders = portalPhase1State.reminders) {
   const container = $("reminder-list");
   if (!container) return;
-  const values = portalPhase1State.reminders
+  const values = reminders
     .slice()
     .sort((left, right) => new Date(left.scheduled_at) - new Date(right.scheduled_at))
     .slice(0, 100);
@@ -281,16 +305,23 @@ function assignReminderTargets() {
 }
 
 async function activateCustomerTarget(kind, targetId, label = "") {
+  const request = await portalRuntime.runFeatureHook("onActivateCustomerTarget", {
+    kind,
+    targetId,
+    label,
+    handled: false,
+    result: null,
+  });
+  if (request.handled) return request.result;
+
   if (kind === "visit") {
     await refreshVisits();
-    await openVisitTimeline(targetId);
-    return;
+    return openVisitTimeline(targetId);
   }
   if (kind === "reminder") {
-    activateCustomerSection("reminders-section");
+    activateCustomerSection("reminders-section", "reminder-target");
     await refreshPhase1Reminders();
     renderReminders();
-    assignReminderTargets();
     const card = [...document.querySelectorAll("#reminder-list [data-reminder-id]")]
       .find((item) => item.dataset.reminderId === targetId);
     if (card) {
@@ -306,17 +337,19 @@ async function activateCustomerTarget(kind, targetId, label = "") {
         method: "PATCH",
         json: { selected_pet_id: targetId },
       });
-      await refreshPhase1PetData();
+      await refreshPhase1PetData("customer-target");
       renderDashboard();
       renderPortalPhase1();
     }
-    activateCustomerSection("pets-section");
+    activateCustomerSection("pets-section", "pet-target");
     $("selected-pet-config")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    if (!pet) setStatus(globalStatus, label || "相关宠物当前未同步到此账户。", "error");
+    if (!pet) {
+      setStatus(globalStatus, label || "相关宠物当前未同步到此账户。", "error");
+    }
     return;
   }
   if (kind === "friend") {
-    activateCustomerSection("friends-section");
+    activateCustomerSection("friends-section", "friend-target");
     await refreshSocial();
     $("friend-list")?.scrollIntoView({ behavior: "smooth", block: "start" });
     return;
@@ -325,11 +358,16 @@ async function activateCustomerTarget(kind, targetId, label = "") {
 }
 
 function pendingTarget(item) {
-  if (item.kind === "visit_request") return { kind: "visit", id: item.item_id };
-  if (item.kind === "reminder_due") return { kind: "reminder", id: item.item_id };
-  if (item.kind === "caregiver_invitation") return { kind: "pet", id: item.pet_id };
-  if (item.kind === "friend_request") return { kind: "friend", id: "" };
-  return { kind: "none", id: "" };
+  let target = { kind: "none", id: "" };
+  if (item.kind === "visit_request") target = { kind: "visit", id: item.item_id };
+  else if (item.kind === "reminder_due") target = { kind: "reminder", id: item.item_id };
+  else if (item.kind === "caregiver_invitation") target = { kind: "pet", id: item.pet_id };
+  else if (item.kind === "friend_request") target = { kind: "friend", id: "" };
+  const projection = portalRuntime.applyFeatureHook("onResolvePendingTarget", {
+    item,
+    target,
+  });
+  return projection.target || target;
 }
 
 function decoratePendingItemDetails() {
@@ -354,61 +392,82 @@ function decoratePendingItemDetails() {
       }
     });
     actions.prepend(button);
+    portalRuntime.applyFeatureHook("onPendingItemDetailDecorated", {
+      item,
+      target,
+      button,
+      card,
+    });
   });
 }
 
-ensureMessageActions();
-ensureVisitTimelinePanel();
+function decorateVisitLists(visits) {
+  appendVisitTimelineButtons(
+    $("incoming-visits"),
+    visits.incoming_requests || [],
+  );
+  appendVisitTimelineButtons(
+    $("outgoing-visits"),
+    visits.outgoing_requests || [],
+  );
+  appendVisitTimelineButtons($("active-visits"), visits.active || []);
+  appendVisitTimelineButtons($("visit-history"), visits.history || []);
+}
 
-const baseOpenConversationForCustomerActions = openConversation;
-openConversation = async function openConversationWithCustomerActions(conversation) {
-  await baseOpenConversationForCustomerActions(conversation);
-  renderMessageActions(conversation);
-};
-
-const baseRenderConversationsForCustomerActions = renderConversations;
-renderConversations = function renderConversationsWithCustomerActions() {
-  baseRenderConversationsForCustomerActions();
-  if (customerActionsState.activeConversation) renderMessageActions(customerActionsState.activeConversation);
-};
-
-const baseRenderRequestListForTimeline = renderRequestList;
-renderRequestList = function renderRequestListWithTimeline(containerId, items, mode) {
-  baseRenderRequestListForTimeline(containerId, items, mode);
-  appendVisitTimelineButtons($(containerId), items);
-};
-
-const baseRenderActiveVisitsForTimeline = renderActiveVisits;
-renderActiveVisits = function renderActiveVisitsWithTimeline() {
-  baseRenderActiveVisitsForTimeline();
-  appendVisitTimelineButtons($("active-visits"), visitState.visits.active || []);
-};
-
-const baseRenderVisitHistoryForTimeline = renderVisitHistory;
-renderVisitHistory = function renderVisitHistoryWithTimeline() {
-  baseRenderVisitHistoryForTimeline();
-  appendVisitTimelineButtons($("visit-history"), visitState.visits.history || []);
-};
-
-const baseRenderPendingItemsForDetails = renderPendingItems;
-renderPendingItems = function renderPendingItemsWithDetails() {
-  baseRenderPendingItemsForDetails();
-  decoratePendingItemDetails();
-};
-
-const baseRenderRemindersForTargets = renderReminders;
-renderReminders = function renderRemindersWithTargets() {
-  baseRenderRemindersForTargets();
-  assignReminderTargets();
-};
-
-const baseLogoutForCustomerActions = logout;
-logout = function logoutWithCustomerActions(message = "", kind = "") {
+function resetCustomerActionsState() {
   customerActionsState.activeConversation = null;
   customerActionsState.conversationTarget = null;
   customerActionsState.activeVisitId = "";
-  baseLogoutForCustomerActions(message, kind);
   renderMessageActions(null);
   const timeline = $("visit-timeline-panel");
   if (timeline) timeline.hidden = true;
-};
+}
+
+portalRuntime.registerFeature({
+  id: "customer-actions",
+  label: "消息回复与关联详情",
+  order: 220,
+  mount: () => {
+    ensureMessageActions();
+    ensureVisitTimelinePanel();
+  },
+  onConversationOpenComplete: ({ conversation }) => {
+    renderMessageActions(conversation);
+  },
+  onConversationsRenderComplete: ({ conversations }) => {
+    const activeId = customerActionsState.activeConversation?.conversation_id;
+    if (!activeId) return;
+    const active = conversations.find(
+      (item) => item.conversation_id === activeId,
+    ) || customerActionsState.activeConversation;
+    renderMessageActions(active);
+  },
+  onVisitsRenderComplete: ({ visits }) => {
+    decorateVisitLists(visits);
+  },
+  onPendingItemsRenderComplete: decoratePendingItemDetails,
+  onRemindersRenderComplete: ({ reminders }) => {
+    assignReminderTargets(reminders);
+  },
+  onRealtime: async () => {
+    if (!accessToken) return;
+    if (customerActionsState.activeConversation) {
+      await loadConversationTarget(
+        customerActionsState.activeConversation.conversation_id,
+      );
+    }
+    const section = $("visits-section");
+    if (
+      customerActionsState.activeVisitId
+      && section
+      && !section.hidden
+    ) {
+      await openVisitTimeline(customerActionsState.activeVisitId, {
+        navigate: false,
+        scroll: false,
+        source: "realtime",
+      });
+    }
+  },
+  onLogout: resetCustomerActionsState,
+});
