@@ -21,6 +21,7 @@
     runtimePanel: null,
     extensionsReady: false,
     sectionHookPromise: Promise.resolve(),
+    hookPromises: new Map(),
   };
 
   function featureList() {
@@ -102,12 +103,55 @@
     }
   }
 
+  function invokeFeatureSync(feature, hook, context) {
+    const callback = feature[hook];
+    if (typeof callback !== "function") return;
+    const key = `${feature.id}:${hook}`;
+    try {
+      const result = callback(context);
+      if (result && typeof result.then === "function") {
+        Promise.resolve(result)
+          .then(() => clearFailure(key))
+          .catch((error) => recordFailure(key, feature.label || feature.id, error));
+      } else {
+        clearFailure(key);
+      }
+    } catch (error) {
+      recordFailure(key, feature.label || feature.id, error);
+    }
+  }
+
   async function runFeatureHook(hook, context = {}) {
     const value = { ...context, runtime: api };
     for (const feature of featureList()) {
       await invokeFeature(feature, hook, value);
     }
     return value;
+  }
+
+  function applyFeatureHook(hook, context = {}) {
+    const value = { ...context, runtime: api };
+    for (const feature of featureList()) {
+      invokeFeatureSync(feature, hook, value);
+    }
+    return value;
+  }
+
+  function queueFeatureHook(hook, context = {}) {
+    const previous = state.hookPromises.get(hook) || Promise.resolve();
+    const current = previous
+      .then(() => runFeatureHook(hook, context))
+      .catch((error) => {
+        recordFailure(`runtime:${hook}`, hook, error);
+        return { ...context, runtime: api };
+      });
+    state.hookPromises.set(hook, current);
+    current.finally(() => {
+      if (state.hookPromises.get(hook) === current) {
+        state.hookPromises.delete(hook);
+      }
+    });
+    return current;
   }
 
   async function mountFeature(feature) {
@@ -320,6 +364,8 @@
     configure,
     registerFeature,
     runFeatureHook,
+    applyFeatureHook,
+    queueFeatureHook,
     markExtensionsReady,
     requestRefresh,
     navigate,
