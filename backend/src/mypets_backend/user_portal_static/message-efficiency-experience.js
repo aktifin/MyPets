@@ -314,9 +314,8 @@ function messageSearchConversationValues() {
   }));
 }
 
-function decorateMessageSearchResults() {
+function decorateMessageSearchResults(values) {
   if (!messageEfficiencyState.query) return;
-  const values = filteredConversations();
   const cards = [...$("conversation-list").children];
   cards.forEach((card, index) => {
     const result = values[index]?.message_search_result;
@@ -392,17 +391,16 @@ function renderMessageWindow(conversation, payload, anchorSequence = 0) {
   const target = detail.querySelector(`[data-sequence="${Number(anchorSequence)}"]`);
   if (target) target.scrollIntoView({ behavior: "smooth", block: "center" });
   else if (detail.lastElementChild) detail.lastElementChild.scrollIntoView({ block: "end" });
+  return items;
 }
 
 async function openConversationWithMessageEfficiency(conversation, anchorSequence = 0) {
   ensureMessageEfficiencyControls();
   messageEfficiencyState.activeConversation = conversation;
   messageEfficiencyState.unread = null;
-  renderMessageActions(conversation);
   if (!messageEfficiencyState.quickReplies) {
     refreshMessageQuickReplies().catch(() => {});
   }
-  renderConfiguredQuickReplies(conversation);
 
   let resolvedAnchor = Number(
     anchorSequence
@@ -424,9 +422,10 @@ async function openConversationWithMessageEfficiency(conversation, anchorSequenc
     `/api/v1/conversations/${encodeURIComponent(conversation.conversation_id)}/message-window${query}`,
   );
   messageEfficiencyState.activeSequence = resolvedAnchor;
-  renderMessageWindow(conversation, payload, resolvedAnchor);
+  const messages = renderMessageWindow(conversation, payload, resolvedAnchor);
   await loadUnreadNavigation(conversation.conversation_id, resolvedAnchor);
   renderConversations();
+  return { payload, messages, resolvedAnchor };
 }
 
 async function navigateUnreadMessage(direction) {
@@ -435,10 +434,10 @@ async function navigateUnreadMessage(direction) {
   if (!unread || !conversation) return;
   const message = direction === "first" ? unread.first : unread[direction];
   if (!message) return;
-  await openConversationWithMessageEfficiency(
-    conversation,
-    Number(message.sequence_number || 0),
-  );
+  await openConversation(conversation, {
+    anchorSequence: Number(message.sequence_number || 0),
+    source: "unread-navigation",
+  });
 }
 
 async function markCurrentMessageRead() {
@@ -458,69 +457,12 @@ async function markCurrentMessageRead() {
     Number(current.sequence_number || 0),
   );
   const nextSequence = Number(navigation?.next?.sequence_number || 0);
-  await openConversationWithMessageEfficiency(
-    refreshed,
-    nextSequence || Number(current.sequence_number || 0),
-  );
+  await openConversation(refreshed, {
+    anchorSequence: nextSequence || Number(current.sequence_number || 0),
+    source: "mark-read",
+  });
   setStatus(globalStatus, "已将当前消息及之前内容标为已读。", "success");
 }
-
-const baseFilteredConversationsForMessageEfficiency = filteredConversations;
-filteredConversations = function filteredConversationsWithSearch() {
-  if (!messageEfficiencyState.query) {
-    return baseFilteredConversationsForMessageEfficiency();
-  }
-  const filter = $("message-category-filter").value;
-  return messageSearchConversationValues().filter(
-    (item) => filter === "all" || item.category === filter,
-  );
-};
-
-const baseRenderConversationsForMessageEfficiency = renderConversations;
-renderConversations = function renderConversationsWithSearch() {
-  baseRenderConversationsForMessageEfficiency();
-  decorateMessageSearchResults();
-};
-
-openConversation = async function openConversationWithSearchAndUnread(conversation) {
-  await openConversationWithMessageEfficiency(conversation);
-};
-
-sendCustomerConversationMessage = async function sendCustomerConversationMessageWithConfirmation(
-  content,
-) {
-  const conversation =
-    messageEfficiencyState.activeConversation || customerActionsState.activeConversation;
-  if (!conversation || conversation.kind !== "direct") {
-    throw new Error("请先选择一个可回复的会话。");
-  }
-  const selected = selectedPortalPet();
-  const response = await api(
-    `/api/v1/conversations/${encodeURIComponent(conversation.conversation_id)}/messages`,
-    {
-      method: "POST",
-      headers: { "Idempotency-Key": customerActionRandom("portal-message") },
-      json: { content, sender_pet_id: selected?.pet?.pet_id || null },
-    },
-  );
-  await refreshPhase1Messages();
-  const refreshed = portalPhase1State.conversations.find(
-    (item) => item.conversation_id === conversation.conversation_id,
-  ) || conversation;
-  await openConversationWithMessageEfficiency(
-    refreshed,
-    Number(response?.message?.sequence_number || 0),
-  );
-  renderMessageActions(refreshed);
-  renderConfiguredQuickReplies(refreshed);
-  setStatus(globalStatus, "消息已发送。", "success");
-};
-
-const baseRenderMessageActionsForEfficiency = renderMessageActions;
-renderMessageActions = function renderMessageActionsWithConfiguredReplies(conversation) {
-  baseRenderMessageActionsForEfficiency(conversation);
-  renderConfiguredQuickReplies(conversation);
-};
 
 async function refreshMessageEfficiencyView() {
   ensureMessageEfficiencyControls();
@@ -568,6 +510,32 @@ portalRuntime.registerFeature({
   label: "消息搜索与快捷回复",
   order: 250,
   mount: ensureMessageEfficiencyControls,
+  onFilterConversations: (context) => {
+    if (!messageEfficiencyState.query) return;
+    context.values = messageSearchConversationValues().filter(
+      (item) => context.filter === "all" || item.category === context.filter,
+    );
+  },
+  onConversationsRenderComplete: ({ conversations }) => {
+    decorateMessageSearchResults(conversations);
+  },
+  onConversationOpenRequest: async (context) => {
+    const anchorSequence = Number(context.options?.anchorSequence || 0);
+    const result = await openConversationWithMessageEfficiency(
+      context.conversation,
+      anchorSequence,
+    );
+    context.handled = true;
+    context.result = result.payload;
+    context.messages = result.messages;
+    context.options = {
+      ...context.options,
+      anchorSequence: result.resolvedAnchor,
+    };
+  },
+  onMessageActionsRenderComplete: ({ conversation }) => {
+    renderConfiguredQuickReplies(conversation);
+  },
   onSectionEnter: async ({ sectionId }) => {
     if (sectionId === "messages-section") {
       await refreshMessageEfficiencyView();
