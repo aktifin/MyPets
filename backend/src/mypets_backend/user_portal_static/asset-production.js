@@ -1,6 +1,15 @@
 "use strict";
 
-const assetProductionState = { jobs: [], selectedJob: null };
+const assetProductionState = {
+  jobs: [],
+  selectedJob: null,
+  loaded: false,
+  loading: false,
+  error: "",
+};
+
+const assetProductionUI = window.MyPetsPortalUI;
+if (!assetProductionUI) throw new Error("MyPets 门户 UI 组件未加载");
 
 function productionStatusLabel(value) {
   return {
@@ -14,13 +23,17 @@ function productionStatusLabel(value) {
 }
 
 function ensureAssetProductionWorkspace() {
+  ensureAssetSubmissionWorkspace();
   const section = $("asset-submissions-section");
   if (!section || $("asset-production-list")) return;
 
   const panel = node("article", "", "panel");
   const heading = node("div", "", "section-heading");
   const titleWrap = node("div");
-  titleWrap.append(node("p", "PRODUCTION", "eyebrow"), node("h2", "素材制作进度"));
+  titleWrap.append(
+    node("p", "PRODUCTION", "eyebrow"),
+    node("h2", "素材制作进度"),
+  );
   const refresh = node("button", "刷新工单", "secondary");
   refresh.id = "refresh-asset-production";
   refresh.type = "button";
@@ -45,37 +58,90 @@ function ensureAssetProductionWorkspace() {
       <label>参考图<input id="asset-production-reference-file" type="file" accept="image/jpeg,image/png,image/webp" required></label>
       <div class="dialog-actions">
         <button id="cancel-asset-production-reference" value="cancel" class="secondary">取消</button>
-        <button value="default">上传参考图</button>
+        <button id="submit-asset-production-reference" value="default">上传参考图</button>
       </div>
     </form>`;
   document.body.append(dialog);
-
-  refresh.addEventListener("click", async () => {
-    try {
-      await refreshAssetProductionJobs();
-      setStatus(globalStatus, "素材制作工单已刷新。", "success");
-    } catch (error) {
-      setStatus(globalStatus, error.message, "error");
-    }
-  });
-  $("cancel-asset-production-reference").addEventListener("click", (event) => {
-    event.preventDefault();
-    dialog.close();
-  });
-  $("asset-production-reference-form").addEventListener("submit", submitProductionReferenceImage);
 }
 
-async function refreshAssetProductionJobs() {
-  assetProductionState.jobs = await api("/api/v1/pet-asset-production-jobs?limit=200");
-  renderAssetProductionJobs();
+function installAssetProductionActions() {
+  ensureAssetProductionWorkspace();
+  const refresh = $("refresh-asset-production");
+  if (refresh && refresh.dataset.assetProductionBound !== "1") {
+    refresh.dataset.assetProductionBound = "1";
+    refresh.addEventListener("click", () => {
+      assetProductionUI.runAction({
+        control: refresh,
+        statusNode: globalStatus,
+        busyLabel: "正在刷新…",
+        successMessage: "素材制作工单已刷新。",
+        task: () => refreshAssetProductionJobs({ showLoading: true }),
+      });
+    });
+  }
+  const cancel = $("cancel-asset-production-reference");
+  if (cancel && cancel.dataset.assetProductionBound !== "1") {
+    cancel.dataset.assetProductionBound = "1";
+    cancel.addEventListener("click", (event) => {
+      event.preventDefault();
+      $("asset-production-reference-dialog")?.close();
+    });
+  }
+  const form = $("asset-production-reference-form");
+  if (form && form.dataset.assetProductionBound !== "1") {
+    form.dataset.assetProductionBound = "1";
+    form.addEventListener("submit", submitProductionReferenceImage);
+  }
+}
+
+function assetProductionRetryAction() {
+  return {
+    label: "重新读取",
+    busyLabel: "正在读取…",
+    onClick: () => refreshAssetProductionJobs({ showLoading: true }),
+  };
 }
 
 function renderAssetProductionJobs() {
+  ensureAssetProductionWorkspace();
   const container = $("asset-production-list");
   if (!container) return;
+  assetProductionUI.setRegionBusy(container, assetProductionState.loading);
+
+  if (assetProductionState.loading && !assetProductionState.loaded) {
+    assetProductionUI.renderState(container, {
+      kind: "loading",
+      title: "正在读取素材制作工单",
+      detail: "正在加载制作进度、补充资料和产物校验状态。",
+    });
+    return;
+  }
+  if (assetProductionState.error && !assetProductionState.loaded) {
+    assetProductionUI.renderState(container, {
+      kind: "error",
+      title: "素材制作工单读取失败",
+      detail: assetProductionState.error,
+      action: assetProductionRetryAction(),
+    });
+    return;
+  }
+  if (!assetProductionState.loaded) {
+    assetProductionUI.renderState(container, {
+      kind: "idle",
+      title: "素材制作工单尚未读取",
+      detail: "进入专属形象页面后读取人工制作进度。",
+    });
+    return;
+  }
+
   container.replaceChildren();
+  assetProductionUI.clearState(container);
   if (!assetProductionState.jobs.length) {
-    empty(container, "审核通过后会自动建立人工素材制作工单。");
+    assetProductionUI.renderState(container, {
+      kind: "empty",
+      title: "当前没有素材制作工单",
+      detail: "原图审核通过后，服务端会自动建立人工素材制作工单。",
+    });
     return;
   }
 
@@ -102,25 +168,46 @@ function renderAssetProductionJobs() {
     built.card.insertBefore(progress, built.actions);
 
     if (job.can_add_reference) {
-      built.actions.append(actionButton("补充参考图", () => openProductionReferenceDialog(job), "secondary"));
+      built.actions.append(
+        actionButton(
+          "补充参考图",
+          () => openProductionReferenceDialog(job),
+          "secondary",
+        ),
+      );
     }
     if (job.can_cancel) {
-      built.actions.append(actionButton("撤回工单", async () => {
-        if (!window.confirm(`确认撤回 ${job.pet_name} 的尚未开始工单？`)) return;
-        await api(`/api/v1/pet-asset-production-jobs/${encodeURIComponent(job.job_id)}/cancel`, {
-          method: "POST",
-          json: { note: "用户在制作开始前通过 Web 门户撤回工单。" },
-        });
-        await refreshAssetProductionJobs();
-        setStatus(globalStatus, "工单已撤回。", "success");
-      }, "danger"));
+      built.actions.append(
+        actionButton(
+          "撤回工单",
+          async () => {
+            if (!window.confirm(`确认撤回 ${job.pet_name} 的尚未开始工单？`)) return;
+            await api(
+              `/api/v1/pet-asset-production-jobs/${encodeURIComponent(job.job_id)}/cancel`,
+              {
+                method: "POST",
+                json: { note: "用户在制作开始前通过 Web 门户撤回工单。" },
+              },
+            );
+            await refreshAssetProductionJobs({ showLoading: false });
+            setStatus(globalStatus, "工单已撤回。", "success");
+          },
+          "danger",
+        ),
+      );
     }
 
     if (job.references.length) {
       const references = node("div", "", "item-meta");
       references.append(node("strong", `已补充 ${job.references.length} 张参考图`));
       job.references.forEach((reference, index) => {
-        references.append(actionButton(`下载参考图 ${index + 1}`, () => downloadProductionReference(reference), "secondary"));
+        references.append(
+          actionButton(
+            `下载参考图 ${index + 1}`,
+            () => downloadProductionReference(reference),
+            "secondary",
+          ),
+        );
       });
       built.card.insertBefore(references, built.actions);
     }
@@ -136,11 +223,47 @@ function renderAssetProductionJobs() {
     }
     container.append(built.card);
   });
+
+  if (assetProductionState.error) {
+    assetProductionUI.renderInlineNotice(container, {
+      kind: "error",
+      title: "最新工单状态暂未更新",
+      detail: `${assetProductionState.error} 当前仍显示上次成功读取的工单。`,
+      action: assetProductionRetryAction(),
+    });
+  }
+}
+
+async function refreshAssetProductionJobs(options = {}) {
+  ensureAssetProductionWorkspace();
+  if (!accessToken) {
+    resetAssetProductionState();
+    return [];
+  }
+  const showLoading = options.showLoading ?? !assetProductionState.loaded;
+  assetProductionState.loading = true;
+  assetProductionState.error = "";
+  if (showLoading || !assetProductionState.loaded) renderAssetProductionJobs();
+  else assetProductionUI.setRegionBusy($("asset-production-list"), true);
+
+  try {
+    const payload = await api("/api/v1/pet-asset-production-jobs?limit=200");
+    assetProductionState.jobs = Array.isArray(payload) ? payload : [];
+    assetProductionState.loaded = true;
+    return assetProductionState.jobs;
+  } catch (error) {
+    assetProductionState.error = error.message || "素材制作工单读取失败";
+    throw error;
+  } finally {
+    assetProductionState.loading = false;
+    renderAssetProductionJobs();
+  }
 }
 
 function openProductionReferenceDialog(job) {
   assetProductionState.selectedJob = job;
-  $("asset-production-reference-pet").textContent = `${job.pet_name} · ${productionStatusLabel(job.status)}`;
+  $("asset-production-reference-pet").textContent =
+    `${job.pet_name} · ${productionStatusLabel(job.status)}`;
   $("asset-production-reference-note").value = "";
   $("asset-production-reference-file").value = "";
   $("asset-production-reference-dialog").showModal();
@@ -149,26 +272,37 @@ function openProductionReferenceDialog(job) {
 async function submitProductionReferenceImage(event) {
   event.preventDefault();
   const job = assetProductionState.selectedJob;
-  const file = $("asset-production-reference-file").files[0];
-  if (!job || !file) return;
-  const data = new FormData();
-  data.append("note", $("asset-production-reference-note").value.trim());
-  data.append("image", file);
-  const key = typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random()}`;
-  try {
-    await api(`/api/v1/pet-asset-production-jobs/${encodeURIComponent(job.job_id)}/reference-images`, {
-      method: "POST",
-      headers: { "Idempotency-Key": `portal-production-reference-${key}` },
-      body: data,
-    });
-    $("asset-production-reference-dialog").close();
-    await refreshAssetProductionJobs();
-    setStatus(globalStatus, "补充参考图已安全清理并提交。", "success");
-  } catch (error) {
-    setStatus(globalStatus, error.message, "error");
+  const file = $("asset-production-reference-file")?.files?.[0];
+  if (!job || !file) {
+    setStatus(globalStatus, "请选择需要补充的参考图。", "error");
+    return;
   }
+  const submit = $("submit-asset-production-reference");
+  assetProductionUI.runAction({
+    control: submit,
+    statusNode: globalStatus,
+    busyLabel: "正在上传…",
+    task: async () => {
+      const data = new FormData();
+      data.append("note", $("asset-production-reference-note").value.trim());
+      data.append("image", file);
+      const key = typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random()}`;
+      await api(
+        `/api/v1/pet-asset-production-jobs/${encodeURIComponent(job.job_id)}/reference-images`,
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": `portal-production-reference-${key}` },
+          body: data,
+        },
+      );
+      $("asset-production-reference-dialog").close();
+      assetProductionState.selectedJob = null;
+      await refreshAssetProductionJobs({ showLoading: false });
+      setStatus(globalStatus, "补充参考图已安全清理并提交。", "success");
+    },
+  });
 }
 
 async function downloadProductionReference(reference) {
@@ -195,10 +329,41 @@ async function downloadProductionReference(reference) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-ensureAssetProductionWorkspace();
+function resetAssetProductionState() {
+  assetProductionState.jobs = [];
+  assetProductionState.selectedJob = null;
+  assetProductionState.loaded = false;
+  assetProductionState.loading = false;
+  assetProductionState.error = "";
+  renderAssetProductionJobs();
+  const dialog = $("asset-production-reference-dialog");
+  if (dialog?.open) dialog.close();
+}
 
-const refreshAssetSubmissionWorkspaceWithoutProduction = refreshAssetSubmissionWorkspace;
-refreshAssetSubmissionWorkspace = async function refreshSubmissionAndProduction() {
-  await refreshAssetSubmissionWorkspaceWithoutProduction();
-  await refreshAssetProductionJobs();
-};
+portalRuntime.registerFeature({
+  id: "asset-production",
+  label: "素材制作进度",
+  order: 340,
+  mount: () => {
+    ensureAssetProductionWorkspace();
+    installAssetProductionActions();
+    renderAssetProductionJobs();
+  },
+  onSectionEnter: async ({ sectionId, source }) => {
+    if (
+      sectionId === "asset-submissions-section"
+      && accessToken
+      && source !== "anonymous"
+    ) {
+      await refreshAssetProductionJobs({
+        showLoading: !assetProductionState.loaded,
+      });
+    }
+  },
+  onRealtime: async () => {
+    const section = $("asset-submissions-section");
+    if (!accessToken || !section || section.hidden || !assetProductionState.loaded) return;
+    await refreshAssetProductionJobs({ showLoading: false });
+  },
+  onLogout: resetAssetProductionState,
+});

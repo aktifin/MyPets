@@ -1,6 +1,14 @@
 "use strict";
 
-const assetSubmissionState = { items: [] };
+const assetSubmissionState = {
+  items: [],
+  loaded: false,
+  loading: false,
+  error: "",
+};
+
+const assetSubmissionUI = window.MyPetsPortalUI;
+if (!assetSubmissionUI) throw new Error("MyPets 门户 UI 组件未加载");
 
 function assetStatusLabel(value) {
   return {
@@ -20,9 +28,11 @@ function assetStyleLabel(value) {
 }
 
 function ensureAssetSubmissionWorkspace() {
-  if ($("asset-submissions-section")) return;
+  let section = $("asset-submissions-section");
+  if (section) return section;
   const navigation = document.querySelector(".main-tabs");
-  if (!navigation) return;
+  const appView = $("app-view");
+  if (!navigation || !appView) return null;
 
   const tab = document.createElement("button");
   tab.className = "main-tab";
@@ -31,10 +41,11 @@ function ensureAssetSubmissionWorkspace() {
   tab.textContent = "专属形象";
   navigation.append(tab);
 
-  const section = document.createElement("section");
+  section = document.createElement("section");
   section.id = "asset-submissions-section";
   section.className = "workspace";
   section.hidden = true;
+  section.tabIndex = -1;
   section.innerHTML = `
     <div class="two-column">
       <article class="panel">
@@ -73,35 +84,37 @@ function ensureAssetSubmissionWorkspace() {
         <div id="asset-submission-list" class="card-list"></div>
       </article>
     </div>`;
-  $("app-view").append(section);
+  appView.append(section);
+  return section;
+}
 
-  tab.addEventListener("click", async () => {
-    document.querySelectorAll(".main-tab").forEach((item) => item.classList.remove("active"));
-    tab.classList.add("active");
-    document.querySelectorAll(".workspace").forEach((workspace) => {
-      workspace.hidden = workspace.id !== "asset-submissions-section";
+function installAssetSubmissionActions() {
+  ensureAssetSubmissionWorkspace();
+  const form = $("asset-submission-form");
+  if (form && form.dataset.assetSubmissionBound !== "1") {
+    form.dataset.assetSubmissionBound = "1";
+    form.addEventListener("submit", submitPetAssetImage);
+  }
+  const refresh = $("refresh-asset-submissions");
+  if (refresh && refresh.dataset.assetSubmissionBound !== "1") {
+    refresh.dataset.assetSubmissionBound = "1";
+    refresh.addEventListener("click", () => {
+      assetSubmissionUI.runAction({
+        control: refresh,
+        statusNode: globalStatus,
+        busyLabel: "正在刷新…",
+        successMessage: "专属形象提交已刷新。",
+        task: () => refreshAssetSubmissionWorkspace({ showLoading: true }),
+      });
     });
-    if (!accessToken) return;
-    try {
-      await refreshAssetSubmissionWorkspace();
-    } catch (error) {
-      setStatus(globalStatus, error.message, "error");
-    }
-  });
-
-  $("asset-submission-form").addEventListener("submit", submitPetAssetImage);
-  $("refresh-asset-submissions").addEventListener("click", async () => {
-    try {
-      await refreshAssetSubmissionWorkspace();
-      setStatus(globalStatus, "专属形象提交已刷新。", "success");
-    } catch (error) {
-      setStatus(globalStatus, error.message, "error");
-    }
-  });
+  }
 }
 
 function renderAssetPetOptions() {
+  ensureAssetSubmissionWorkspace();
   const select = $("asset-submission-pet");
+  const submit = $("asset-submission-submit");
+  if (!select || !submit) return;
   const previous = select.value;
   select.replaceChildren();
   const available = dashboard?.pets?.filter((item) => item.can_configure) || [];
@@ -109,7 +122,7 @@ function renderAssetPetOptions() {
     const option = node("option", "没有可提交形象的自有宠物");
     option.value = "";
     select.append(option);
-    $("asset-submission-submit").disabled = true;
+    submit.disabled = true;
     return;
   }
   available.forEach((item) => {
@@ -119,27 +132,59 @@ function renderAssetPetOptions() {
   });
   const preferred = available.some((item) => item.pet.pet_id === previous)
     ? previous
-    : (dashboard.selected_pet_id || available[0].pet.pet_id);
+    : (dashboard?.selected_pet_id || available[0].pet.pet_id);
   select.value = preferred;
-  $("asset-submission-submit").disabled = false;
+  submit.disabled = false;
 }
 
-async function refreshAssetSubmissions() {
-  assetSubmissionState.items = await api("/api/v1/pet-asset-submissions?limit=200");
-  renderAssetSubmissions();
-}
-
-async function refreshAssetSubmissionWorkspace() {
-  if (!dashboard) await refreshDashboard();
-  renderAssetPetOptions();
-  await refreshAssetSubmissions();
+function assetSubmissionRetryAction() {
+  return {
+    label: "重新读取",
+    busyLabel: "正在读取…",
+    onClick: () => refreshAssetSubmissionWorkspace({ showLoading: true }),
+  };
 }
 
 function renderAssetSubmissions() {
+  ensureAssetSubmissionWorkspace();
   const container = $("asset-submission-list");
+  if (!container) return;
+  assetSubmissionUI.setRegionBusy(container, assetSubmissionState.loading);
+
+  if (assetSubmissionState.loading && !assetSubmissionState.loaded) {
+    assetSubmissionUI.renderState(container, {
+      kind: "loading",
+      title: "正在读取专属形象提交",
+      detail: "正在加载原图审核状态和人工制作准备信息。",
+    });
+    return;
+  }
+  if (assetSubmissionState.error && !assetSubmissionState.loaded) {
+    assetSubmissionUI.renderState(container, {
+      kind: "error",
+      title: "专属形象提交读取失败",
+      detail: assetSubmissionState.error,
+      action: assetSubmissionRetryAction(),
+    });
+    return;
+  }
+  if (!assetSubmissionState.loaded) {
+    assetSubmissionUI.renderState(container, {
+      kind: "idle",
+      title: "专属形象提交尚未读取",
+      detail: "进入本页面后读取当前账户的原图提交记录。",
+    });
+    return;
+  }
+
   container.replaceChildren();
+  assetSubmissionUI.clearState(container);
   if (!assetSubmissionState.items.length) {
-    empty(container, "尚未提交宠物原图。");
+    assetSubmissionUI.renderState(container, {
+      kind: "empty",
+      title: "尚未提交宠物原图",
+      detail: "选择自己管理的宠物并确认图片权利后，可以提交人工审核。",
+    });
     return;
   }
   assetSubmissionState.items.forEach((item) => {
@@ -150,9 +195,55 @@ function renderAssetSubmissions() {
     ];
     if (item.review_comment) meta.push(`审核意见：${item.review_comment}`);
     const built = itemCard(item.pet_name, meta);
-    built.actions.append(actionButton("下载已清理图片", () => downloadAssetSubmission(item), "secondary"));
+    built.actions.append(
+      actionButton("下载已清理图片", () => downloadAssetSubmission(item), "secondary"),
+    );
     container.append(built.card);
   });
+  if (assetSubmissionState.error) {
+    assetSubmissionUI.renderInlineNotice(container, {
+      kind: "error",
+      title: "最新提交状态暂未更新",
+      detail: `${assetSubmissionState.error} 当前仍显示上次成功读取的记录。`,
+      action: assetSubmissionRetryAction(),
+    });
+  }
+}
+
+async function refreshAssetSubmissions(options = {}) {
+  ensureAssetSubmissionWorkspace();
+  if (!accessToken) {
+    resetAssetSubmissionState();
+    return [];
+  }
+  const showLoading = options.showLoading ?? !assetSubmissionState.loaded;
+  assetSubmissionState.loading = true;
+  assetSubmissionState.error = "";
+  if (showLoading || !assetSubmissionState.loaded) renderAssetSubmissions();
+  else assetSubmissionUI.setRegionBusy($("asset-submission-list"), true);
+
+  try {
+    const payload = await api("/api/v1/pet-asset-submissions?limit=200");
+    assetSubmissionState.items = Array.isArray(payload) ? payload : [];
+    assetSubmissionState.loaded = true;
+    return assetSubmissionState.items;
+  } catch (error) {
+    assetSubmissionState.error = error.message || "专属形象提交读取失败";
+    throw error;
+  } finally {
+    assetSubmissionState.loading = false;
+    renderAssetSubmissions();
+  }
+}
+
+async function refreshAssetSubmissionWorkspace(options = {}) {
+  if (!accessToken) {
+    resetAssetSubmissionState();
+    return;
+  }
+  if (!dashboard) await refreshDashboard();
+  renderAssetPetOptions();
+  await refreshAssetSubmissions(options);
 }
 
 async function downloadAssetSubmission(item) {
@@ -179,46 +270,92 @@ async function downloadAssetSubmission(item) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function resetAssetSubmissionForm() {
+  const form = $("asset-submission-form");
+  if (!form) return;
+  form.reset();
+  const style = $("asset-submission-style");
+  const rightsBasis = $("asset-submission-rights-basis");
+  if (style) style.value = "light_chibi";
+  if (rightsBasis) rightsBasis.value = "owner_photo";
+  renderAssetPetOptions();
+}
+
 async function submitPetAssetImage(event) {
   event.preventDefault();
-  const file = $("asset-submission-file").files[0];
+  const file = $("asset-submission-file")?.files?.[0];
   if (!file) {
     setStatus(globalStatus, "请选择宠物图片。", "error");
     return;
   }
-  if (!$("asset-submission-rights").checked) {
+  if (!$("asset-submission-rights")?.checked) {
     setStatus(globalStatus, "必须确认图片权利。", "error");
     return;
   }
   const button = $("asset-submission-submit");
-  button.disabled = true;
-  const data = new FormData();
-  data.append("pet_id", $("asset-submission-pet").value);
-  data.append("style_preference", $("asset-submission-style").value);
-  data.append("personality_hint", $("asset-submission-personality").value.trim());
-  data.append("rights_basis", $("asset-submission-rights-basis").value);
-  data.append("rights_confirmed", "true");
-  data.append("image", file);
-  const key = typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random()}`;
-  try {
-    const created = await api("/api/v1/pet-asset-submissions", {
-      method: "POST",
-      headers: { "Idempotency-Key": `portal-asset-submission-${key}` },
-      body: data,
-    });
-    event.currentTarget.reset();
-    $("asset-submission-style").value = "light_chibi";
-    $("asset-submission-rights-basis").value = "owner_photo";
-    renderAssetPetOptions();
-    await refreshAssetSubmissions();
-    setStatus(globalStatus, `${created.pet_name} 的原图已安全提交。`, "success");
-  } catch (error) {
-    setStatus(globalStatus, error.message, "error");
-  } finally {
-    button.disabled = false;
-  }
+  assetSubmissionUI.runAction({
+    control: button,
+    statusNode: globalStatus,
+    busyLabel: "正在提交…",
+    task: async () => {
+      const data = new FormData();
+      data.append("pet_id", $("asset-submission-pet").value);
+      data.append("style_preference", $("asset-submission-style").value);
+      data.append("personality_hint", $("asset-submission-personality").value.trim());
+      data.append("rights_basis", $("asset-submission-rights-basis").value);
+      data.append("rights_confirmed", "true");
+      data.append("image", file);
+      const key = typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random()}`;
+      const created = await api("/api/v1/pet-asset-submissions", {
+        method: "POST",
+        headers: { "Idempotency-Key": `portal-asset-submission-${key}` },
+        body: data,
+      });
+      resetAssetSubmissionForm();
+      await refreshAssetSubmissions({ showLoading: false });
+      setStatus(globalStatus, `${created.pet_name} 的原图已安全提交。`, "success");
+    },
+  });
 }
 
-ensureAssetSubmissionWorkspace();
+function resetAssetSubmissionState() {
+  assetSubmissionState.items = [];
+  assetSubmissionState.loaded = false;
+  assetSubmissionState.loading = false;
+  assetSubmissionState.error = "";
+  renderAssetSubmissions();
+  renderAssetPetOptions();
+}
+
+portalRuntime.registerFeature({
+  id: "asset-submissions",
+  label: "专属形象提交",
+  order: 330,
+  mount: () => {
+    ensureAssetSubmissionWorkspace();
+    installAssetSubmissionActions();
+    renderAssetPetOptions();
+    renderAssetSubmissions();
+  },
+  onRefreshComplete: renderAssetPetOptions,
+  onPetContextRefresh: renderAssetPetOptions,
+  onSectionEnter: async ({ sectionId, source }) => {
+    if (
+      sectionId === "asset-submissions-section"
+      && accessToken
+      && source !== "anonymous"
+    ) {
+      await refreshAssetSubmissionWorkspace({
+        showLoading: !assetSubmissionState.loaded,
+      });
+    }
+  },
+  onRealtime: async () => {
+    const section = $("asset-submissions-section");
+    if (!accessToken || !section || section.hidden || !assetSubmissionState.loaded) return;
+    await refreshAssetSubmissions({ showLoading: false });
+  },
+  onLogout: resetAssetSubmissionState,
+});
