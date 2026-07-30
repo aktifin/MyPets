@@ -42,15 +42,6 @@ function ensureCustomerHistoryWorkspace() {
     const button = historyNode("button", "处理记录", "main-tab portal-more-item");
     button.type = "button";
     button.dataset.section = "history-section";
-    button.addEventListener("click", async () => {
-      activateCustomerSection("history-section");
-      if (!accessToken) return;
-      try {
-        await refreshCustomerHistory();
-      } catch (error) {
-        setStatus(globalStatus, error.message, "error");
-      }
-    });
     const moreMenu = $("portal-more-navigation")?.querySelector(".portal-more-menu");
     if (moreMenu) moreMenu.insertBefore(button, moreMenu.lastElementChild || null);
     else navigation.append(button);
@@ -69,7 +60,11 @@ function ensureCustomerHistoryWorkspace() {
   copy.append(
     historyNode("p", "HISTORY", "eyebrow"),
     historyNode("h2", "处理记录"),
-    historyNode("p", "好友、共同照料、串门和提醒的处理结果集中保留，可再次打开相关详情。", "hint"),
+    historyNode(
+      "p",
+      "好友、共同照料、串门和提醒的处理结果集中保留，可再次打开相关详情。",
+      "hint",
+    ),
   );
   const badge = historyNode("span", "尚未读取", "badge");
   badge.id = "customer-history-count";
@@ -150,8 +145,11 @@ function customerHistoryQuery() {
     kind: customerHistoryState.kind,
     limit: "200",
   });
-  if (customerHistoryState.days > 0) params.set("days", String(customerHistoryState.days));
-  else params.set("start", "1970-01-01T00:00:00+00:00");
+  if (customerHistoryState.days > 0) {
+    params.set("days", String(customerHistoryState.days));
+  } else {
+    params.set("start", "1970-01-01T00:00:00+00:00");
+  }
   return params.toString();
 }
 
@@ -175,13 +173,15 @@ function historyMeta(item) {
   const parts = [localTime(item.occurred_at)];
   if (item.actor_display_name) parts.push(`处理人：${item.actor_display_name}`);
   if (item.pet_name) parts.push(`宠物：${item.pet_name}`);
-  if (item.counterparty_display_name) parts.push(`相关用户：${item.counterparty_display_name}`);
+  if (item.counterparty_display_name) {
+    parts.push(`相关用户：${item.counterparty_display_name}`);
+  }
   return parts.join(" · ");
 }
 
 async function openCustomerHistoryTarget(item) {
   if (item.target_kind === "shared_care") {
-    activateCustomerSection("friends-section");
+    portalRuntime.navigate("friends-section", { source: "history-target" });
     await refreshSocial();
     const invitations = $("incoming-invitations") || $("outgoing-invitations");
     invitations?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -195,10 +195,18 @@ function renderCustomerHistory() {
   const count = $("customer-history-count");
   const list = $("customer-history-list");
   if (!count || !list) return;
-  count.textContent = customerHistoryState.loaded ? `${customerHistoryState.count} 条` : "尚未读取";
+  count.textContent = customerHistoryState.loaded
+    ? `${customerHistoryState.count} 条`
+    : "尚未读取";
   list.replaceChildren();
   if (!customerHistoryState.loaded) {
-    list.append(historyNode("div", "进入处理记录后，可按类型和时间查看已完成的操作。", "empty-state"));
+    list.append(
+      historyNode(
+        "div",
+        "进入处理记录后，可按类型和时间查看已完成的操作。",
+        "empty-state",
+      ),
+    );
     return;
   }
   if (!customerHistoryState.items.length) {
@@ -206,12 +214,24 @@ function renderCustomerHistory() {
     return;
   }
   customerHistoryState.items.forEach((item) => {
-    const card = historyNode("article", "", `customer-history-card action-${item.action}`);
+    const card = historyNode(
+      "article",
+      "",
+      `customer-history-card action-${item.action}`,
+    );
     const top = historyNode("div", "", "customer-history-card-top");
     const labels = historyNode("div", "", "customer-history-labels");
     labels.append(
-      historyNode("span", customerHistoryKindLabels[item.kind] || item.kind, "customer-history-kind"),
-      historyNode("span", customerHistoryActionLabels[item.action] || item.action, "customer-history-action"),
+      historyNode(
+        "span",
+        customerHistoryKindLabels[item.kind] || item.kind,
+        "customer-history-kind",
+      ),
+      historyNode(
+        "span",
+        customerHistoryActionLabels[item.action] || item.action,
+        "customer-history-action",
+      ),
     );
     top.append(labels, historyNode("time", localTime(item.occurred_at), "customer-history-time"));
     const body = historyNode("div", "", "customer-history-body");
@@ -239,20 +259,29 @@ function renderCustomerHistory() {
   });
 }
 
-ensureCustomerHistoryWorkspace();
-
-const baseLogoutForCustomerHistory = logout;
-logout = function logoutWithCustomerHistory(message = "", kind = "") {
-  customerHistoryState.count = 0;
-  customerHistoryState.items = [];
-  customerHistoryState.loaded = false;
-  baseLogoutForCustomerHistory(message, kind);
-  renderCustomerHistory();
-};
-
-window.addEventListener("mypets:realtime-cursor", () => {
-  const section = $("history-section");
-  if (accessToken && section && !section.hidden && customerHistoryState.loaded) {
-    refreshCustomerHistory().catch(() => {});
-  }
+portalRuntime.registerFeature({
+  id: "customer-history",
+  label: "处理记录",
+  order: 300,
+  mount: () => {
+    ensureCustomerHistoryWorkspace();
+    renderCustomerHistory();
+  },
+  onSectionEnter: async ({ sectionId }) => {
+    if (sectionId === "history-section" && accessToken) {
+      await refreshCustomerHistory();
+    }
+  },
+  onRealtime: async () => {
+    const section = $("history-section");
+    if (accessToken && section && !section.hidden && customerHistoryState.loaded) {
+      await refreshCustomerHistory();
+    }
+  },
+  onLogout: () => {
+    customerHistoryState.count = 0;
+    customerHistoryState.items = [];
+    customerHistoryState.loaded = false;
+    renderCustomerHistory();
+  },
 });

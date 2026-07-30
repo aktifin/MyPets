@@ -8,7 +8,7 @@ const messageEfficiencyState = {
   activeSequence: 0,
   unread: null,
   quickReplies: null,
-  searchTimer: null,
+  searchTimer: 0,
 };
 
 const messageMatchLabels = {
@@ -53,9 +53,14 @@ function ensureMessageEfficiencyControls() {
 
     form.addEventListener("submit", (event) => event.preventDefault());
     input.addEventListener("input", () => {
-      if (messageEfficiencyState.searchTimer) clearTimeout(messageEfficiencyState.searchTimer);
-      messageEfficiencyState.searchTimer = setTimeout(() => {
-        runMessageSearch(input.value).catch((error) => setStatus(globalStatus, error.message, "error"));
+      if (messageEfficiencyState.searchTimer) {
+        window.clearTimeout(messageEfficiencyState.searchTimer);
+      }
+      messageEfficiencyState.searchTimer = window.setTimeout(() => {
+        messageEfficiencyState.searchTimer = 0;
+        runMessageSearch(input.value).catch((error) => {
+          setStatus(globalStatus, error.message, "error");
+        });
       }, 260);
     });
     clear.addEventListener("click", () => {
@@ -91,7 +96,11 @@ function ensureMessageEfficiencyControls() {
     first.addEventListener("click", () => navigateUnreadMessage("first"));
     previous.addEventListener("click", () => navigateUnreadMessage("previous"));
     next.addEventListener("click", () => navigateUnreadMessage("next"));
-    read.addEventListener("click", () => markCurrentMessageRead().catch((error) => setStatus(globalStatus, error.message, "error")));
+    read.addEventListener("click", () => {
+      markCurrentMessageRead().catch((error) => {
+        setStatus(globalStatus, error.message, "error");
+      });
+    });
   }
 
   ensureQuickReplySettings();
@@ -104,7 +113,11 @@ function ensureQuickReplySettings() {
       const button = messageEfficiencyNode("button", "管理快捷回复", "ghost compact");
       button.id = "message-quick-reply-settings-button";
       button.type = "button";
-      button.addEventListener("click", () => openQuickReplySettings().catch((error) => setStatus(globalStatus, error.message, "error")));
+      button.addEventListener("click", () => {
+        openQuickReplySettings().catch((error) => {
+          setStatus(globalStatus, error.message, "error");
+        });
+      });
       panel.append(button);
     }
   }
@@ -119,7 +132,11 @@ function ensureQuickReplySettings() {
   copy.append(
     messageEfficiencyNode("p", "QUICK REPLIES", "eyebrow"),
     messageEfficiencyNode("h2", "快捷回复设置"),
-    messageEfficiencyNode("p", "每行一条，当前顺序就是会话中展示顺序。点击快捷回复只会填入输入框，确认后再发送。", "hint"),
+    messageEfficiencyNode(
+      "p",
+      "每行一条，当前顺序就是会话中展示顺序。点击快捷回复只会填入输入框，确认后再发送。",
+      "hint",
+    ),
   );
   const close = messageEfficiencyNode("button", "关闭", "secondary");
   close.type = "button";
@@ -163,13 +180,18 @@ function ensureQuickReplySettings() {
   dialog.append(form);
   document.body.append(dialog);
 
-  category.addEventListener("change", () => renderQuickReplyEditor());
+  category.addEventListener("change", renderQuickReplyEditor);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     save.disabled = true;
     try {
-      const values = replies.value.split("\n").map((item) => item.trim()).filter(Boolean);
-      if (values.length < 1 || values.length > 6) throw new Error("每类需要保留 1 至 6 条快捷回复。");
+      const values = replies.value
+        .split("\n")
+        .map((item) => item.trim())
+        .filter(Boolean);
+      if (values.length < 1 || values.length > 6) {
+        throw new Error("每类需要保留 1 至 6 条快捷回复。");
+      }
       messageEfficiencyState.quickReplies = await api("/api/v1/message-quick-replies", {
         method: "PATCH",
         json: { categories: { [category.value]: values } },
@@ -218,7 +240,13 @@ async function resetQuickReplies(category, status) {
   messageEfficiencyState.quickReplies = payload;
   renderQuickReplyEditor();
   renderConfiguredQuickReplies(messageEfficiencyState.activeConversation);
-  setStatus(status, category === "all" ? "全部快捷回复已恢复默认。" : "本类快捷回复已恢复默认。", "success");
+  setStatus(
+    status,
+    category === "all"
+      ? "全部快捷回复已恢复默认。"
+      : "本类快捷回复已恢复默认。",
+    "success",
+  );
 }
 
 function configuredQuickReplies(conversation) {
@@ -267,9 +295,13 @@ async function runMessageSearch(rawQuery) {
     return;
   }
   if (result) result.textContent = "正在搜索…";
-  const payload = await api(`/api/v1/message-search?query=${encodeURIComponent(query)}&limit=100`);
+  const payload = await api(
+    `/api/v1/message-search?query=${encodeURIComponent(query)}&limit=100`,
+  );
   if (messageEfficiencyState.query !== query) return;
-  messageEfficiencyState.searchItems = Array.isArray(payload?.items) ? payload.items : [];
+  messageEfficiencyState.searchItems = Array.isArray(payload?.items)
+    ? payload.items
+    : [];
   messageEfficiencyState.searchCount = Number(payload?.count || 0);
   if (result) result.textContent = `${messageEfficiencyState.searchCount} 个匹配会话`;
   renderConversations();
@@ -289,8 +321,14 @@ function decorateMessageSearchResults() {
   cards.forEach((card, index) => {
     const result = values[index]?.message_search_result;
     if (!result) return;
-    const labels = (result.matched_fields || []).map((field) => messageMatchLabels[field] || field).join("、");
-    const detail = messageEfficiencyNode("p", `${labels ? `匹配：${labels} · ` : ""}${result.snippet || "匹配到相关会话"}`, "message-search-match");
+    const labels = (result.matched_fields || [])
+      .map((field) => messageMatchLabels[field] || field)
+      .join("、");
+    const detail = messageEfficiencyNode(
+      "p",
+      `${labels ? `匹配：${labels} · ` : ""}${result.snippet || "匹配到相关会话"}`,
+      "message-search-match",
+    );
     const actions = card.querySelector(".item-actions");
     if (actions) card.insertBefore(detail, actions);
     else card.append(detail);
@@ -299,8 +337,12 @@ function decorateMessageSearchResults() {
 
 async function loadUnreadNavigation(conversationId, currentSequence = 0) {
   const query = currentSequence > 0 ? `?current_sequence=${currentSequence}` : "";
-  const payload = await api(`/api/v1/conversations/${encodeURIComponent(conversationId)}/unread-navigation${query}`);
-  if (messageEfficiencyState.activeConversation?.conversation_id !== conversationId) return null;
+  const payload = await api(
+    `/api/v1/conversations/${encodeURIComponent(conversationId)}/unread-navigation${query}`,
+  );
+  if (messageEfficiencyState.activeConversation?.conversation_id !== conversationId) {
+    return null;
+  }
   messageEfficiencyState.unread = payload;
   renderUnreadNavigation();
   return payload;
@@ -342,7 +384,9 @@ function renderMessageWindow(conversation, payload, anchorSequence = 0) {
       messageEfficiencyNode("p", message.content),
       messageEfficiencyNode("span", phase1Time(message.created_at), "hint"),
     );
-    if (Number(message.sequence_number) === Number(anchorSequence)) card.classList.add("message-anchor");
+    if (Number(message.sequence_number) === Number(anchorSequence)) {
+      card.classList.add("message-anchor");
+    }
     detail.append(card);
   });
   const target = detail.querySelector(`[data-sequence="${Number(anchorSequence)}"]`);
@@ -355,14 +399,30 @@ async function openConversationWithMessageEfficiency(conversation, anchorSequenc
   messageEfficiencyState.activeConversation = conversation;
   messageEfficiencyState.unread = null;
   renderMessageActions(conversation);
-  if (!messageEfficiencyState.quickReplies) refreshMessageQuickReplies().catch(() => {});
+  if (!messageEfficiencyState.quickReplies) {
+    refreshMessageQuickReplies().catch(() => {});
+  }
   renderConfiguredQuickReplies(conversation);
 
-  let resolvedAnchor = Number(anchorSequence || conversation?.message_search_result?.matched_message?.sequence_number || 0);
+  let resolvedAnchor = Number(
+    anchorSequence
+      || conversation?.message_search_result?.matched_message?.sequence_number
+      || 0,
+  );
   const initialUnread = await loadUnreadNavigation(conversation.conversation_id, 0);
-  if (!resolvedAnchor) resolvedAnchor = Number(initialUnread?.current?.sequence_number || conversation.last_message?.sequence_number || 0);
-  const query = resolvedAnchor > 0 ? `?center_sequence=${resolvedAnchor}&before=45&after=45` : "?before=45&after=45";
-  const payload = await api(`/api/v1/conversations/${encodeURIComponent(conversation.conversation_id)}/message-window${query}`);
+  if (!resolvedAnchor) {
+    resolvedAnchor = Number(
+      initialUnread?.current?.sequence_number
+        || conversation.last_message?.sequence_number
+        || 0,
+    );
+  }
+  const query = resolvedAnchor > 0
+    ? `?center_sequence=${resolvedAnchor}&before=45&after=45`
+    : "?before=45&after=45";
+  const payload = await api(
+    `/api/v1/conversations/${encodeURIComponent(conversation.conversation_id)}/message-window${query}`,
+  );
   messageEfficiencyState.activeSequence = resolvedAnchor;
   renderMessageWindow(conversation, payload, resolvedAnchor);
   await loadUnreadNavigation(conversation.conversation_id, resolvedAnchor);
@@ -375,7 +435,10 @@ async function navigateUnreadMessage(direction) {
   if (!unread || !conversation) return;
   const message = direction === "first" ? unread.first : unread[direction];
   if (!message) return;
-  await openConversationWithMessageEfficiency(conversation, Number(message.sequence_number || 0));
+  await openConversationWithMessageEfficiency(
+    conversation,
+    Number(message.sequence_number || 0),
+  );
 }
 
 async function markCurrentMessageRead() {
@@ -383,22 +446,34 @@ async function markCurrentMessageRead() {
   const conversation = messageEfficiencyState.activeConversation;
   const current = unread?.current;
   if (!current || !conversation) return;
-  await api(`/api/v1/messages/${encodeURIComponent(current.message_id)}/read`, { method: "POST" });
+  await api(`/api/v1/messages/${encodeURIComponent(current.message_id)}/read`, {
+    method: "POST",
+  });
   await refreshPhase1Messages();
-  const refreshed = portalPhase1State.conversations.find((item) => item.conversation_id === conversation.conversation_id) || conversation;
-  const navigation = await loadUnreadNavigation(conversation.conversation_id, Number(current.sequence_number || 0));
+  const refreshed = portalPhase1State.conversations.find(
+    (item) => item.conversation_id === conversation.conversation_id,
+  ) || conversation;
+  const navigation = await loadUnreadNavigation(
+    conversation.conversation_id,
+    Number(current.sequence_number || 0),
+  );
   const nextSequence = Number(navigation?.next?.sequence_number || 0);
-  await openConversationWithMessageEfficiency(refreshed, nextSequence || Number(current.sequence_number || 0));
+  await openConversationWithMessageEfficiency(
+    refreshed,
+    nextSequence || Number(current.sequence_number || 0),
+  );
   setStatus(globalStatus, "已将当前消息及之前内容标为已读。", "success");
 }
 
-ensureMessageEfficiencyControls();
-
 const baseFilteredConversationsForMessageEfficiency = filteredConversations;
 filteredConversations = function filteredConversationsWithSearch() {
-  if (!messageEfficiencyState.query) return baseFilteredConversationsForMessageEfficiency();
+  if (!messageEfficiencyState.query) {
+    return baseFilteredConversationsForMessageEfficiency();
+  }
   const filter = $("message-category-filter").value;
-  return messageSearchConversationValues().filter((item) => filter === "all" || item.category === filter);
+  return messageSearchConversationValues().filter(
+    (item) => filter === "all" || item.category === filter,
+  );
 };
 
 const baseRenderConversationsForMessageEfficiency = renderConversations;
@@ -411,18 +486,31 @@ openConversation = async function openConversationWithSearchAndUnread(conversati
   await openConversationWithMessageEfficiency(conversation);
 };
 
-sendCustomerConversationMessage = async function sendCustomerConversationMessageWithConfirmation(content) {
-  const conversation = messageEfficiencyState.activeConversation || customerActionsState.activeConversation;
-  if (!conversation || conversation.kind !== "direct") throw new Error("请先选择一个可回复的会话。");
+sendCustomerConversationMessage = async function sendCustomerConversationMessageWithConfirmation(
+  content,
+) {
+  const conversation =
+    messageEfficiencyState.activeConversation || customerActionsState.activeConversation;
+  if (!conversation || conversation.kind !== "direct") {
+    throw new Error("请先选择一个可回复的会话。");
+  }
   const selected = selectedPortalPet();
-  const response = await api(`/api/v1/conversations/${encodeURIComponent(conversation.conversation_id)}/messages`, {
-    method: "POST",
-    headers: { "Idempotency-Key": customerActionRandom("portal-message") },
-    json: { content, sender_pet_id: selected?.pet?.pet_id || null },
-  });
+  const response = await api(
+    `/api/v1/conversations/${encodeURIComponent(conversation.conversation_id)}/messages`,
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": customerActionRandom("portal-message") },
+      json: { content, sender_pet_id: selected?.pet?.pet_id || null },
+    },
+  );
   await refreshPhase1Messages();
-  const refreshed = portalPhase1State.conversations.find((item) => item.conversation_id === conversation.conversation_id) || conversation;
-  await openConversationWithMessageEfficiency(refreshed, Number(response?.message?.sequence_number || 0));
+  const refreshed = portalPhase1State.conversations.find(
+    (item) => item.conversation_id === conversation.conversation_id,
+  ) || conversation;
+  await openConversationWithMessageEfficiency(
+    refreshed,
+    Number(response?.message?.sequence_number || 0),
+  );
   renderMessageActions(refreshed);
   renderConfiguredQuickReplies(refreshed);
   setStatus(globalStatus, "消息已发送。", "success");
@@ -434,8 +522,28 @@ renderMessageActions = function renderMessageActionsWithConfiguredReplies(conver
   renderConfiguredQuickReplies(conversation);
 };
 
-const baseLogoutForMessageEfficiency = logout;
-logout = function logoutWithMessageEfficiency(message = "", kind = "") {
+async function refreshMessageEfficiencyView() {
+  ensureMessageEfficiencyControls();
+  if (!accessToken) return;
+  if (!messageEfficiencyState.quickReplies) {
+    await refreshMessageQuickReplies();
+  }
+  if (messageEfficiencyState.query) {
+    await runMessageSearch(messageEfficiencyState.query);
+  }
+  if (messageEfficiencyState.activeConversation) {
+    await loadUnreadNavigation(
+      messageEfficiencyState.activeConversation.conversation_id,
+      messageEfficiencyState.activeSequence,
+    );
+  }
+}
+
+function resetMessageEfficiencyState() {
+  if (messageEfficiencyState.searchTimer) {
+    window.clearTimeout(messageEfficiencyState.searchTimer);
+    messageEfficiencyState.searchTimer = 0;
+  }
   messageEfficiencyState.query = "";
   messageEfficiencyState.searchItems = [];
   messageEfficiencyState.searchCount = 0;
@@ -443,19 +551,39 @@ logout = function logoutWithMessageEfficiency(message = "", kind = "") {
   messageEfficiencyState.activeSequence = 0;
   messageEfficiencyState.unread = null;
   messageEfficiencyState.quickReplies = null;
-  baseLogoutForMessageEfficiency(message, kind);
   const input = $("message-search-input");
+  const result = $("message-search-result");
+  const clear = $("message-search-clear");
   if (input) input.value = "";
+  if (result) result.textContent = "";
+  if (clear) clear.hidden = true;
+  const dialog = $("message-quick-reply-dialog");
+  if (dialog?.open) dialog.close();
   renderUnreadNavigation();
-};
+  renderConfiguredQuickReplies(null);
+}
 
-window.addEventListener("mypets:realtime-cursor", () => {
-  if (!accessToken) return;
-  if (messageEfficiencyState.query) runMessageSearch(messageEfficiencyState.query).catch(() => {});
-  if (messageEfficiencyState.activeConversation) {
-    loadUnreadNavigation(
-      messageEfficiencyState.activeConversation.conversation_id,
-      messageEfficiencyState.activeSequence,
-    ).catch(() => {});
-  }
+portalRuntime.registerFeature({
+  id: "message-efficiency",
+  label: "消息搜索与快捷回复",
+  order: 250,
+  mount: ensureMessageEfficiencyControls,
+  onSectionEnter: async ({ sectionId }) => {
+    if (sectionId === "messages-section") {
+      await refreshMessageEfficiencyView();
+    }
+  },
+  onRealtime: async () => {
+    if (!accessToken) return;
+    if (messageEfficiencyState.query) {
+      await runMessageSearch(messageEfficiencyState.query);
+    }
+    if (messageEfficiencyState.activeConversation) {
+      await loadUnreadNavigation(
+        messageEfficiencyState.activeConversation.conversation_id,
+        messageEfficiencyState.activeSequence,
+      );
+    }
+  },
+  onLogout: resetMessageEfficiencyState,
 });
