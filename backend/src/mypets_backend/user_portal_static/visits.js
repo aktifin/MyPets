@@ -55,13 +55,17 @@ function replaceOptions(select, values, placeholder, previous = "") {
     option.disabled = disabled;
     select.append(option);
   });
-  if (values.some((item) => item.value === previous && !item.disabled)) select.value = previous;
+  if (values.some((item) => item.value === previous && !item.disabled)) {
+    select.value = previous;
+  }
 }
 
 function ownedAvailablePets() {
   if (!dashboard || !Array.isArray(dashboard.pets)) return [];
-  return dashboard.pets.filter((item) =>
-    item && item.can_configure && ["home", "resting"].includes(item.pet.presence),
+  return dashboard.pets.filter(
+    (item) => item
+      && item.can_configure
+      && ["home", "resting"].includes(item.pet.presence),
   );
 }
 
@@ -70,6 +74,7 @@ function renderVisitComposer() {
   const friendSelect = $("visit-friend");
   const hostPetSelect = $("visit-host-pet");
   const submit = $("send-visit-request");
+  if (!visitorSelect || !friendSelect || !hostPetSelect || !submit) return;
   const previousVisitor = visitorSelect.value;
   const previousFriend = friendSelect.value;
   const previousHostPet = hostPetSelect.value;
@@ -78,7 +83,12 @@ function renderVisitComposer() {
     value: item.pet.pet_id,
     label: `${item.pet.name} · ${presenceLabel(item.pet.presence)} · ${roleLabel(item.relation.role)}`,
   }));
-  replaceOptions(visitorSelect, visitors, visitors.length ? "选择来访宠物" : "没有可外出的自有宠物", previousVisitor);
+  replaceOptions(
+    visitorSelect,
+    visitors,
+    visitors.length ? "选择来访宠物" : "没有可外出的自有宠物",
+    previousVisitor,
+  );
 
   const friends = Array.isArray(socialState.friends) ? socialState.friends : [];
   replaceOptions(
@@ -103,18 +113,24 @@ function renderVisitComposer() {
   replaceOptions(
     hostPetSelect,
     hostPets,
-    friendSelect.value ? (hostPets.length ? "选择接待宠物" : "该好友没有可接待的可见宠物") : "先选择好友",
+    friendSelect.value
+      ? (hostPets.length ? "选择接待宠物" : "该好友没有可接待的可见宠物")
+      : "先选择好友",
     previousHostPet,
   );
 
-  const canSubmit = Boolean(visitorSelect.value && friendSelect.value && hostPetSelect.value);
-  submit.disabled = !canSubmit;
+  submit.disabled = !Boolean(
+    visitorSelect.value && friendSelect.value && hostPetSelect.value,
+  );
 }
 
 function petStatusCard(pet, label) {
   const card = node("section", "", "visit-pet-card");
   const heading = node("div", "", "visit-pet-heading");
-  heading.append(node("span", label, "visit-pet-label"), node("span", presenceLabel(pet.presence), "badge"));
+  heading.append(
+    node("span", label, "visit-pet-label"),
+    node("span", presenceLabel(pet.presence), "badge"),
+  );
   card.append(heading, node("strong", pet.name, "visit-pet-name"));
   const facts = node("div", "", "visit-pet-facts");
   facts.append(
@@ -149,34 +165,53 @@ function visitMeta(visit) {
   ];
   if (visit.note) values.push(`留言：${visit.note}`);
   if (visit.started_at) values.push(`开始：${localTime(visit.started_at)}`);
-  if (visit.scheduled_end_at) values.push(`预计返家：${localTime(visit.scheduled_end_at)}`);
+  if (visit.scheduled_end_at) {
+    values.push(`预计返家：${localTime(visit.scheduled_end_at)}`);
+  }
   return values;
 }
 
 async function mutateVisit(visit, action) {
-  await api(`/api/v1/visits/${encodeURIComponent(visit.visit_id)}/${action}`, { method: "POST" });
+  await api(`/api/v1/visits/${encodeURIComponent(visit.visit_id)}/${action}`, {
+    method: "POST",
+  });
   const changesPresence = action === "accept" || action === "recall";
-  await Promise.all([refreshVisits(), changesPresence ? refreshDashboard() : Promise.resolve()]);
+  await Promise.all([
+    refreshVisits(),
+    changesPresence ? refreshDashboard() : Promise.resolve(),
+  ]);
   renderVisitComposer();
-  setStatus(globalStatus, {
-    accept: "串门申请已接受，来访宠物已进入串门状态。",
-    reject: "串门申请已拒绝。",
-    cancel: "串门申请已取消。",
-    recall: "来访宠物已召回并恢复在家。",
-  }[action] || "串门状态已更新。", "success");
+  setStatus(
+    globalStatus,
+    {
+      accept: "串门申请已接受，来访宠物已进入串门状态。",
+      reject: "串门申请已拒绝。",
+      cancel: "串门申请已取消。",
+      recall: "来访宠物已召回并恢复在家。",
+    }[action] || "串门状态已更新。",
+    "success",
+  );
 }
 
 function renderRequestList(containerId, items, mode) {
   const container = $(containerId);
   container.replaceChildren();
   if (!items.length) {
-    empty(container, mode === "incoming" ? "没有待处理的收到申请。" : "没有待处理的发出申请。");
+    empty(
+      container,
+      mode === "incoming"
+        ? "没有待处理的收到申请。"
+        : "没有待处理的发出申请。",
+    );
     return;
   }
   items.forEach((visit) => {
     const built = itemCard(
       `${visit.visitor_pet.name} → ${visit.host_pet.name}`,
-      [`${visitStatusLabel(visit.status)} · ${visit.duration_minutes} 分钟`, ...visitMeta(visit)],
+      [
+        `${visitStatusLabel(visit.status)} · ${visit.duration_minutes} 分钟`,
+        ...visitMeta(visit),
+      ],
     );
     built.card.classList.add("visit-request-card");
     built.card.insertBefore(visitPair(visit), built.actions);
@@ -187,7 +222,9 @@ function renderRequestList(containerId, items, mode) {
       );
     }
     if (mode === "outgoing" && visit.can_cancel) {
-      built.actions.append(actionButton("取消申请", () => mutateVisit(visit, "cancel"), "secondary"));
+      built.actions.append(
+        actionButton("取消申请", () => mutateVisit(visit, "cancel"), "secondary"),
+      );
     }
     container.append(built.card);
   });
@@ -205,14 +242,19 @@ function renderActiveVisits() {
   items.forEach((visit) => {
     const card = node("article", "", "active-visit-card");
     const heading = node("div", "", "section-heading compact-heading");
-    heading.append(node("strong", `${visit.visitor_pet.name} 正在拜访 ${visit.host_pet.name}`), node("span", visitStatusLabel(visit.status), "badge"));
+    heading.append(
+      node("strong", `${visit.visitor_pet.name} 正在拜访 ${visit.host_pet.name}`),
+      node("span", visitStatusLabel(visit.status), "badge"),
+    );
     card.append(heading, visitPair(visit));
     const meta = node("div", "", "item-meta visit-summary");
     visitMeta(visit).forEach((line) => meta.append(node("div", line)));
     card.append(meta);
     if (visit.can_recall) {
       const actions = node("div", "", "item-actions");
-      actions.append(actionButton("立即召回", () => mutateVisit(visit, "recall"), "danger"));
+      actions.append(
+        actionButton("立即召回", () => mutateVisit(visit, "recall"), "danger"),
+      );
       card.append(actions);
     }
     container.append(card);
@@ -252,6 +294,9 @@ function renderVisits() {
   renderRequestList("outgoing-visits", outgoing, "outgoing");
   renderActiveVisits();
   renderVisitHistory();
+  portalRuntime.applyFeatureHook("onVisitsRenderComplete", {
+    visits: visitState.visits,
+  });
 }
 
 async function refreshVisits() {
@@ -265,75 +310,119 @@ async function loadFriendPets(accountId) {
   visitState.friendPets = [];
   renderVisitComposer();
   if (!value) return;
-  visitState.friendPets = await api(`/api/v1/friends/${encodeURIComponent(value)}/pets`);
+  visitState.friendPets = await api(
+    `/api/v1/friends/${encodeURIComponent(value)}/pets`,
+  );
   renderVisitComposer();
 }
 
-async function refreshVisitWorkspace({ includeDependencies = false } = {}) {
-  setStatus(globalStatus, "正在刷新串门数据…");
-  if (includeDependencies) await Promise.all([refreshDashboard(), refreshSocial()]);
+async function refreshVisitWorkspace({
+  includeDependencies = false,
+  announce = true,
+} = {}) {
+  if (announce) setStatus(globalStatus, "正在刷新串门数据…");
+  if (includeDependencies) {
+    await Promise.all([refreshDashboard(), refreshSocial()]);
+  }
   await refreshVisits();
   const selectedFriend = $("visit-friend").value;
   if (selectedFriend) await loadFriendPets(selectedFriend);
-  setStatus(globalStatus, "串门申请、状态卡和历史已刷新。", "success");
+  if (announce) {
+    setStatus(globalStatus, "串门申请、状态卡和历史已刷新。", "success");
+  }
 }
 
-$("visit-friend").addEventListener("change", async (event) => {
-  try {
-    await loadFriendPets(event.target.value);
-  } catch (error) {
-    setStatus(globalStatus, error.message, "error");
-  }
-});
+function installVisitActions() {
+  $("visit-friend")?.addEventListener("change", async (event) => {
+    try {
+      await loadFriendPets(event.target.value);
+    } catch (error) {
+      setStatus(globalStatus, error.message, "error");
+    }
+  });
 
-$("visit-visitor-pet").addEventListener("change", renderVisitComposer);
-$("visit-host-pet").addEventListener("change", renderVisitComposer);
+  $("visit-visitor-pet")?.addEventListener("change", renderVisitComposer);
+  $("visit-host-pet")?.addEventListener("change", renderVisitComposer);
 
-$("visit-request-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const friendId = $("visit-friend").value;
-  const friendEntry = (socialState.friends || []).find((item) => item.friend.account_id === friendId);
-  if (!friendEntry) {
-    setStatus(globalStatus, "请选择有效好友。", "error");
-    return;
-  }
-  try {
-    await api("/api/v1/visits", {
-      method: "POST",
-      json: {
-        host_username: friendEntry.friend.username,
-        visitor_pet_id: $("visit-visitor-pet").value,
-        host_pet_id: $("visit-host-pet").value,
-        duration_minutes: Number($("visit-duration").value),
-        note: $("visit-note").value.trim(),
-      },
-    });
-    $("visit-note").value = "";
-    await refreshVisits();
-    setStatus(globalStatus, "串门申请已发送，等待好友处理。", "success");
-  } catch (error) {
-    setStatus(globalStatus, error.message, "error");
-  }
-});
+  $("visit-request-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const friendId = $("visit-friend").value;
+    const friendEntry = (socialState.friends || []).find(
+      (item) => item.friend.account_id === friendId,
+    );
+    if (!friendEntry) {
+      setStatus(globalStatus, "请选择有效好友。", "error");
+      return;
+    }
+    try {
+      await api("/api/v1/visits", {
+        method: "POST",
+        json: {
+          host_username: friendEntry.friend.username,
+          visitor_pet_id: $("visit-visitor-pet").value,
+          host_pet_id: $("visit-host-pet").value,
+          duration_minutes: Number($("visit-duration").value),
+          note: $("visit-note").value.trim(),
+        },
+      });
+      $("visit-note").value = "";
+      await refreshVisits();
+      setStatus(globalStatus, "串门申请已发送，等待好友处理。", "success");
+    } catch (error) {
+      setStatus(globalStatus, error.message, "error");
+    }
+  });
 
-$("refresh-visits").addEventListener("click", async () => {
-  try {
-    await refreshVisitWorkspace({ includeDependencies: true });
-  } catch (error) {
-    setStatus(globalStatus, error.message, "error");
-  }
-});
-
-document.querySelectorAll(".main-tab").forEach((button) => {
-  button.addEventListener("click", async () => {
-    document.querySelectorAll(".workspace").forEach((section) => {
-      section.hidden = section.id !== button.dataset.section;
-    });
-    if (button.dataset.section !== "visits-section" || !accessToken) return;
+  $("refresh-visits")?.addEventListener("click", async () => {
     try {
       await refreshVisitWorkspace({ includeDependencies: true });
     } catch (error) {
       setStatus(globalStatus, error.message, "error");
     }
   });
+}
+
+function resetVisitState() {
+  visitState.visits = {
+    incoming_requests: [],
+    outgoing_requests: [],
+    active: [],
+    history: [],
+  };
+  visitState.friendPets = [];
+  visitState.friendAccountId = "";
+  renderVisits();
+}
+
+portalRuntime.registerFeature({
+  id: "visits",
+  label: "宠物串门",
+  order: 350,
+  mount: () => {
+    installVisitActions();
+    renderVisits();
+  },
+  onRefreshComplete: renderVisitComposer,
+  onSectionEnter: async ({ sectionId, source }) => {
+    if (
+      sectionId === "visits-section"
+      && accessToken
+      && source !== "startup"
+      && source !== "anonymous"
+    ) {
+      await refreshVisitWorkspace({
+        includeDependencies: true,
+        announce: false,
+      });
+    }
+  },
+  onRealtime: async () => {
+    const section = $("visits-section");
+    if (!accessToken || !section || section.hidden) return;
+    await refreshVisitWorkspace({
+      includeDependencies: true,
+      announce: false,
+    });
+  },
+  onLogout: resetVisitState,
 });
