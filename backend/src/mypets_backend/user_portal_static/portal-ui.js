@@ -116,10 +116,9 @@
     );
     symbol.setAttribute("aria-hidden", "true");
     const copy = uiNode("div", "", "portal-ui-state-copy");
-    copy.append(
-      uiNode("strong", options.title || defaults.title),
-      uiNode("p", options.detail ?? defaults.detail),
-    );
+    copy.append(uiNode("strong", options.title || defaults.title));
+    const detail = options.detail ?? defaults.detail;
+    if (detail) copy.append(uiNode("p", detail));
     state.append(symbol, copy);
 
     if (options.action && typeof options.action.onClick === "function") {
@@ -158,11 +157,55 @@
     return notice;
   }
 
-  window.MyPetsPortalUI = Object.freeze({
+  function splitStateText(value) {
+    const text = String(value || "").trim();
+    if (!text) return { title: STATE_DEFAULTS.empty.title, detail: "" };
+    const indexes = ["，", "。", "；"]
+      .map((separator) => text.indexOf(separator))
+      .filter((index) => index > 0 && index < text.length - 1);
+    if (!indexes.length) return { title: text.replace(/[。；]$/, ""), detail: "" };
+    const index = Math.min(...indexes);
+    return {
+      title: text.slice(0, index),
+      detail: text.slice(index + 1).replace(/[。；]$/, ""),
+    };
+  }
+
+  function renderEmpty(container, text) {
+    const copy = splitStateText(text);
+    return renderState(container, {
+      kind: "empty",
+      title: copy.title,
+      detail: copy.detail,
+    });
+  }
+
+  function sharedActionButton(label, handler, className = "") {
+    const button = uiNode("button", label, className);
+    button.type = "button";
+    button.addEventListener("click", () => {
+      runAction({
+        control: button,
+        statusNode: typeof globalStatus === "undefined" ? null : globalStatus,
+        task: handler,
+      });
+    });
+    return button;
+  }
+
+  const api = Object.freeze({
     clearState,
+    renderEmpty,
     renderInlineNotice,
     renderState,
     runAction,
     setRegionBusy,
   });
+  window.MyPetsPortalUI = api;
+
+  // app.js provides these basic helpers before feature scripts load. Replacing the
+  // implementations here keeps all existing callers while giving them the shared
+  // accessible state and action behavior without another business lifecycle layer.
+  window.empty = renderEmpty;
+  window.actionButton = sharedActionButton;
 })();
