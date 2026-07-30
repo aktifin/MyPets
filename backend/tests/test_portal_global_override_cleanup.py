@@ -53,6 +53,21 @@ def test_extensions_use_runtime_realtime_lifecycle() -> None:
     assert violations == []
 
 
+def test_realtime_transport_uses_session_lifecycle_without_entry_wrappers() -> None:
+    source = (STATIC_ROOT / "realtime.js").read_text(encoding="utf-8")
+
+    assert 'id: "realtime-transport"' in source
+    assert "order: 500" in source
+    assert "onRefreshComplete: startRealtime" in source
+    assert "onLogout: stopRealtime" in source
+    assert 'new CustomEvent("mypets:realtime-cursor"' in source
+    assert "refreshVisits" not in source
+    assert "originalEnterApp" not in source
+    assert "originalLogout" not in source
+    assert "enterApp = function" not in source
+    assert "logout = function" not in source
+
+
 def test_final_bootstrap_contains_no_projection_or_background_compatibility() -> None:
     source = (STATIC_ROOT / "portal-bootstrap.js").read_text(encoding="utf-8")
 
