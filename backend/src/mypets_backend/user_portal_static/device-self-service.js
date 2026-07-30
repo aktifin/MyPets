@@ -145,7 +145,9 @@ function renderDeviceSelfService() {
         if (!confirmed) return;
         revoke.disabled = true;
         try {
-          await api(`/api/v1/devices/${encodeURIComponent(item.id)}`, { method: "DELETE" });
+          await api(`/api/v1/devices/${encodeURIComponent(item.id)}`, {
+            method: "DELETE",
+          });
           await refreshDeviceSelfService();
           setStatus($("device-self-service-status"), "设备已撤销。", "success");
         } catch (error) {
@@ -172,7 +174,10 @@ async function refreshDeviceSelfService() {
   }
   const [devices, healthResponse] = await Promise.all([
     api("/api/v1/devices"),
-    fetch("/health", { headers: { Accept: "application/json" }, cache: "no-store" }),
+    fetch("/health", {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    }),
   ]);
   deviceSelfServiceState.devices = Array.isArray(devices) ? devices : [];
   deviceSelfServiceState.health = healthResponse.ok ? await healthResponse.json() : null;
@@ -232,13 +237,24 @@ function downloadWebDiagnostics() {
   setStatus($("device-self-service-status"), "诊断信息已下载。", "success");
 }
 
-ensureDeviceSelfServicePanel();
-renderDeviceSelfService();
-document.querySelectorAll('[data-section="account-section"]').forEach((button) => {
-  button.addEventListener("click", () => {
-    if (!accessToken) return;
-    refreshDeviceSelfService().catch((error) => {
-      setStatus($("device-self-service-status"), error.message, "error");
-    });
-  });
+portalRuntime.registerFeature({
+  id: "device-self-service",
+  label: "设备管理",
+  order: 320,
+  mount: () => {
+    ensureDeviceSelfServicePanel();
+    renderDeviceSelfService();
+  },
+  onSectionEnter: async ({ sectionId }) => {
+    if (sectionId === "account-section" && accessToken) {
+      await refreshDeviceSelfService();
+    }
+  },
+  onLogout: () => {
+    deviceSelfServiceState.devices = [];
+    deviceSelfServiceState.health = null;
+    deviceSelfServiceState.loaded = false;
+    renderDeviceSelfService();
+    setStatus($("device-self-service-status"), "");
+  },
 });
