@@ -2,15 +2,9 @@
 
 ## 一、整合目标
 
-MyPets Web 用户门户由基础页面和多个客户体验扩展逐步演进而来。此前每个扩展脚本可以直接覆盖 `refreshAll`、`renderDashboard`、`renderPortalPhase1` 和 `logout`，并分别监听导航、实时事件和首次加载，容易产生以下问题：
+MyPets Web 用户门户由基础页面和多个客户体验扩展逐步演进而来。早期扩展可直接覆盖 `refreshAll`、`renderDashboard`、`renderPortalPhase1`、`openConversation` 和 `logout`，并分别监听导航、实时事件与首次加载，容易产生重复请求、渲染顺序不确定和局部失败扩散。
 
-- 首次打开时基础脚本先刷新一次，扩展脚本再补刷一次；
-- 多个操作同时触发刷新时，相同接口可能重复请求；
-- 导航切换由多个脚本分别处理，新增页面需要重复绑定；
-- 某个扩展加载失败时，错误可能中断后续功能；
-- 静态资源路由逐文件声明，新增脚本容易遗漏路由或安全响应头。
-
-整合采用“建立统一运行时、保持业务兼容、逐批迁移扩展”的方式，不一次性重写全部页面。
+整合采用“统一运行时、保持业务兼容、逐批迁移扩展”的方式，不建立第二套页面、第二份业务状态或新的同步游标。
 
 ## 二、统一运行时
 
@@ -18,57 +12,34 @@ MyPets Web 用户门户由基础页面和多个客户体验扩展逐步演进而
 
 ### 1. 单一启动入口
 
-基础脚本只负责配置运行时，不再自行决定门户何时完成启动。页面最后加载的 `portal-bootstrap.js` 是扩展就绪门：只有它明确调用 `markExtensionsReady()` 后，运行时才允许恢复登录会话和执行第一次刷新。
+基础脚本只配置运行时。页面最后的 `portal-bootstrap.js` 调用 `markExtensionsReady()` 后，运行时才恢复登录会话并执行第一次刷新，避免在后续 `defer` 脚本尚未加载完成时捕获半成品入口。
 
-即使浏览器在后续扩展脚本下载期间提前处理基础脚本中的零延时任务，`MyPetsPortal.start()` 也会等待扩展就绪 Promise，因此不会在函数包装链尚未完成时捕获半成品刷新入口。
-
-启动过程只执行一次：
-
-1. `portal-runtime.js` 建立运行时和扩展就绪 Promise；
-2. `app.js` 配置账户、状态反馈和基础刷新适配器；
-3. 现有 `defer` 扩展脚本依次完成注册、页面安装和兼容函数包装；
-4. 最后的 `portal-bootstrap.js` 标记扩展就绪并请求启动；
-5. 运行时捕获最终的兼容刷新链；
-6. 建立统一导航监听并安装注册功能；
-7. 恢复当前登录会话并执行一次完整刷新；
-8. 发布 `mypets:portal-ready` 事件。
-
-旧的 `phase1-bootstrap.js` 仍保留为兼容资源，但不再注入页面，因此不会重复补刷。
+旧的 `phase1-bootstrap.js` 仍作为兼容资源保留，但不再注入页面。
 
 ### 2. 刷新合并
 
-运行时在全部扩展加载后捕获最终 `refreshAll`，再以统一的 `requestRefresh` 替代全局入口。
+统一 `requestRefresh` 负责完整刷新：
 
-当多个操作同时要求刷新时：
-
-- 第一个请求启动真实刷新；
-- 后续请求复用同一个 Promise；
-- 刷新期间再次提出的请求只排队一次；
-- 当前刷新结束后再执行一次合并刷新，而不是按请求数量重复执行。
-
-尚未迁移的扩展脚本可以继续包装 `refreshAll`，但新代码不得新增同类包装。
+- 同时发起的请求复用一个 Promise；
+- 刷新期间新增请求只排队一次；
+- 当前刷新结束后至多追加一次合并刷新；
+- 新模块不得再包装 `refreshAll`。
 
 ### 3. 统一导航
 
-运行时通过事件委托处理所有 `button[data-section]`，包括后续动态加入的导航按钮。
+运行时通过事件委托处理所有 `button[data-section]`：
 
-切换页面时统一完成：
-
-- 隐藏其他 `.workspace`；
-- 更新主导航激活状态；
-- 写入 `aria-current="page"`；
+- 切换 `.workspace`；
+- 更新选中状态和 `aria-current`；
 - 收起“更多”菜单；
-- 聚焦当前工作区；
-- 发布 `mypets:section-change` 事件；
-- 按功能 `order` 顺序执行 `onSectionEnter`。
+- 发布 `mypets:section-change`；
+- 按功能 `order` 串行执行 `onSectionEnter`。
 
-页面进入钩子使用串行 Promise 队列。用户快速切换多个标签时，前一次刷新不会覆盖后一次页面的最终状态。
+动态新增的处理记录和聚会按钮无需自行绑定页面切换。
 
-`activatePortalSection` 和 `activateCustomerSection` 在启动后映射到统一导航，旧脚本不需要立即重写。
+### 4. 功能生命周期
 
-### 4. 功能注册与错误隔离
-
-新功能应通过以下方式注册：
+标准功能注册形式：
 
 ```javascript
 MyPetsPortal.registerFeature({
@@ -77,7 +48,7 @@ MyPetsPortal.registerFeature({
   order: 100,
   mount: async ({ runtime }) => {},
   onRefreshComplete: async ({ reason, activeSection, runtime }) => {},
-  onSectionEnter: async ({ sectionId, runtime }) => {},
+  onSectionEnter: async ({ sectionId, source, runtime }) => {},
   onPetContextRefresh: async ({ petId, selectedPet, runtime }) => {},
   onCareComplete: async ({ action, petId, runtime }) => {},
   onRealtime: async ({ event, runtime }) => {},
@@ -85,112 +56,124 @@ MyPetsPortal.registerFeature({
 });
 ```
 
-运行时同时提供 `runFeatureHook(hook, context)`，供核心页面在宠物上下文刷新或照料完成后按顺序调用扩展能力。
+运行时同时提供三种投影方式：
 
-每个生命周期独立捕获异常。一个扩展失败时：
+- `runFeatureHook`：按顺序等待异步功能；
+- `applyFeatureHook`：在当前渲染过程中同步修改上下文；
+- `queueFeatureHook`：按钩子名称串行处理异步投影。
 
-- 其他功能继续执行；
-- 页面顶部显示“部分功能暂未完成加载”；
-- 用户可点击“重新加载”；
-- 控制台保留具体错误；
-- 页面不向用户展示堆栈和内部编码。
+每个功能单独捕获异常。局部失败会显示“部分功能暂未完成加载”，不会阻断其他页面。
 
 ## 三、已完成的生命周期迁移
 
-### 1. 首页、成长、消息和提醒核心
+### 1. 首页核心 `phase1-core`，顺序 10
 
-`phase1.js` 已注册为 `phase1-core`，顺序为 `10`：
+负责首页、宠物、成长、消息和提醒基础数据，并发布：
 
-- 完整刷新通过 `onRefreshComplete` 加载；
-- 页面进入通过 `onSectionEnter` 按页面加载宠物、消息或提醒数据；
-- 实时事件通过 `onRealtime` 刷新；
-- 手动刷新调用统一 `requestRefresh`；
-- 宠物数据完成后调用 `onPetContextRefresh`；
-- 照料完成后调用 `onCareComplete`；
-- 不再自行监听全部主导航按钮或实时游标。
+- `onPetContextRefresh`；
+- `onCareComplete`；
+- `onFilterConversations`；
+- `onConversationsRenderComplete`；
+- `onConversationOpenRequest`；
+- `onConversationOpenComplete`；
+- `onRemindersRenderComplete`。
 
-### 2. 每日照料
+消息和提醒扩展通过投影钩子接入，不再替换核心函数。
 
-`daily-care-experience.js` 已注册为 `daily-care`，顺序为 `100`：
+### 2. 每日照料 `daily-care`，顺序 100
 
-- 宠物切换后通过 `onPetContextRefresh` 获取当日照料摘要；
-- 完整刷新和页面进入后补充首页推荐及下一步任务；
-- 照料完成后更新冷却、今日任务和成功文案；
-- 退出时清空状态；
-- 不再覆盖 `refreshPhase1PetData`、`renderPortalPhase1`、`recommendedCare`、`renderCareRecommendation`、`renderNextSteps`、`performPhase1Care` 或 `logout`。
+负责当日照料摘要、冷却、推荐动作和任务卡，不再覆盖宠物刷新、首页渲染、照料动作或退出函数。
 
-### 3. 成长目标与纪念册
+### 3. 成长目标 `growth-experience`，顺序 110
 
-`growth-experience.js` 已注册为 `growth-experience`，顺序为 `110`：
+在每日照料之后加载，复用最新冷却状态，负责成长目标和纪念册展示。
 
-- 在每日照料之后加载，能够复用最新冷却状态；
-- 宠物切换、页面进入和照料完成后刷新展示；
-- 退出时清空状态；
-- 不再覆盖宠物刷新、首页渲染或退出函数。
+### 4. 主动关怀 `proactive-care`，顺序 130
 
-### 4. 主动关怀
+通过完整刷新、页面进入、实时事件和退出生命周期管理提示与免打扰状态。
 
-`proactive-care-experience.js` 已注册为 `proactive-care`，顺序为 `130`：
+### 5. 待处理事项 `pending-items`，顺序 200
 
-- 完整刷新后读取偏好并评估提示；
-- 页面进入时只重绘当前提示或设置；
-- 实时事件通过统一 `onRealtime` 重新评估；
-- 退出时统一清理定时器和状态；
-- 不再覆盖 `refreshAll`、`renderDashboard` 或 `logout`，也不再单独监听实时游标。
+- 完整刷新和实时事件后更新；
+- 一分钟轮询只在登录期间存在；
+- 操作完成后调用统一刷新；
+- 发布 `onPendingItemsRenderComplete`，供详情按钮和聚会邀请投影使用。
 
-### 5. 待处理事项
+### 6. 客户操作 `customer-actions`，顺序 220
 
-`pending-items-experience.js` 已注册为 `pending-items`，顺序为 `200`：
+统一负责：
 
-- 完整刷新后加载一次待办；
-- 实时事件到达后立即刷新；
-- 原一分钟轮询改为登录生命周期内启停，退出后立即清除；
-- 待办操作完成后调用统一 `requestRefresh`；
-- 不再包装 `refreshAll`，也不再在脚本末尾建立无法回收的轮询。
+- 消息发送；
+- 会话关联详情；
+- 待办详情按钮；
+- 提醒卡片定位；
+- 串门时间线；
+- 退出清理。
 
-### 6. 消息搜索、未读定位与快捷回复
+模块使用消息、待办、提醒和串门渲染完成钩子，不再覆盖 `openConversation`、`renderConversations`、`renderPendingItems`、`renderReminders`、串门渲染函数或 `logout`。
 
-`message-efficiency-experience.js` 已注册为 `message-efficiency`，顺序为 `250`：
+### 7. 消息效率 `message-efficiency`，顺序 250
 
-- 进入消息页后按需读取快捷回复、搜索结果和当前会话未读位置；
-- 实时事件仅刷新当前仍在使用的搜索和未读导航；
-- 退出时清除搜索防抖定时器、搜索结果、当前会话、未读位置和快捷回复缓存；
-- 不再覆盖 `logout`，也不再直接监听实时游标；
-- 消息列表和会话打开的兼容包装暂时保留，待消息与客户操作模块一并收敛。
+负责消息搜索、窗口化读取、未读定位和账户快捷回复，通过：
 
-### 7. 处理记录
+- `onFilterConversations` 替换当前筛选结果；
+- `onConversationsRenderComplete` 添加搜索摘要；
+- `onConversationOpenRequest` 接管增强型会话窗口；
+- `onMessageActionsRenderComplete` 投影快捷回复。
 
-`customer-history-experience.js` 已注册为 `customer-history`，顺序为 `300`：
+不再覆盖消息筛选、列表渲染、会话打开、消息发送或操作区渲染函数。
 
-- 导航按钮只声明 `data-section`，不再自行切换页面和请求数据；
-- 只有进入处理记录页时才加载筛选结果；
-- 页面可见且已经加载时，实时事件才触发刷新；
-- 退出时清空结果；
-- 不再覆盖 `logout` 或直接监听实时游标。
+### 8. 处理记录 `customer-history`，顺序 300
 
-### 8. 设备管理与 Web 诊断
+仅进入处理记录页时加载；页面可见且已加载时响应实时事件。
 
-`device-self-service.js` 已注册为 `device-self-service`，顺序为 `320`：
+### 9. 设备管理 `device-self-service`，顺序 320
 
-- 仅进入设置页时读取设备清单和服务健康信息；
-- 不再为每个“设置”导航按钮分别绑定请求；
-- 退出时清除设备、健康状态和已加载标记；
-- 设备撤销和诊断下载的隐私边界保持不变。
+仅进入设置页时读取设备和健康信息；退出时清除设备摘要，撤销和诊断隐私边界不变。
 
-## 四、加载策略
+### 10. 宠物串门 `visits`，顺序 350
 
-前端数据按使用频率分层：
+- 统一导航进入串门页后加载账户、好友和串门状态；
+- 页面可见时响应实时事件；
+- 发布 `onVisitsRenderComplete`，由客户操作模块添加时间线按钮；
+- 不再监听所有主导航按钮；
+- 退出时清空串门和好友宠物选择状态。
 
-- 全局刷新：基础账户、宠物、社交、首页核心、每日照料、成长、主动关怀和待办；
-- 页面懒加载：处理记录、设备管理；
-- 页面上下文加载：消息搜索、快捷回复、未读导航；
-- 实时增量刷新：当前页面或当前会话仍需要的数据。
+### 11. 宠物聚会 `party-experience`，顺序 400
 
-不得为了“统一”把所有低频接口重新加入每次全局刷新。
+- 聚会按钮仅声明 `data-section`；
+- 进入聚会页时懒加载；
+- 页面可见时响应实时事件；
+- 宠物上下文变化后只更新创建条件；
+- 发布 `onPartiesRefreshComplete`；
+- 不再包装 `refreshAll` 或 `renderDashboard`；
+- 不再通过零延时任务补刷。
 
-## 五、静态资源清单
+业务边界保持：最多四只宠物、每个账户一只宠物、一个聚会场景、桌面窗口上限仍为两只。
 
-`user_portal_web.py` 使用一个显式 `_ASSETS` 清单管理用户门户脚本和样式，统一通过 `/portal/{asset_path}` 提供。
+### 12. 聚会待办 `party-pending`，顺序 410
+
+通过以下钩子接入：
+
+- `onResolvePendingTarget`：将聚会邀请解析为聚会目标；
+- `onPendingItemDetailDecorated`：将按钮改为“进入聚会”；
+- `onActivateCustomerTarget`：打开聚会页和故事；
+- `onPartiesRefreshComplete`：同步刷新待办。
+
+不再包装待办面板、目标解析、目标打开、详情装饰或聚会刷新函数。
+
+## 四、数据加载策略
+
+- 全局刷新：账户、宠物、社交、首页核心、每日照料、成长、主动关怀和待办；
+- 页面上下文：消息搜索、快捷回复、未读导航；
+- 页面懒加载：处理记录、设备管理、串门和聚会；
+- 实时增量：仅刷新当前可见页面、当前会话或当前打开的时间线与故事。
+
+不得为了形式统一，把低频接口重新加入每次全局刷新。
+
+## 五、静态资源与安全
+
+`user_portal_web.py` 使用显式 `_ASSETS` 白名单，通过 `/portal/{asset_path}` 提供资源。未知资源返回 404。
 
 所有资源继续使用：
 
@@ -200,29 +183,26 @@ MyPetsPortal.registerFeature({
 - `X-Frame-Options: DENY`；
 - 禁止摄像头、麦克风、定位和支付权限。
 
-资源必须先加入清单才能被访问，未知资源返回 404，避免建立任意文件读取入口。`portal-bootstrap.js` 必须保持为页面最后一个门户脚本，新增扩展不得插入到它之后。
+`portal-bootstrap.js` 必须保持为最后一个门户脚本。
 
 ## 六、兼容边界
 
-本轮没有改变：
+本轮未改变：
 
 - API 地址和请求参数；
-- 账户令牌仍只保存在 `sessionStorage`；
-- 宠物、好友、消息、提醒、串门和聚会业务状态；
-- WebSocket 实时游标实现；
-- 数据库结构和迁移；
+- `sessionStorage` 登录令牌方式；
+- 宠物、好友、消息、提醒、串门和聚会业务规则；
+- 权威实时 WebSocket 和游标；
+- 数据库结构与迁移；
 - Windows 桌面客户端；
-- Agent、工具调用和设备控制边界。
+- Agent、工具调用、设备控制和自动照料边界。
 
-## 七、后续迁移顺序
+最终渲染兼容桥暂时保留，仅重新投影每日照料、成长和主动关怀展示，不请求接口、不读写存储、不建立定时任务。待首页剩余渲染包装清理后删除。
 
-后续前端整合按以下顺序推进：
+## 七、后续整合顺序
 
-1. 将客户操作、串门和聚会刷新迁移到统一页面进入及实时事件生命周期；
-2. 清理消息列表、会话打开、待办详情、串门时间线和提醒目标的剩余渲染包装；
-3. 删除最终渲染兼容桥；
-4. 把动态创建的核心页面结构逐步移回明确的 HTML 模板或组件构建函数；
-5. 建立统一加载态、空状态、错误态和操作反馈组件；
-6. 完成真实浏览器、多账户和移动宽度人工验收。
-
-迁移期间不得同时维护第二套页面、第二份业务状态或新的同步游标。
+1. 清理首页剩余 `renderDashboard` 和 `renderPortalPhase1` 兼容包装；
+2. 删除最终渲染兼容桥；
+3. 将动态创建的核心结构逐步迁移为明确模板或组件构建函数；
+4. 建立统一加载态、空状态、错误态和操作反馈组件；
+5. 完成真实浏览器、多账户和移动宽度人工验收。
