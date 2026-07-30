@@ -1,0 +1,93 @@
+.portal-ui-state {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  align-items: center;
+  min-height: 88px;
+  padding: 1rem;
+  border: 1px dashed #d3cadb;
+  border-radius: 14px;
+  color: var(--muted);
+  background: #fdfcff;
+}
+
+.portal-ui-state.compact {
+  min-height: 0;
+  padding: 0.75rem 0.85rem;
+}
+
+.portal-ui-state-symbol {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  color: #5546a8;
+  background: #f1edff;
+  font-weight: 800;
+}
+
+.portal-ui-state-symbol.loading {
+  animation: portal-ui-pulse 900ms ease-in-out infinite alternate;
+}
+
+.portal-ui-state-copy {
+  min-width: 0;
+}
+
+.portal-ui-state-copy strong {
+  display: block;
+  color: var(--ink);
+  font-size: 0.95rem;
+}
+
+.portal-ui-state-copy p {
+  margin: 0.25rem 0 0;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.portal-ui-state-error {
+  border-style: solid;
+  border-color: #f2b8b5;
+  background: var(--danger-bg);
+}
+
+.portal-ui-state-error .portal-ui-state-symbol {
+  color: var(--danger);
+  background: #ffe0dc;
+}
+
+.portal-ui-state-empty .portal-ui-state-symbol,
+.portal-ui-state-idle .portal-ui-state-symbol {
+  color: var(--muted);
+  background: #f0edf5;
+}
+
+.portal-ui-inline-notice {
+  margin-bottom: 0.75rem;
+}
+
+[data-portal-ui-busy="1"] {
+  cursor: progress;
+}
+
+[aria-busy="true"] {
+  cursor: progress;
+}
+
+@keyframes portal-ui-pulse {
+  from { opacity: 0.45; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@media (max-width: 560px) {
+  .portal-ui-state {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .portal-ui-state > button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}

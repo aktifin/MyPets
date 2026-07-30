@@ -29,6 +29,7 @@ _ASSETS: dict[str, tuple[str, str]] = {
     "visits.js": ("visits.js", "text/javascript; charset=utf-8"),
     "realtime.js": ("realtime.js", "text/javascript; charset=utf-8"),
     "portal-runtime.js": ("portal-runtime.js", "text/javascript; charset=utf-8"),
+    "portal-ui.js": ("portal-ui.js", "text/javascript; charset=utf-8"),
     "portal-bootstrap.js": ("portal-bootstrap.js", "text/javascript; charset=utf-8"),
     "asset-submissions.js": ("asset-submissions.js", "text/javascript; charset=utf-8"),
     "asset-production.js": ("asset-production.js", "text/javascript; charset=utf-8"),
@@ -61,6 +62,7 @@ _ASSETS: dict[str, tuple[str, str]] = {
     "styles.css": ("styles.css", "text/css; charset=utf-8"),
     "visits.css": ("visits.css", "text/css; charset=utf-8"),
     "portal-runtime.css": ("portal-runtime.css", "text/css; charset=utf-8"),
+    "portal-ui.css": ("portal-ui.css", "text/css; charset=utf-8"),
     "customer-experience.css": ("customer-experience.css", "text/css; charset=utf-8"),
     "daily-care-experience.css": ("daily-care-experience.css", "text/css; charset=utf-8"),
     "proactive-care-experience.css": (
@@ -92,6 +94,7 @@ _ASSETS: dict[str, tuple[str, str]] = {
 }
 
 _STYLESHEETS = (
+    "portal-ui.css",
     "customer-experience.css",
     "daily-care-experience.css",
     "proactive-care-experience.css",
@@ -106,6 +109,7 @@ _STYLESHEETS = (
 )
 
 _EXTENSION_SCRIPTS = (
+    "portal-ui.js",
     "realtime.js",
     "asset-submissions.js",
     "asset-production.js",

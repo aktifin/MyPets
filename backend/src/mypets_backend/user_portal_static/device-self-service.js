@@ -4,7 +4,12 @@ const deviceSelfServiceState = {
   devices: [],
   health: null,
   loaded: false,
+  loading: false,
+  error: "",
 };
+
+const deviceSelfServiceUI = window.MyPetsPortalUI;
+if (!deviceSelfServiceUI) throw new Error("MyPets 门户 UI 组件未加载");
 
 const devicePlatformLabels = {
   windows: "Windows",
@@ -74,19 +79,33 @@ function ensureDeviceSelfServicePanel() {
   panel.append(heading, toolbar, status, list);
   accountSection.append(panel);
 
-  refresh.addEventListener("click", async () => {
-    refresh.disabled = true;
-    try {
-      await refreshDeviceSelfService();
-      setStatus(status, "设备列表已刷新。", "success");
-    } catch (error) {
-      setStatus(status, error.message, "error");
-    } finally {
-      refresh.disabled = false;
-    }
+  refresh.addEventListener("click", () => {
+    deviceSelfServiceUI.runAction({
+      control: refresh,
+      statusNode: status,
+      busyLabel: "正在刷新…",
+      successMessage: "设备列表已刷新。",
+      task: () => refreshDeviceSelfService({ showLoading: true }),
+    });
   });
-  download.addEventListener("click", downloadWebDiagnostics);
+  download.addEventListener("click", () => {
+    deviceSelfServiceUI.runAction({
+      control: download,
+      statusNode: status,
+      busyLabel: "正在生成…",
+      successMessage: "诊断信息已下载。",
+      task: async () => downloadWebDiagnostics(),
+    });
+  });
   return panel;
+}
+
+function deviceRetryAction() {
+  return {
+    label: "重新读取",
+    busyLabel: "正在读取…",
+    onClick: () => refreshDeviceSelfService({ showLoading: true }),
+  };
 }
 
 function renderDeviceSelfService() {
@@ -94,17 +113,47 @@ function renderDeviceSelfService() {
   const list = $("device-self-service-list");
   const badge = $("device-self-service-count");
   if (!list || !badge) return;
-  list.replaceChildren();
+  deviceSelfServiceUI.setRegionBusy(list, deviceSelfServiceState.loading);
+
+  if (deviceSelfServiceState.loading && !deviceSelfServiceState.loaded) {
+    badge.textContent = "正在读取";
+    deviceSelfServiceUI.renderState(list, {
+      kind: "loading",
+      title: "正在读取登录设备",
+      detail: "正在加载设备记录和服务诊断状态。",
+    });
+    return;
+  }
+  if (deviceSelfServiceState.error && !deviceSelfServiceState.loaded) {
+    badge.textContent = "读取失败";
+    deviceSelfServiceUI.renderState(list, {
+      kind: "error",
+      title: "设备列表读取失败",
+      detail: deviceSelfServiceState.error,
+      action: deviceRetryAction(),
+    });
+    return;
+  }
   if (!deviceSelfServiceState.loaded) {
     badge.textContent = "尚未读取";
-    list.append(deviceNode("div", "打开设置后读取设备。", "empty-state"));
+    deviceSelfServiceUI.renderState(list, {
+      kind: "idle",
+      title: "设备列表尚未读取",
+      detail: "进入设置页后读取已绑定设备和服务诊断状态。",
+    });
     return;
   }
 
   const active = deviceSelfServiceState.devices.filter((item) => !item.revoked_at);
   badge.textContent = `${active.length} 台可用 · ${deviceSelfServiceState.devices.length} 台记录`;
+  list.replaceChildren();
+  deviceSelfServiceUI.clearState(list);
   if (!deviceSelfServiceState.devices.length) {
-    list.append(deviceNode("div", "当前账户还没有绑定设备。", "empty-state"));
+    deviceSelfServiceUI.renderState(list, {
+      kind: "empty",
+      title: "当前账户还没有绑定设备",
+      detail: "桌面端或其他客户端完成登录和绑定后，会在这里显示设备记录。",
+    });
     return;
   }
 
@@ -138,51 +187,76 @@ function renderDeviceSelfService() {
     if (!revoked) {
       const revoke = deviceNode("button", "撤销此设备", "danger");
       revoke.type = "button";
-      revoke.addEventListener("click", async () => {
+      revoke.addEventListener("click", () => {
         const confirmed = window.confirm(
           `撤销“${item.name || "未命名设备"}”后，该设备需要重新登录和绑定。是否继续？`,
         );
         if (!confirmed) return;
-        revoke.disabled = true;
-        try {
-          await api(`/api/v1/devices/${encodeURIComponent(item.id)}`, {
-            method: "DELETE",
-          });
-          await refreshDeviceSelfService();
-          setStatus($("device-self-service-status"), "设备已撤销。", "success");
-        } catch (error) {
-          setStatus($("device-self-service-status"), error.message, "error");
-        } finally {
-          revoke.disabled = false;
-        }
+        deviceSelfServiceUI.runAction({
+          control: revoke,
+          statusNode: $("device-self-service-status"),
+          busyLabel: "正在撤销…",
+          successMessage: "设备已撤销。",
+          task: async () => {
+            await api(`/api/v1/devices/${encodeURIComponent(item.id)}`, {
+              method: "DELETE",
+            });
+            await refreshDeviceSelfService({ showLoading: false });
+          },
+        });
       });
       actions.append(revoke);
     }
     card.append(title, meta, actions);
     list.append(card);
   });
+
+  if (deviceSelfServiceState.error) {
+    deviceSelfServiceUI.renderInlineNotice(list, {
+      kind: "error",
+      title: "最新设备状态暂未更新",
+      detail: `${deviceSelfServiceState.error} 当前仍显示上次成功读取的设备记录。`,
+      action: deviceRetryAction(),
+    });
+  }
 }
 
-async function refreshDeviceSelfService() {
+async function refreshDeviceSelfService(options = {}) {
   ensureDeviceSelfServicePanel();
   if (!accessToken) {
     deviceSelfServiceState.devices = [];
     deviceSelfServiceState.health = null;
     deviceSelfServiceState.loaded = false;
+    deviceSelfServiceState.loading = false;
+    deviceSelfServiceState.error = "";
     renderDeviceSelfService();
     return;
   }
-  const [devices, healthResponse] = await Promise.all([
-    api("/api/v1/devices"),
-    fetch("/health", {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    }),
-  ]);
-  deviceSelfServiceState.devices = Array.isArray(devices) ? devices : [];
-  deviceSelfServiceState.health = healthResponse.ok ? await healthResponse.json() : null;
-  deviceSelfServiceState.loaded = true;
-  renderDeviceSelfService();
+
+  const showLoading = options.showLoading ?? !deviceSelfServiceState.loaded;
+  deviceSelfServiceState.loading = true;
+  deviceSelfServiceState.error = "";
+  if (showLoading || !deviceSelfServiceState.loaded) renderDeviceSelfService();
+  else deviceSelfServiceUI.setRegionBusy($("device-self-service-list"), true);
+
+  try {
+    const [devices, healthResponse] = await Promise.all([
+      api("/api/v1/devices"),
+      fetch("/health", {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      }),
+    ]);
+    deviceSelfServiceState.devices = Array.isArray(devices) ? devices : [];
+    deviceSelfServiceState.health = healthResponse.ok ? await healthResponse.json() : null;
+    deviceSelfServiceState.loaded = true;
+  } catch (error) {
+    deviceSelfServiceState.error = error.message || "设备列表读取失败";
+    throw error;
+  } finally {
+    deviceSelfServiceState.loading = false;
+    renderDeviceSelfService();
+  }
 }
 
 function safeDiagnosticDevices() {
@@ -234,7 +308,6 @@ function downloadWebDiagnostics() {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
-  setStatus($("device-self-service-status"), "诊断信息已下载。", "success");
 }
 
 portalRuntime.registerFeature({
@@ -247,13 +320,15 @@ portalRuntime.registerFeature({
   },
   onSectionEnter: async ({ sectionId }) => {
     if (sectionId === "account-section" && accessToken) {
-      await refreshDeviceSelfService();
+      await refreshDeviceSelfService({ showLoading: !deviceSelfServiceState.loaded });
     }
   },
   onLogout: () => {
     deviceSelfServiceState.devices = [];
     deviceSelfServiceState.health = null;
     deviceSelfServiceState.loaded = false;
+    deviceSelfServiceState.loading = false;
+    deviceSelfServiceState.error = "";
     renderDeviceSelfService();
     setStatus($("device-self-service-status"), "");
   },
