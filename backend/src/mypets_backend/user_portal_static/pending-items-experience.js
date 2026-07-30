@@ -4,8 +4,14 @@ const pendingItemsState = {
   count: 0,
   urgentCount: 0,
   items: [],
+  loaded: false,
+  loading: false,
+  error: "",
   timerId: 0,
 };
+
+const pendingItemsUI = window.MyPetsPortalUI;
+if (!pendingItemsUI) throw new Error("MyPets 门户 UI 组件未加载");
 
 const pendingKindLabels = {
   friend_request: "好友申请",
@@ -48,16 +54,14 @@ function ensurePendingItemsPanel() {
   badge.id = "pending-items-count";
   const refresh = node("button", "刷新", "secondary");
   refresh.type = "button";
-  refresh.addEventListener("click", async () => {
-    refresh.disabled = true;
-    try {
-      await refreshPendingItems();
-      setStatus(globalStatus, "待处理事项已刷新。", "success");
-    } catch (error) {
-      setStatus(globalStatus, error.message, "error");
-    } finally {
-      refresh.disabled = false;
-    }
+  refresh.addEventListener("click", () => {
+    pendingItemsUI.runAction({
+      control: refresh,
+      statusNode: globalStatus,
+      busyLabel: "正在刷新…",
+      successMessage: "待处理事项已刷新。",
+      task: () => refreshPendingItems({ showLoading: true }),
+    });
   });
   controls.append(badge, refresh);
   heading.append(copy, controls);
@@ -107,6 +111,14 @@ function completePendingItemsRender() {
   });
 }
 
+function pendingRetryAction() {
+  return {
+    label: "重新读取",
+    busyLabel: "正在读取…",
+    onClick: () => refreshPendingItems({ showLoading: true }),
+  };
+}
+
 function renderPendingItems() {
   ensurePendingItemsPanel();
   const count = $("pending-items-count");
@@ -121,9 +133,34 @@ function renderPendingItems() {
 
   const list = $("pending-items-list");
   if (!list) return;
+  pendingItemsUI.setRegionBusy(list, pendingItemsState.loading);
+
+  if (pendingItemsState.loading && !pendingItemsState.loaded) {
+    pendingItemsUI.renderState(list, {
+      kind: "loading",
+      title: "正在读取待处理事项",
+      detail: "正在汇总好友申请、共同照料、串门申请和到期提醒。",
+    });
+    return;
+  }
+  if (pendingItemsState.error && !pendingItemsState.loaded) {
+    pendingItemsUI.renderState(list, {
+      kind: "error",
+      title: "待处理事项读取失败",
+      detail: pendingItemsState.error,
+      action: pendingRetryAction(),
+    });
+    return;
+  }
+
   list.replaceChildren();
+  pendingItemsUI.clearState(list);
   if (!pendingItemsState.items.length) {
-    empty(list, "当前没有需要处理的事项。新的邀请、申请和到期提醒会集中显示在这里。");
+    pendingItemsUI.renderState(list, {
+      kind: "empty",
+      title: "当前没有待处理事项",
+      detail: "新的邀请、申请和到期提醒会集中显示在这里。",
+    });
     completePendingItemsRender();
     return;
   }
@@ -162,29 +199,56 @@ function renderPendingItems() {
     card.append(body, actions);
     list.append(card);
   });
+
+  if (pendingItemsState.error) {
+    pendingItemsUI.renderInlineNotice(list, {
+      kind: "error",
+      title: "最新状态暂未更新",
+      detail: `${pendingItemsState.error} 当前仍显示上次成功读取的内容。`,
+      action: pendingRetryAction(),
+    });
+  }
   completePendingItemsRender();
 }
 
-async function refreshPendingItems() {
+async function refreshPendingItems(options = {}) {
   if (!accessToken) {
     pendingItemsState.count = 0;
     pendingItemsState.urgentCount = 0;
     pendingItemsState.items = [];
+    pendingItemsState.loaded = false;
+    pendingItemsState.loading = false;
+    pendingItemsState.error = "";
     renderPendingItems();
     return;
   }
-  const payload = await api("/api/v1/pending-items?limit=100");
-  pendingItemsState.count = Number(payload?.count || 0);
-  pendingItemsState.urgentCount = Number(payload?.urgent_count || 0);
-  pendingItemsState.items = Array.isArray(payload?.items) ? payload.items : [];
-  renderPendingItems();
+
+  const showLoading = options.showLoading ?? !pendingItemsState.loaded;
+  pendingItemsState.loading = true;
+  pendingItemsState.error = "";
+  if (showLoading || !pendingItemsState.loaded) renderPendingItems();
+  else pendingItemsUI.setRegionBusy($("pending-items-list"), true);
+
+  try {
+    const payload = await api("/api/v1/pending-items?limit=100");
+    pendingItemsState.count = Number(payload?.count || 0);
+    pendingItemsState.urgentCount = Number(payload?.urgent_count || 0);
+    pendingItemsState.items = Array.isArray(payload?.items) ? payload.items : [];
+    pendingItemsState.loaded = true;
+  } catch (error) {
+    pendingItemsState.error = error.message || "待处理事项读取失败";
+    throw error;
+  } finally {
+    pendingItemsState.loading = false;
+    renderPendingItems();
+  }
 }
 
 function startPendingItemsPolling() {
   if (pendingItemsState.timerId || !accessToken) return;
   pendingItemsState.timerId = window.setInterval(() => {
     if (!accessToken) return;
-    refreshPendingItems().catch(() => {});
+    refreshPendingItems({ showLoading: false }).catch(() => {});
   }, 60000);
 }
 
@@ -203,20 +267,23 @@ portalRuntime.registerFeature({
     renderPendingItems();
   },
   onRefreshComplete: async () => {
-    await refreshPendingItems();
+    await refreshPendingItems({ showLoading: !pendingItemsState.loaded });
     startPendingItemsPolling();
   },
   onSectionEnter: ({ sectionId }) => {
     if (sectionId === "dashboard-section") renderPendingItems();
   },
   onRealtime: async () => {
-    if (accessToken) await refreshPendingItems();
+    if (accessToken) await refreshPendingItems({ showLoading: false });
   },
   onLogout: () => {
     stopPendingItemsPolling();
     pendingItemsState.count = 0;
     pendingItemsState.urgentCount = 0;
     pendingItemsState.items = [];
+    pendingItemsState.loaded = false;
+    pendingItemsState.loading = false;
+    pendingItemsState.error = "";
     renderPendingItems();
   },
 });
