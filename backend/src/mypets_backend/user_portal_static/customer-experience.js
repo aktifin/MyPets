@@ -17,20 +17,13 @@ function experienceNode(tag, className = "", text = "") {
 }
 
 function currentExperiencePreset() {
-  return portalExperienceState.presets.find((item) => item.preset_id === portalExperienceState.selectedPresetId) || null;
+  return portalExperienceState.presets.find(
+    (item) => item.preset_id === portalExperienceState.selectedPresetId,
+  ) || null;
 }
 
 function activatePortalSection(sectionId) {
-  document.querySelectorAll(".workspace").forEach((section) => {
-    section.hidden = section.id !== sectionId;
-  });
-  document.querySelectorAll(".main-tab[data-section]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.section === sectionId);
-  });
-  const more = $("portal-more-navigation");
-  if (more) more.open = false;
-  const target = $(sectionId);
-  if (target) target.focus({ preventScroll: true });
+  portalRuntime.navigate(sectionId, { source: "customer-experience" });
 }
 
 function installCustomerNavigation() {
@@ -55,21 +48,17 @@ function installCustomerNavigation() {
   summary.className = "main-tab portal-more-summary";
   summary.textContent = "更多";
   const menu = experienceNode("div", "portal-more-menu");
-  ["reminders-section", "visits-section", "account-section"].forEach((sectionId) => {
-    const button = navigation.querySelector(`[data-section="${sectionId}"]`);
-    if (button) {
-      button.classList.add("portal-more-item");
-      menu.append(button);
-    }
-  });
+  ["reminders-section", "visits-section", "account-section"].forEach(
+    (sectionId) => {
+      const button = navigation.querySelector(`[data-section="${sectionId}"]`);
+      if (button) {
+        button.classList.add("portal-more-item");
+        menu.append(button);
+      }
+    },
+  );
   more.append(summary, menu);
   navigation.append(more);
-
-  navigation.addEventListener("click", (event) => {
-    const button = event.target.closest("button[data-section]");
-    if (!button) return;
-    window.setTimeout(() => activatePortalSection(button.dataset.section), 0);
-  }, true);
 }
 
 function installPetSwitcher() {
@@ -85,24 +74,34 @@ function installPetSwitcher() {
   select.setAttribute("aria-label", "切换当前宠物");
   wrap.append(select);
 
-  const addButton = experienceNode("button", "secondary portal-add-pet", "添加宠物");
+  const addButton = experienceNode(
+    "button",
+    "secondary portal-add-pet",
+    "添加宠物",
+  );
   addButton.id = "portal-add-pet";
   addButton.type = "button";
   addButton.hidden = true;
   addButton.addEventListener("click", () => openPetOnboarding(true));
 
   select.addEventListener("change", async () => {
-    if (!select.value || !dashboard || select.value === dashboard.selected_pet_id) return;
+    if (!select.value || !dashboard || select.value === dashboard.selected_pet_id) {
+      return;
+    }
     select.disabled = true;
     try {
       dashboard = await api("/api/v1/portal/preference", {
         method: "PATCH",
         json: { selected_pet_id: select.value },
       });
-      await refreshPhase1PetData();
+      await refreshPhase1PetData("customer-pet-switch");
       renderDashboard();
       renderPortalPhase1();
-      setStatus(globalStatus, `已切换到 ${selectedPortalPet()?.pet.name || "当前宠物"}。`, "success");
+      setStatus(
+        globalStatus,
+        `已切换到 ${selectedPortalPet()?.pet.name || "当前宠物"}。`,
+        "success",
+      );
     } catch (error) {
       setStatus(globalStatus, error.message, "error");
     } finally {
@@ -125,7 +124,11 @@ function installSimplifiedPetCreation() {
   const copy = experienceNode("div", "simple-pet-create-copy");
   copy.append(
     experienceNode("strong", "", "选择形象、填写名字，就可以开始养宠"),
-    experienceNode("p", "hint", "不再需要填写模板 ID 或版本号，系统会自动选择可用版本。"),
+    experienceNode(
+      "p",
+      "hint",
+      "不再需要填写模板 ID 或版本号，系统会自动选择可用版本。",
+    ),
   );
   const button = experienceNode("button", "", "添加一只宠物");
   button.type = "button";
@@ -166,8 +169,13 @@ function installDashboardGuidance() {
 
   const emptyState = $("dashboard-empty-pet");
   if (emptyState && !$("dashboard-first-pet-button")) {
-    emptyState.textContent = "先领养第一只宠物，之后的照料、成长、好友和串门功能才会开始。";
-    const button = experienceNode("button", "dashboard-first-pet-button", "领养第一只宠物");
+    emptyState.textContent =
+      "先领养第一只宠物，之后的照料、成长、好友和串门功能才会开始。";
+    const button = experienceNode(
+      "button",
+      "dashboard-first-pet-button",
+      "领养第一只宠物",
+    );
     button.id = "dashboard-first-pet-button";
     button.type = "button";
     button.addEventListener("click", () => openPetOnboarding(false));
@@ -209,7 +217,9 @@ function installPetOnboarding() {
   document.body.append(dialog);
 
   $("pet-onboarding-close").addEventListener("click", () => {
-    if (!dashboard?.pets.length) sessionStorage.setItem(ONBOARDING_DISMISSED_KEY, "1");
+    if (!dashboard?.pets.length) {
+      sessionStorage.setItem(ONBOARDING_DISMISSED_KEY, "1");
+    }
     dialog.close();
   });
   $("pet-onboarding-next").addEventListener("click", () => showOnboardingStep(2));
@@ -257,7 +267,10 @@ function renderPetPresets() {
     button.addEventListener("click", () => {
       portalExperienceState.selectedPresetId = preset.preset_id;
       grid.querySelectorAll(".pet-preset-card").forEach((item) => {
-        item.classList.toggle("selected", item.dataset.presetId === preset.preset_id);
+        item.classList.toggle(
+          "selected",
+          item.dataset.presetId === preset.preset_id,
+        );
       });
       $("pet-onboarding-next").disabled = false;
     });
@@ -286,7 +299,9 @@ async function openPetOnboarding(addingPet) {
   }
   portalExperienceState.addingPet = addingPet;
   portalExperienceState.selectedPresetId = "";
-  $("pet-onboarding-title").textContent = addingPet ? "添加一只宠物" : "领养第一只宠物";
+  $("pet-onboarding-title").textContent = addingPet
+    ? "添加一只宠物"
+    : "领养第一只宠物";
   $("onboarding-pet-name").value = "";
   $("pet-onboarding-next").disabled = true;
   setStatus($("pet-onboarding-status"), "");
@@ -298,7 +313,7 @@ async function openPetOnboarding(addingPet) {
     const dialog = $("pet-onboarding-dialog");
     if (!dialog.open) dialog.showModal();
   } catch (error) {
-    setStatus(globalStatus, `宠物形象加载失败：${error.message}`, "error");
+    setStatus($("pet-onboarding-status"), `宠物形象加载失败：${error.message}`, "error");
   }
 }
 
@@ -319,7 +334,10 @@ async function createPetFromOnboarding(event) {
   createButton.disabled = true;
   setStatus($("pet-onboarding-status"), "正在创建宠物…");
   try {
-    const random = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+    const random =
+      typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random()}`;
     const pet = await api("/api/v1/pets", {
       method: "POST",
       headers: { "Idempotency-Key": `portal-onboarding-${random}` },
@@ -335,13 +353,17 @@ async function createPetFromOnboarding(event) {
       method: "PATCH",
       json: { selected_pet_id: pet.pet_id },
     });
-    await refreshPhase1PetData();
+    await refreshPhase1PetData("onboarding-pet-created");
     renderDashboard();
     renderPortalPhase1();
     sessionStorage.removeItem(ONBOARDING_DISMISSED_KEY);
     $("pet-onboarding-dialog").close();
-    activatePortalSection("dashboard-section");
-    setStatus(globalStatus, `${pet.name} 已来到你的桌面宠物家庭，现在可以开始照料。`, "success");
+    portalRuntime.navigate("dashboard-section", { source: "onboarding" });
+    setStatus(
+      globalStatus,
+      `${pet.name} 已来到你的桌面宠物家庭，现在可以开始照料。`,
+      "success",
+    );
   } catch (error) {
     setStatus($("pet-onboarding-status"), error.message, "error");
   } finally {
@@ -383,13 +405,37 @@ function recommendedCare(selected) {
   }
   const stats = selected.pet.stats || {};
   const options = [
-    { value: Number(stats.hunger ?? 100), action: "feed", title: "该投喂了", detail: "饱食状态最低，投喂能让它恢复精神。" },
-    { value: Number(stats.energy ?? 100), action: "rest", title: "让它休息一下", detail: "精力偏低，休息后更适合继续互动。" },
-    { value: Number(stats.cleanliness ?? 100), action: "clean", title: "需要清洁", detail: "保持清洁有助于维持健康和好心情。" },
-    { value: Number(stats.mood ?? 100), action: "play", title: "陪它玩一会儿", detail: "心情偏低，玩耍可以增加互动和羁绊。" },
+    {
+      value: Number(stats.hunger ?? 100),
+      action: "feed",
+      title: "该投喂了",
+      detail: "饱食状态最低，投喂能让它恢复精神。",
+    },
+    {
+      value: Number(stats.energy ?? 100),
+      action: "rest",
+      title: "让它休息一下",
+      detail: "精力偏低，休息后更适合继续互动。",
+    },
+    {
+      value: Number(stats.cleanliness ?? 100),
+      action: "clean",
+      title: "需要清洁",
+      detail: "保持清洁有助于维持健康和好心情。",
+    },
+    {
+      value: Number(stats.mood ?? 100),
+      action: "play",
+      title: "陪它玩一会儿",
+      detail: "心情偏低，玩耍可以增加互动和羁绊。",
+    },
   ].sort((left, right) => left.value - right.value);
   if (options[0].value >= 80) {
-    return { action: "pet", title: "状态不错，摸摸它吧", detail: "当前状态稳定，轻松互动也能积累羁绊。" };
+    return {
+      action: "pet",
+      title: "状态不错，摸摸它吧",
+      detail: "当前状态稳定，轻松互动也能积累羁绊。",
+    };
   }
   return options[0];
 }
@@ -408,10 +454,14 @@ function renderCareRecommendation() {
     experienceNode("strong", "", suggestion.title),
     experienceNode("small", "", suggestion.detail),
   );
-  button.textContent = suggestion.targetSection ? "查看串门" : careActionLabel(suggestion.action);
+  button.textContent = suggestion.targetSection
+    ? "查看串门"
+    : careActionLabel(suggestion.action);
   button.onclick = async () => {
     if (suggestion.targetSection) {
-      activatePortalSection(suggestion.targetSection);
+      portalRuntime.navigate(suggestion.targetSection, {
+        source: "care-recommendation",
+      });
       return;
     }
     try {
@@ -422,11 +472,24 @@ function renderCareRecommendation() {
   };
 }
 
-function addNextStep(container, title, description, actionLabel, handler, emphasis = false) {
-  const card = experienceNode("button", emphasis ? "next-step-card emphasis" : "next-step-card");
+function addNextStep(
+  container,
+  title,
+  description,
+  actionLabel,
+  handler,
+  emphasis = false,
+) {
+  const card = experienceNode(
+    "button",
+    emphasis ? "next-step-card emphasis" : "next-step-card",
+  );
   card.type = "button";
   const copy = experienceNode("span", "next-step-copy");
-  copy.append(experienceNode("strong", "", title), experienceNode("small", "", description));
+  copy.append(
+    experienceNode("strong", "", title),
+    experienceNode("small", "", description),
+  );
   card.append(copy, experienceNode("span", "next-step-action", actionLabel));
   card.addEventListener("click", handler);
   container.append(card);
@@ -437,29 +500,77 @@ function renderNextSteps() {
   if (!container || !dashboard) return;
   container.replaceChildren();
   if (!dashboard.pets.length) {
-    addNextStep(container, "领养第一只宠物", "完成后即可开始照料和成长。", "开始", () => openPetOnboarding(false), true);
+    addNextStep(
+      container,
+      "领养第一只宠物",
+      "完成后即可开始照料和成长。",
+      "开始",
+      () => openPetOnboarding(false),
+      true,
+    );
     return;
   }
 
-  const unread = portalPhase1State.conversations.reduce((sum, item) => sum + Number(item.unread_count || 0), 0);
-  const pendingReminderStates = new Set(["pending", "delivered", "seen", "snoozed"]);
-  const pendingReminders = portalPhase1State.reminders.filter((item) => pendingReminderStates.has(item.state)).length;
+  const unread = portalPhase1State.conversations.reduce(
+    (sum, item) => sum + Number(item.unread_count || 0),
+    0,
+  );
+  const pendingReminderStates = new Set([
+    "pending",
+    "delivered",
+    "seen",
+    "snoozed",
+  ]);
+  const pendingReminders = portalPhase1State.reminders.filter((item) =>
+    pendingReminderStates.has(item.state),
+  ).length;
   const selected = selectedPortalPet();
 
   if (unread > 0) {
-    addNextStep(container, `${unread} 条消息待查看`, "好友和系统消息集中在消息中心。", "查看", () => activatePortalSection("messages-section"), true);
+    addNextStep(
+      container,
+      `${unread} 条消息待查看`,
+      "好友和系统消息集中在消息中心。",
+      "查看",
+      () => portalRuntime.navigate("messages-section", { source: "next-step" }),
+      true,
+    );
   }
   if (pendingReminders > 0) {
-    addNextStep(container, `${pendingReminders} 条提醒待处理`, "完成或稍后处理今天的提醒。", "处理", () => activatePortalSection("reminders-section"));
+    addNextStep(
+      container,
+      `${pendingReminders} 条提醒待处理`,
+      "完成或稍后处理今天的提醒。",
+      "处理",
+      () => portalRuntime.navigate("reminders-section", { source: "next-step" }),
+    );
   }
   if (!socialState.friends.length) {
-    addNextStep(container, "添加第一位好友", "好友之间可以聊天、共同照料和串门。", "添加", () => activatePortalSection("friends-section"));
+    addNextStep(
+      container,
+      "添加第一位好友",
+      "好友之间可以聊天、共同照料和串门。",
+      "添加",
+      () => portalRuntime.navigate("friends-section", { source: "next-step" }),
+    );
   }
   if (selected?.pet.presence !== "home") {
-    addNextStep(container, "宠物正在串门", "查看当前访问状态或召回宠物。", "查看", () => activatePortalSection("visits-section"));
+    addNextStep(
+      container,
+      "宠物正在串门",
+      "查看当前访问状态或召回宠物。",
+      "查看",
+      () => portalRuntime.navigate("visits-section", { source: "next-step" }),
+    );
   }
   if (container.childElementCount < 3) {
-    addNextStep(container, "查看成长档案", "了解成长等级、羁绊和最近互动。", "查看", () => activatePortalSection("pets-section"));
+    addNextStep(
+      container,
+      "查看成长档案",
+      "了解成长等级、羁绊和最近互动。",
+      "查看",
+      () => portalRuntime.navigate("pets-section", { source: "next-step" }),
+    );
   }
 }
 
@@ -479,37 +590,36 @@ function renderCustomerExperience() {
   }
 }
 
-installCustomerNavigation();
-installPetSwitcher();
-installSimplifiedPetCreation();
-installDashboardGuidance();
-installPetOnboarding();
-
-const baseRefreshAllForCustomerExperience = refreshAll;
-refreshAll = async function refreshAllWithCustomerExperience() {
-  await baseRefreshAllForCustomerExperience();
+function installCustomerExperience() {
+  installCustomerNavigation();
+  installPetSwitcher();
+  installSimplifiedPetCreation();
+  installDashboardGuidance();
+  installPetOnboarding();
   renderCustomerExperience();
-};
+}
 
-const baseRenderDashboardForCustomerExperience = renderDashboard;
-renderDashboard = function renderDashboardWithCustomerExperience() {
-  baseRenderDashboardForCustomerExperience();
-  renderCustomerExperience();
-};
-
-const baseRenderPortalPhase1ForCustomerExperience = renderPortalPhase1;
-renderPortalPhase1 = function renderPortalPhase1WithCustomerExperience() {
-  baseRenderPortalPhase1ForCustomerExperience();
-  renderCustomerExperience();
-};
-
-const baseLogoutForCustomerExperience = logout;
-logout = function logoutWithCustomerExperience(message = "", kind = "") {
+function resetCustomerExperience() {
   const dialog = $("pet-onboarding-dialog");
   if (dialog?.open) dialog.close();
   portalExperienceState.autoOpened = false;
-  baseLogoutForCustomerExperience(message, kind);
+  portalExperienceState.selectedPresetId = "";
+  portalExperienceState.addingPet = false;
   renderPetSwitcher();
-};
+}
 
-if (dashboard) renderCustomerExperience();
+portalRuntime.registerFeature({
+  id: "customer-experience",
+  label: "用户引导与快捷入口",
+  order: 80,
+  mount: installCustomerExperience,
+  onDashboardRenderComplete: renderCustomerExperience,
+  onPhase1RenderComplete: renderCustomerExperience,
+  onSocialRenderComplete: renderCustomerExperience,
+  onSectionEnter: ({ sectionId }) => {
+    if (sectionId === "dashboard-section" || sectionId === "pets-section") {
+      renderCustomerExperience();
+    }
+  },
+  onLogout: resetCustomerExperience,
+});
