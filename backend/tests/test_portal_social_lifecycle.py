@@ -31,9 +31,10 @@ def test_phase1_publishes_message_and_reminder_projection_hooks(
 
     assert 'applyFeatureHook("onFilterConversations"' in source
     assert 'applyFeatureHook("onConversationsRenderComplete"' in source
-    assert 'runFeatureHook("onConversationOpenRequest"' in source
+    assert 'applyFeatureHook("onConversationOpenRequest"' in source
     assert 'runFeatureHook("onConversationOpenComplete"' in source
     assert 'applyFeatureHook("onRemindersRenderComplete"' in source
+    assert 'applyFeatureHook("onPhase1RenderComplete"' in source
     assert "async function openConversation(conversation, options = {})" in source
 
 
