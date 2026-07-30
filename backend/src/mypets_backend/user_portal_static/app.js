@@ -233,6 +233,10 @@ function renderDashboard() {
 
   renderPets();
   renderSelectedPet();
+  portalRuntime.applyFeatureHook("onDashboardRenderComplete", {
+    dashboard,
+    selectedPet: selectedPortalPet(),
+  });
 }
 
 function renderPets() {
@@ -309,6 +313,7 @@ function renderSocial() {
   renderFriendRequests();
   renderBlocks();
   renderInvitations();
+  portalRuntime.applyFeatureHook("onSocialRenderComplete", { socialState });
 }
 
 function renderFriends() {
