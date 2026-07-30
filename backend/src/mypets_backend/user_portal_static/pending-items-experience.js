@@ -4,6 +4,7 @@ const pendingItemsState = {
   count: 0,
   urgentCount: 0,
   items: [],
+  timerId: 0,
 };
 
 const pendingKindLabels = {
@@ -51,6 +52,7 @@ function ensurePendingItemsPanel() {
     refresh.disabled = true;
     try {
       await refreshPendingItems();
+      setStatus(globalStatus, "待处理事项已刷新。", "success");
     } catch (error) {
       setStatus(globalStatus, error.message, "error");
     } finally {
@@ -93,7 +95,7 @@ async function actOnPendingItem(item, action) {
     headers: { "Idempotency-Key": pendingIdempotencyKey(item, action) },
     json: { snooze_minutes: 10 },
   });
-  await refreshAll();
+  await portalRuntime.requestRefresh({ reason: "pending-action" });
   setStatus(globalStatus, payload.message || "待处理事项已更新。", "success");
 }
 
@@ -118,7 +120,11 @@ function renderPendingItems() {
   }
 
   pendingItemsState.items.forEach((item) => {
-    const card = node("article", "", `pending-item-card${item.priority === "urgent" ? " urgent" : ""}`);
+    const card = node(
+      "article",
+      "",
+      `pending-item-card${item.priority === "urgent" ? " urgent" : ""}`,
+    );
     const body = node("div", "", "pending-item-body");
     const heading = node("div", "", "pending-item-title-row");
     heading.append(
@@ -136,9 +142,13 @@ function renderPendingItems() {
     const actions = node("div", "", "pending-item-actions");
     item.actions.forEach((action) => {
       const className = action === "reject" || action === "dismiss" ? "secondary" : "";
-      actions.append(actionButton(pendingActionLabels[action] || action, async () => {
-        await actOnPendingItem(item, action);
-      }, className));
+      actions.append(
+        actionButton(
+          pendingActionLabels[action] || action,
+          async () => actOnPendingItem(item, action),
+          className,
+        ),
+      );
     });
     card.append(body, actions);
     list.append(card);
@@ -160,13 +170,43 @@ async function refreshPendingItems() {
   renderPendingItems();
 }
 
-const baseRefreshAllForPendingItems = refreshAll;
-refreshAll = async function refreshAllWithPendingItems() {
-  await baseRefreshAllForPendingItems();
-  await refreshPendingItems();
-};
+function startPendingItemsPolling() {
+  if (pendingItemsState.timerId || !accessToken) return;
+  pendingItemsState.timerId = window.setInterval(() => {
+    if (!accessToken) return;
+    refreshPendingItems().catch(() => {});
+  }, 60000);
+}
 
-ensurePendingItemsPanel();
-window.setInterval(() => {
-  if (accessToken) refreshPendingItems().catch(() => {});
-}, 60000);
+function stopPendingItemsPolling() {
+  if (!pendingItemsState.timerId) return;
+  window.clearInterval(pendingItemsState.timerId);
+  pendingItemsState.timerId = 0;
+}
+
+portalRuntime.registerFeature({
+  id: "pending-items",
+  label: "待处理事项",
+  order: 200,
+  mount: () => {
+    ensurePendingItemsPanel();
+    renderPendingItems();
+  },
+  onRefreshComplete: async () => {
+    await refreshPendingItems();
+    startPendingItemsPolling();
+  },
+  onSectionEnter: ({ sectionId }) => {
+    if (sectionId === "dashboard-section") renderPendingItems();
+  },
+  onRealtime: async () => {
+    if (accessToken) await refreshPendingItems();
+  },
+  onLogout: () => {
+    stopPendingItemsPolling();
+    pendingItemsState.count = 0;
+    pendingItemsState.urgentCount = 0;
+    pendingItemsState.items = [];
+    renderPendingItems();
+  },
+});
