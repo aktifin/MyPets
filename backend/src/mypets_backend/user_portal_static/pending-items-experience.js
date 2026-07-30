@@ -235,6 +235,7 @@ async function refreshPendingItems(options = {}) {
     pendingItemsState.urgentCount = Number(payload?.urgent_count || 0);
     pendingItemsState.items = Array.isArray(payload?.items) ? payload.items : [];
     pendingItemsState.loaded = true;
+    startPendingItemsPolling();
   } catch (error) {
     pendingItemsState.error = error.message || "待处理事项读取失败";
     throw error;
