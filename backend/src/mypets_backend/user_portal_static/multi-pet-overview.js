@@ -9,6 +9,7 @@ const multiPetOverviewState = {
   careReadyCount: 0,
   completedTodayCount: 0,
   items: [],
+  timerId: 0,
 };
 
 const multiPetPriorityLabels = {
@@ -49,10 +50,16 @@ function ensureMultiPetAfterCarePrompt() {
     if (!targetPetId) return;
     switchButton.disabled = true;
     try {
-      const target = multiPetOverviewState.items.find((item) => item.pet_id === targetPetId);
+      const target = multiPetOverviewState.items.find(
+        (item) => item.pet_id === targetPetId,
+      );
       await switchPortalPetForRotation(targetPetId);
       prompt.hidden = true;
-      setStatus(globalStatus, `已切换到 ${target?.name || "下一只宠物"}。`, "success");
+      setStatus(
+        globalStatus,
+        `已切换到 ${target?.name || "下一只宠物"}。`,
+        "success",
+      );
     } catch (error) {
       setStatus(globalStatus, error.message, "error");
     } finally {
@@ -70,14 +77,18 @@ function ensureMultiPetAfterCarePrompt() {
 function showMultiPetAfterCarePrompt() {
   const prompt = ensureMultiPetAfterCarePrompt();
   if (!prompt) return;
-  const targetPetId = multiPetOverviewState.nextPetId;
-  const target = multiPetOverviewState.items.find((item) => item.pet_id === targetPetId);
+  const targetPetId = effectiveMultiPetNextId();
+  const target = multiPetOverviewState.items.find(
+    (item) => item.pet_id === targetPetId,
+  );
   if (!targetPetId || !target) {
     prompt.hidden = true;
     return;
   }
-  $("multi-pet-after-care-title").textContent = `下一只可以看看 ${target.name}`;
-  $("multi-pet-after-care-detail").textContent = target.recommendation_detail || "还有一只宠物需要关注。";
+  $("multi-pet-after-care-title").textContent =
+    `下一只可以看看 ${target.name}`;
+  $("multi-pet-after-care-detail").textContent =
+    target.recommendation_detail || "还有一只宠物需要关注。";
   const switchButton = $("multi-pet-after-care-switch");
   switchButton.dataset.petId = targetPetId;
   switchButton.textContent = `切换到 ${target.name}`;
@@ -98,7 +109,11 @@ function ensureMultiPetOverviewPanel() {
   copy.append(
     node("p", "MULTI-PET CARE", "eyebrow"),
     node("h2", "多宠状态总览"),
-    node("p", "真正需要关注的宠物排在前面，稳定宠物不会制造额外任务。", "hint"),
+    node(
+      "p",
+      "真正需要关注的宠物排在前面，稳定宠物不会制造额外任务。",
+      "hint",
+    ),
   );
   const controls = node("div", "", "multi-pet-controls");
   const summary = node("span", "0 只宠物", "badge");
@@ -107,13 +122,19 @@ function ensureMultiPetOverviewPanel() {
   nextButton.id = "multi-pet-next-button";
   nextButton.type = "button";
   nextButton.addEventListener("click", async () => {
-    const targetPetId = multiPetOverviewState.nextPetId;
+    const targetPetId = effectiveMultiPetNextId();
     if (!targetPetId) return;
-    const target = multiPetOverviewState.items.find((item) => item.pet_id === targetPetId);
+    const target = multiPetOverviewState.items.find(
+      (item) => item.pet_id === targetPetId,
+    );
     nextButton.disabled = true;
     try {
       await switchPortalPetForRotation(targetPetId);
-      setStatus(globalStatus, `已切换到 ${target?.name || "下一只宠物"}。`, "success");
+      setStatus(
+        globalStatus,
+        `已切换到 ${target?.name || "下一只宠物"}。`,
+        "success",
+      );
     } catch (error) {
       setStatus(globalStatus, error.message, "error");
     } finally {
@@ -140,9 +161,9 @@ async function switchPortalPetForRotation(petId) {
     method: "PATCH",
     json: { selected_pet_id: petId },
   });
-  await refreshPhase1PetData();
+  await refreshPhase1PetData("multi-pet-switch");
   renderDashboard();
-  renderPortalPhase1();
+  renderPortalPhase1({ reason: "multi-pet-switch" });
   await refreshMultiPetOverview();
 }
 
@@ -154,11 +175,27 @@ async function careForOverviewPet(item, button) {
   await performPhase1Care(item.recommended_action, button);
 }
 
+function effectiveMultiPetNextId() {
+  const selectedPetId =
+    dashboard?.selected_pet_id || multiPetOverviewState.currentPetId;
+  if (multiPetOverviewState.nextPetId !== selectedPetId) {
+    return multiPetOverviewState.nextPetId;
+  }
+  return (
+    multiPetOverviewState.items.find(
+      (item) => item.pet_id !== selectedPetId && item.priority !== "stable",
+    )?.pet_id || null
+  );
+}
+
 function renderMultiPetOverview() {
   ensureMultiPetOverviewPanel();
   const panel = $("multi-pet-overview-panel");
   if (panel) panel.hidden = !accessToken || multiPetOverviewState.totalCount < 2;
 
+  const selectedPetId =
+    dashboard?.selected_pet_id || multiPetOverviewState.currentPetId;
+  const nextPetId = effectiveMultiPetNextId();
   const summary = $("multi-pet-overview-summary");
   if (summary) {
     summary.textContent = multiPetOverviewState.needsAttentionCount
@@ -168,8 +205,8 @@ function renderMultiPetOverview() {
   }
   const nextButton = $("multi-pet-next-button");
   if (nextButton) {
-    nextButton.disabled = !multiPetOverviewState.nextPetId;
-    nextButton.textContent = multiPetOverviewState.nextPetId
+    nextButton.disabled = !nextPetId;
+    nextButton.textContent = nextPetId
       ? "切换下一只需要关注"
       : "暂无其他需关注宠物";
   }
@@ -183,21 +220,36 @@ function renderMultiPetOverview() {
   }
 
   multiPetOverviewState.items.forEach((item) => {
-    const card = node("article", "", `multi-pet-card priority-${item.priority}${item.current ? " current" : ""}`);
+    const current = item.pet_id === selectedPetId;
+    const card = node(
+      "article",
+      "",
+      `multi-pet-card priority-${item.priority}${current ? " current" : ""}`,
+    );
     const header = node("div", "", "multi-pet-card-header");
     const identity = node("div");
     identity.append(
       node("strong", item.name),
-      node("span", `Lv.${item.growth_level} · 羁绊 Lv.${item.bond_level}`, "hint"),
+      node(
+        "span",
+        `Lv.${item.growth_level} · 羁绊 Lv.${item.bond_level}`,
+        "hint",
+      ),
     );
-    const badge = node("span", multiPetPriorityLabels[item.priority] || item.priority, "multi-pet-priority");
+    const badge = node(
+      "span",
+      multiPetPriorityLabels[item.priority] || item.priority,
+      "multi-pet-priority",
+    );
     header.append(identity, badge);
 
     const status = node("p", item.status_summary, "multi-pet-status");
     const detail = node("p", item.recommendation_detail, "hint");
     const task = node(
       "div",
-      `今日任务 ${item.daily_completed_tasks}/${item.daily_total_tasks}${item.daily_all_completed ? " · 已完成" : ""}`,
+      `今日任务 ${item.daily_completed_tasks}/${item.daily_total_tasks}${
+        item.daily_all_completed ? " · 已完成" : ""
+      }`,
       "multi-pet-task",
     );
     const progress = document.createElement("progress");
@@ -207,11 +259,17 @@ function renderMultiPetOverview() {
     progress.setAttribute("aria-label", `${item.name} 今日任务进度`);
 
     const actions = node("div", "", "multi-pet-actions");
-    if (!item.current) {
-      actions.append(actionButton("切换到它", async () => {
-        await switchPortalPetForRotation(item.pet_id);
-        setStatus(globalStatus, `已切换到 ${item.name}。`, "success");
-      }, "secondary"));
+    if (!current) {
+      actions.append(
+        actionButton(
+          "切换到它",
+          async () => {
+            await switchPortalPetForRotation(item.pet_id);
+            setStatus(globalStatus, `已切换到 ${item.name}。`, "success");
+          },
+          "secondary",
+        ),
+      );
     } else {
       actions.append(node("span", "当前宠物", "current-pet-label"));
     }
@@ -231,50 +289,96 @@ function renderMultiPetOverview() {
   });
 }
 
+function resetMultiPetOverview() {
+  Object.assign(multiPetOverviewState, {
+    currentPetId: null,
+    nextPetId: null,
+    totalCount: 0,
+    needsAttentionCount: 0,
+    urgentCount: 0,
+    careReadyCount: 0,
+    completedTodayCount: 0,
+    items: [],
+  });
+  const prompt = $("multi-pet-after-care-prompt");
+  if (prompt) prompt.hidden = true;
+  renderMultiPetOverview();
+}
+
 async function refreshMultiPetOverview() {
   if (!accessToken) {
-    Object.assign(multiPetOverviewState, {
-      currentPetId: null,
-      nextPetId: null,
-      totalCount: 0,
-      needsAttentionCount: 0,
-      urgentCount: 0,
-      careReadyCount: 0,
-      completedTodayCount: 0,
-      items: [],
-    });
-    const prompt = $("multi-pet-after-care-prompt");
-    if (prompt) prompt.hidden = true;
-    renderMultiPetOverview();
+    resetMultiPetOverview();
     return;
   }
   const offset = new Date().getTimezoneOffset();
-  const payload = await api(`/api/v1/multi-pet-overview?timezone_offset_minutes=${encodeURIComponent(offset)}`);
+  const payload = await api(
+    `/api/v1/multi-pet-overview?timezone_offset_minutes=${encodeURIComponent(offset)}`,
+  );
   multiPetOverviewState.currentPetId = payload.current_pet_id || null;
   multiPetOverviewState.nextPetId = payload.next_pet_id || null;
   multiPetOverviewState.totalCount = Number(payload.total_count || 0);
-  multiPetOverviewState.needsAttentionCount = Number(payload.needs_attention_count || 0);
+  multiPetOverviewState.needsAttentionCount = Number(
+    payload.needs_attention_count || 0,
+  );
   multiPetOverviewState.urgentCount = Number(payload.urgent_count || 0);
   multiPetOverviewState.careReadyCount = Number(payload.care_ready_count || 0);
-  multiPetOverviewState.completedTodayCount = Number(payload.completed_today_count || 0);
+  multiPetOverviewState.completedTodayCount = Number(
+    payload.completed_today_count || 0,
+  );
   multiPetOverviewState.items = Array.isArray(payload.items) ? payload.items : [];
   renderMultiPetOverview();
 }
 
-const baseRefreshAllForMultiPetOverview = refreshAll;
-refreshAll = async function refreshAllWithMultiPetOverview() {
-  await baseRefreshAllForMultiPetOverview();
-  await refreshMultiPetOverview();
-};
+function startMultiPetPolling() {
+  if (multiPetOverviewState.timerId) return;
+  multiPetOverviewState.timerId = window.setInterval(() => {
+    if (!accessToken) return;
+    refreshMultiPetOverview().catch(() => {});
+  }, 60000);
+}
 
-const basePerformPhase1CareForMultiPetOverview = performPhase1Care;
-performPhase1Care = async function performPhase1CareWithMultiPetFollowUp(action, button) {
-  await basePerformPhase1CareForMultiPetOverview(action, button);
-  await refreshMultiPetOverview();
-  showMultiPetAfterCarePrompt();
-};
+function stopMultiPetPolling() {
+  if (!multiPetOverviewState.timerId) return;
+  window.clearInterval(multiPetOverviewState.timerId);
+  multiPetOverviewState.timerId = 0;
+}
 
-ensureMultiPetOverviewPanel();
-window.setInterval(() => {
-  if (accessToken) refreshMultiPetOverview().catch(() => {});
-}, 60000);
+portalRuntime.registerFeature({
+  id: "multi-pet-overview",
+  label: "多宠状态总览",
+  order: 180,
+  mount: () => {
+    ensureMultiPetOverviewPanel();
+    renderMultiPetOverview();
+  },
+  onRefreshComplete: async () => {
+    await refreshMultiPetOverview();
+    startMultiPetPolling();
+  },
+  onDashboardRenderComplete: renderMultiPetOverview,
+  onPhase1RenderComplete: renderMultiPetOverview,
+  onSectionEnter: ({ sectionId, source }) => {
+    if (
+      sectionId === "dashboard-section"
+      && source !== "startup"
+      && source !== "anonymous"
+      && accessToken
+    ) {
+      return refreshMultiPetOverview();
+    }
+  },
+  onCareComplete: async () => {
+    await refreshMultiPetOverview();
+    showMultiPetAfterCarePrompt();
+  },
+  onRealtime: () => {
+    const section = $("dashboard-section");
+    if (accessToken && section && !section.hidden) {
+      return refreshMultiPetOverview();
+    }
+  },
+  onLogout: () => {
+    stopMultiPetPolling();
+    resetMultiPetOverview();
+  },
+});

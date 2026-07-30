@@ -130,7 +130,7 @@ async function refreshPortalPhase1(reason = "phase1-refresh") {
     refreshPhase1Messages(),
     refreshPhase1Reminders(),
   ]);
-  renderPortalPhase1();
+  renderPortalPhase1({ reason });
 }
 
 function setMeter(id, value) {
@@ -237,21 +237,20 @@ function renderPetDetails() {
 
 function filteredConversations() {
   const filter = $("message-category-filter").value;
-  const values = portalPhase1State.conversations.filter(
-    (item) => filter === "all" || item.category === filter,
-  );
   const projection = portalRuntime.applyFeatureHook("onFilterConversations", {
     filter,
     conversations: portalPhase1State.conversations,
-    values,
+    result: portalPhase1State.conversations.filter(
+      (item) => filter === "all" || item.category === filter,
+    ),
   });
-  return Array.isArray(projection.values) ? projection.values : values;
+  return projection.result || [];
 }
 
 function completeConversationRender(values) {
   portalRuntime.applyFeatureHook("onConversationsRenderComplete", {
     conversations: values,
-    activeConversationId: portalPhase1State.activeConversationId,
+    allConversations: portalPhase1State.conversations,
   });
 }
 
@@ -287,32 +286,23 @@ function renderConversations() {
   completeConversationRender(values);
 }
 
-async function completeConversationOpen(conversation, messages, options, source) {
-  return portalRuntime.runFeatureHook("onConversationOpenComplete", {
+async function completeConversationOpen(conversation, items, options, mode) {
+  await portalRuntime.runFeatureHook("onConversationOpenComplete", {
     conversation,
-    messages,
+    items,
     options,
-    source,
+    mode,
   });
 }
 
 async function openConversation(conversation, options = {}) {
-  const request = await portalRuntime.runFeatureHook("onConversationOpenRequest", {
+  const request = portalRuntime.applyFeatureHook("onConversationOpenRequest", {
     conversation,
     options,
     handled: false,
-    result: null,
-    messages: [],
+    response: null,
   });
-  if (request.handled) {
-    await completeConversationOpen(
-      request.conversation || conversation,
-      Array.isArray(request.messages) ? request.messages : [],
-      request.options || options,
-      "feature",
-    );
-    return request.result;
-  }
+  if (request.handled) return request.response;
 
   portalPhase1State.activeConversationId = conversation.conversation_id;
   $("message-detail-title").textContent = conversation.title;
@@ -385,7 +375,7 @@ function renderReminders() {
   completeReminderRender(items);
 }
 
-function renderPortalPhase1() {
+function renderPortalPhase1(options = {}) {
   renderDashboardPet();
   renderGrowthLists();
   renderPetDetails();
@@ -399,6 +389,13 @@ function renderPortalPhase1() {
   $("dashboard-deployment").textContent = portalPhase1State.deployment
     ? "已部署"
     : "公共素材";
+  if (options.notifyExtensions !== false) {
+    portalRuntime.applyFeatureHook("onPhase1RenderComplete", {
+      reason: options.reason || "render",
+      state: portalPhase1State,
+      selectedPet: selectedPhase1Pet(),
+    });
+  }
 }
 
 async function performPhase1Care(action, button) {
@@ -422,7 +419,7 @@ async function performPhase1Care(action, button) {
       refreshDashboard(),
       refreshPhase1PetData("care-complete"),
     ]);
-    renderPortalPhase1();
+    renderPortalPhase1({ reason: "care-complete" });
     setStatus(
       globalStatus,
       `${careActionLabel(action)}完成，状态已进入同步事件流。`,
@@ -437,17 +434,15 @@ async function performPhase1Care(action, button) {
   }
 }
 
-const baseRenderDashboardForPhase1 = renderDashboard;
-renderDashboard = function renderDashboardWithPhase1() {
-  baseRenderDashboardForPhase1();
-  if (
+function hasPhase1ProjectionData() {
+  return Boolean(
     portalPhase1State.growth
     || portalPhase1State.activity.length
     || portalPhase1State.deployment
-  ) {
-    renderPortalPhase1();
-  }
-};
+    || portalPhase1State.conversations.length
+    || portalPhase1State.reminders.length,
+  );
+}
 
 function installPhase1Actions() {
   document.querySelectorAll("[data-care-action]").forEach((button) => {
@@ -496,7 +491,7 @@ async function refreshPhase1Section(sectionId) {
   } else {
     return;
   }
-  renderPortalPhase1();
+  renderPortalPhase1({ reason: "section-enter" });
 }
 
 portalRuntime.registerFeature({
@@ -505,6 +500,14 @@ portalRuntime.registerFeature({
   order: 10,
   mount: installPhase1Actions,
   onRefreshComplete: ({ reason }) => refreshPortalPhase1(reason),
+  onDashboardRenderComplete: () => {
+    if (hasPhase1ProjectionData()) {
+      renderPortalPhase1({
+        notifyExtensions: false,
+        reason: "dashboard-render",
+      });
+    }
+  },
   onSectionEnter: ({ sectionId, source }) => {
     if (source === "startup" || source === "anonymous") return;
     return refreshPhase1Section(sectionId);
