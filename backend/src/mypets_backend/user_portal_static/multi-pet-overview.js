@@ -77,7 +77,7 @@ function ensureMultiPetAfterCarePrompt() {
 function showMultiPetAfterCarePrompt() {
   const prompt = ensureMultiPetAfterCarePrompt();
   if (!prompt) return;
-  const targetPetId = multiPetOverviewState.nextPetId;
+  const targetPetId = effectiveMultiPetNextId();
   const target = multiPetOverviewState.items.find(
     (item) => item.pet_id === targetPetId,
   );
@@ -122,7 +122,7 @@ function ensureMultiPetOverviewPanel() {
   nextButton.id = "multi-pet-next-button";
   nextButton.type = "button";
   nextButton.addEventListener("click", async () => {
-    const targetPetId = multiPetOverviewState.nextPetId;
+    const targetPetId = effectiveMultiPetNextId();
     if (!targetPetId) return;
     const target = multiPetOverviewState.items.find(
       (item) => item.pet_id === targetPetId,
@@ -176,7 +176,8 @@ async function careForOverviewPet(item, button) {
 }
 
 function effectiveMultiPetNextId() {
-  const selectedPetId = dashboard?.selected_pet_id || multiPetOverviewState.currentPetId;
+  const selectedPetId =
+    dashboard?.selected_pet_id || multiPetOverviewState.currentPetId;
   if (multiPetOverviewState.nextPetId !== selectedPetId) {
     return multiPetOverviewState.nextPetId;
   }
@@ -192,7 +193,8 @@ function renderMultiPetOverview() {
   const panel = $("multi-pet-overview-panel");
   if (panel) panel.hidden = !accessToken || multiPetOverviewState.totalCount < 2;
 
-  const selectedPetId = dashboard?.selected_pet_id || multiPetOverviewState.currentPetId;
+  const selectedPetId =
+    dashboard?.selected_pet_id || multiPetOverviewState.currentPetId;
   const nextPetId = effectiveMultiPetNextId();
   const summary = $("multi-pet-overview-summary");
   if (summary) {
