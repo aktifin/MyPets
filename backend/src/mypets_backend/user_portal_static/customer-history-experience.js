@@ -6,7 +6,12 @@ const customerHistoryState = {
   count: 0,
   items: [],
   loaded: false,
+  loading: false,
+  error: "",
 };
+
+const customerHistoryUI = window.MyPetsPortalUI;
+if (!customerHistoryUI) throw new Error("MyPets 门户 UI 组件未加载");
 
 const customerHistoryKindLabels = {
   friend_request: "好友申请",
@@ -112,19 +117,17 @@ function ensureCustomerHistoryWorkspace() {
   const refresh = historyNode("button", "刷新记录", "secondary");
   refresh.type = "submit";
   filters.append(kindLabel, timeLabel, refresh);
-  filters.addEventListener("submit", async (event) => {
+  filters.addEventListener("submit", (event) => {
     event.preventDefault();
     customerHistoryState.kind = kindSelect.value || "all";
     customerHistoryState.days = Number(timeSelect.value || 0);
-    refresh.disabled = true;
-    try {
-      await refreshCustomerHistory();
-      setStatus(globalStatus, "处理记录已刷新。", "success");
-    } catch (error) {
-      setStatus(globalStatus, error.message, "error");
-    } finally {
-      refresh.disabled = false;
-    }
+    customerHistoryUI.runAction({
+      control: refresh,
+      statusNode: globalStatus,
+      busyLabel: "正在刷新…",
+      successMessage: "处理记录已刷新。",
+      task: () => refreshCustomerHistory({ showLoading: true }),
+    });
   });
   kindSelect.addEventListener("change", () => filters.requestSubmit());
   timeSelect.addEventListener("change", () => filters.requestSubmit());
@@ -153,20 +156,44 @@ function customerHistoryQuery() {
   return params.toString();
 }
 
-async function refreshCustomerHistory() {
+function customerHistoryRetryAction() {
+  return {
+    label: "重新读取",
+    busyLabel: "正在读取…",
+    onClick: () => refreshCustomerHistory({ showLoading: true }),
+  };
+}
+
+async function refreshCustomerHistory(options = {}) {
   ensureCustomerHistoryWorkspace();
   if (!accessToken) {
     customerHistoryState.count = 0;
     customerHistoryState.items = [];
     customerHistoryState.loaded = false;
+    customerHistoryState.loading = false;
+    customerHistoryState.error = "";
     renderCustomerHistory();
     return;
   }
-  const payload = await api(`/api/v1/customer-history?${customerHistoryQuery()}`);
-  customerHistoryState.count = Number(payload?.count || 0);
-  customerHistoryState.items = Array.isArray(payload?.items) ? payload.items : [];
-  customerHistoryState.loaded = true;
-  renderCustomerHistory();
+
+  const showLoading = options.showLoading ?? !customerHistoryState.loaded;
+  customerHistoryState.loading = true;
+  customerHistoryState.error = "";
+  if (showLoading || !customerHistoryState.loaded) renderCustomerHistory();
+  else customerHistoryUI.setRegionBusy($("customer-history-list"), true);
+
+  try {
+    const payload = await api(`/api/v1/customer-history?${customerHistoryQuery()}`);
+    customerHistoryState.count = Number(payload?.count || 0);
+    customerHistoryState.items = Array.isArray(payload?.items) ? payload.items : [];
+    customerHistoryState.loaded = true;
+  } catch (error) {
+    customerHistoryState.error = error.message || "处理记录读取失败";
+    throw error;
+  } finally {
+    customerHistoryState.loading = false;
+    renderCustomerHistory();
+  }
 }
 
 function historyMeta(item) {
@@ -198,21 +225,45 @@ function renderCustomerHistory() {
   count.textContent = customerHistoryState.loaded
     ? `${customerHistoryState.count} 条`
     : "尚未读取";
-  list.replaceChildren();
+  customerHistoryUI.setRegionBusy(list, customerHistoryState.loading);
+
+  if (customerHistoryState.loading && !customerHistoryState.loaded) {
+    customerHistoryUI.renderState(list, {
+      kind: "loading",
+      title: "正在读取处理记录",
+      detail: "正在按当前类型和时间范围加载已完成操作。",
+    });
+    return;
+  }
+  if (customerHistoryState.error && !customerHistoryState.loaded) {
+    customerHistoryUI.renderState(list, {
+      kind: "error",
+      title: "处理记录读取失败",
+      detail: customerHistoryState.error,
+      action: customerHistoryRetryAction(),
+    });
+    return;
+  }
   if (!customerHistoryState.loaded) {
-    list.append(
-      historyNode(
-        "div",
-        "进入处理记录后，可按类型和时间查看已完成的操作。",
-        "empty-state",
-      ),
-    );
+    customerHistoryUI.renderState(list, {
+      kind: "idle",
+      title: "处理记录尚未读取",
+      detail: "进入本页面后，可按类型和时间查看已经完成的操作。",
+    });
     return;
   }
+
+  list.replaceChildren();
+  customerHistoryUI.clearState(list);
   if (!customerHistoryState.items.length) {
-    list.append(historyNode("div", "当前筛选范围内没有处理记录。", "empty-state"));
+    customerHistoryUI.renderState(list, {
+      kind: "empty",
+      title: "当前筛选范围内没有记录",
+      detail: "可以调整记录类型或时间范围后重新查看。",
+    });
     return;
   }
+
   customerHistoryState.items.forEach((item) => {
     const card = historyNode(
       "article",
@@ -243,20 +294,27 @@ function renderCustomerHistory() {
     const actions = historyNode("div", "", "customer-history-actions");
     const open = historyNode("button", item.target_label || "查看详情", "secondary");
     open.type = "button";
-    open.addEventListener("click", async () => {
-      open.disabled = true;
-      try {
-        await openCustomerHistoryTarget(item);
-      } catch (error) {
-        setStatus(globalStatus, error.message, "error");
-      } finally {
-        open.disabled = false;
-      }
+    open.addEventListener("click", () => {
+      customerHistoryUI.runAction({
+        control: open,
+        statusNode: globalStatus,
+        busyLabel: "正在打开…",
+        task: () => openCustomerHistoryTarget(item),
+      });
     });
     actions.append(open);
     card.append(top, body, actions);
     list.append(card);
   });
+
+  if (customerHistoryState.error) {
+    customerHistoryUI.renderInlineNotice(list, {
+      kind: "error",
+      title: "最新记录暂未更新",
+      detail: `${customerHistoryState.error} 当前仍显示上次成功读取的结果。`,
+      action: customerHistoryRetryAction(),
+    });
+  }
 }
 
 portalRuntime.registerFeature({
@@ -269,19 +327,21 @@ portalRuntime.registerFeature({
   },
   onSectionEnter: async ({ sectionId }) => {
     if (sectionId === "history-section" && accessToken) {
-      await refreshCustomerHistory();
+      await refreshCustomerHistory({ showLoading: !customerHistoryState.loaded });
     }
   },
   onRealtime: async () => {
     const section = $("history-section");
     if (accessToken && section && !section.hidden && customerHistoryState.loaded) {
-      await refreshCustomerHistory();
+      await refreshCustomerHistory({ showLoading: false });
     }
   },
   onLogout: () => {
     customerHistoryState.count = 0;
     customerHistoryState.items = [];
     customerHistoryState.loaded = false;
+    customerHistoryState.loading = false;
+    customerHistoryState.error = "";
     renderCustomerHistory();
   },
 });
