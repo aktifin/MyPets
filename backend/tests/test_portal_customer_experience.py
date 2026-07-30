@@ -77,7 +77,11 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     assert "portal-pet-switcher" in script.text
     assert "现在最需要" in script.text
     assert "addButton.hidden = true" in script.text
-    assert "logoutWithCustomerExperience" in script.text
+    assert 'id: "customer-experience"' in script.text
+    assert "onDashboardRenderComplete:" in script.text
+    assert "onPhase1RenderComplete:" in script.text
+    assert "onSocialRenderComplete:" in script.text
+    assert "onLogout: resetCustomerExperience" in script.text
     assert "请先登录后再添加宠物" in script.text
 
     assert "/daily-care?timezone_offset_minutes=" in daily_script.text
@@ -114,7 +118,10 @@ def test_customer_experience_assets_are_injected_and_not_cached(client: TestClie
     assert "切换下一只需要关注" in multi_script.text
     assert "照料完成" in multi_script.text
     assert "下一只可以看看" in multi_script.text
-    assert "performPhase1CareWithMultiPetFollowUp" in multi_script.text
+    assert 'id: "multi-pet-overview"' in multi_script.text
+    assert "onCareComplete:" in multi_script.text
+    assert "startMultiPetPolling" in multi_script.text
+    assert "stopMultiPetPolling" in multi_script.text
     assert "portal/preference" in multi_script.text
 
     assert "/timeline" in actions_script.text
