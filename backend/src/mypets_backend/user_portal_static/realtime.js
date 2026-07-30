@@ -152,7 +152,7 @@
   portalRuntime.registerFeature({
     id: "realtime-transport",
     label: "实时通知连接",
-    order: 5,
+    order: 500,
     mount: installBrowserListeners,
     onRefreshComplete: startRealtime,
     onLogout: stopRealtime,
