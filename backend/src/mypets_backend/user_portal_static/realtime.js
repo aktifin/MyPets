@@ -7,7 +7,8 @@
   let reconnectTimer = null;
   let reconnectDelayMs = 1000;
   let refreshTimer = null;
-  let stopped = false;
+  let stopped = true;
+  let browserListenersInstalled = false;
 
   function statusText(message) {
     const label = document.getElementById("session-label");
@@ -22,7 +23,11 @@
 
   async function issueTicket() {
     const response = await api("/api/v1/realtime/ticket", { method: "POST" });
-    if (!response || typeof response.ticket !== "string" || response.protocol !== PROTOCOL) {
+    if (
+      !response
+      || typeof response.ticket !== "string"
+      || response.protocol !== PROTOCOL
+    ) {
       throw new Error("实时连接票据响应无效");
     }
     return response.ticket;
@@ -55,9 +60,12 @@
   async function refreshFromRealtime(cursor) {
     if (!accessToken) return;
     try {
-      const tasks = [refreshDashboard(), refreshSocial()];
-      if (typeof refreshVisits === "function") tasks.push(refreshVisits());
-      await Promise.all(tasks);
+      await Promise.all([refreshDashboard(), refreshSocial()]);
+      window.dispatchEvent(
+        new CustomEvent("mypets:realtime-cursor", {
+          detail: { cursor },
+        }),
+      );
       if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: "ack", cursor }));
       }
@@ -76,9 +84,18 @@
   }
 
   async function connectRealtime() {
-    if (!accessToken || stopped || (socket && socket.readyState <= WebSocket.OPEN)) return;
+    if (
+      !accessToken
+      || stopped
+      || (socket && socket.readyState <= WebSocket.OPEN)
+    ) {
+      return;
+    }
     const ticket = await issueTicket();
-    const value = new WebSocket(websocketUrl(), [PROTOCOL, `${TICKET_PREFIX}${ticket}`]);
+    const value = new WebSocket(websocketUrl(), [
+      PROTOCOL,
+      `${TICKET_PREFIX}${ticket}`,
+    ]);
     socket = value;
 
     value.onopen = () => {
@@ -99,10 +116,14 @@
       ) {
         queueRefresh(payload.cursor);
       } else if (payload.type === "heartbeat") {
-        value.send(JSON.stringify({ type: "ack", cursor: Number(payload.cursor) || 0 }));
+        value.send(
+          JSON.stringify({ type: "ack", cursor: Number(payload.cursor) || 0 }),
+        );
       }
     };
-    value.onerror = () => statusText("实时通知连接异常，页面仍可手动刷新");
+    value.onerror = () => {
+      statusText("实时通知连接异常，页面仍可手动刷新");
+    };
     value.onclose = () => {
       if (socket === value) socket = null;
       statusText("实时通知已断开，正在尝试恢复");
@@ -110,30 +131,30 @@
     };
   }
 
-  const originalEnterApp = enterApp;
-  enterApp = function enterAppWithRealtime() {
-    originalEnterApp();
+  function startRealtime() {
+    if (!accessToken) return;
     stopped = false;
-    window.setTimeout(() => connectRealtime().catch(() => scheduleReconnect()), 0);
-  };
-
-  const originalLogout = logout;
-  logout = function logoutWithRealtime(...args) {
-    stopRealtime();
-    return originalLogout(...args);
-  };
-
-  window.addEventListener("online", () => {
-    if (accessToken) {
-      stopped = false;
-      connectRealtime().catch(() => scheduleReconnect());
-    }
-  });
-  window.addEventListener("offline", () => statusText("网络离线，等待恢复实时通知"));
-  window.addEventListener("beforeunload", stopRealtime);
-
-  if (accessToken) {
-    stopped = false;
-    window.setTimeout(() => connectRealtime().catch(() => scheduleReconnect()), 0);
+    connectRealtime().catch(() => scheduleReconnect());
   }
+
+  function installBrowserListeners() {
+    if (browserListenersInstalled) return;
+    browserListenersInstalled = true;
+    window.addEventListener("online", () => {
+      if (accessToken) startRealtime();
+    });
+    window.addEventListener("offline", () => {
+      statusText("网络离线，等待恢复实时通知");
+    });
+    window.addEventListener("beforeunload", stopRealtime);
+  }
+
+  portalRuntime.registerFeature({
+    id: "realtime-transport",
+    label: "实时通知连接",
+    order: 5,
+    mount: installBrowserListeners,
+    onRefreshComplete: startRealtime,
+    onLogout: stopRealtime,
+  });
 })();
