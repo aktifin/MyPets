@@ -4,12 +4,20 @@ const messageEfficiencyState = {
   query: "",
   searchItems: [],
   searchCount: 0,
+  searchLoaded: false,
+  searchLoading: false,
+  searchError: "",
+  searchResultQuery: "",
+  searchRequestId: 0,
   activeConversation: null,
   activeSequence: 0,
   unread: null,
   quickReplies: null,
   searchTimer: 0,
 };
+
+const messageEfficiencyUI = window.MyPetsPortalUI;
+if (!messageEfficiencyUI) throw new Error("MyPets 门户 UI 组件未加载");
 
 const messageMatchLabels = {
   contact: "联系人",
@@ -23,6 +31,98 @@ function messageEfficiencyNode(tag, text = "", className = "") {
   if (text) element.textContent = text;
   if (className) element.className = className;
   return element;
+}
+
+function messageSearchRetryAction() {
+  return {
+    label: "重新搜索",
+    busyLabel: "正在搜索…",
+    onClick: () => runMessageSearch(messageEfficiencyState.query),
+  };
+}
+
+function renderMessageSearchStatus() {
+  const result = $("message-search-result");
+  if (!result) return;
+  if (!messageEfficiencyState.query) {
+    result.hidden = true;
+    result.replaceChildren();
+    messageEfficiencyUI.clearState(result);
+    return;
+  }
+  result.hidden = false;
+  if (messageEfficiencyState.searchLoading) {
+    messageEfficiencyUI.renderState(result, {
+      kind: "loading",
+      compact: true,
+      title: "正在搜索消息",
+      detail: messageEfficiencyState.searchLoaded
+        ? "当前结果仍可查看，正在同步最新匹配。"
+        : "正在匹配联系人、宠物、会话标题和消息内容。",
+    });
+    return;
+  }
+  if (messageEfficiencyState.searchError) {
+    messageEfficiencyUI.renderState(result, {
+      kind: "error",
+      compact: true,
+      title: "消息搜索失败",
+      detail: messageEfficiencyState.searchLoaded
+        ? `${messageEfficiencyState.searchError} 当前仍显示上次成功搜索的结果。`
+        : messageEfficiencyState.searchError,
+    });
+    return;
+  }
+  if (messageEfficiencyState.searchLoaded) {
+    messageEfficiencyUI.renderState(result, {
+      kind: messageEfficiencyState.searchCount ? "info" : "empty",
+      compact: true,
+      title: messageEfficiencyState.searchCount
+        ? `${messageEfficiencyState.searchCount} 个匹配会话`
+        : "没有匹配会话",
+      detail: messageEfficiencyState.searchCount
+        ? `搜索词：${messageEfficiencyState.searchResultQuery}`
+        : "可以尝试缩短关键词或更换联系人、宠物名称。",
+    });
+    return;
+  }
+  messageEfficiencyUI.renderState(result, {
+    kind: "idle",
+    compact: true,
+    title: "输入关键词开始搜索",
+    detail: "支持联系人、宠物、会话标题和消息内容。",
+  });
+}
+
+function renderMessageSearchListState() {
+  const list = $("conversation-list");
+  if (!list || !messageEfficiencyState.query) return false;
+  if (messageEfficiencyState.searchLoading && !messageEfficiencyState.searchLoaded) {
+    messageEfficiencyUI.renderState(list, {
+      kind: "loading",
+      title: "正在搜索相关会话",
+      detail: "正在从当前账户的消息记录中查找匹配内容。",
+    });
+    return true;
+  }
+  if (messageEfficiencyState.searchError && !messageEfficiencyState.searchLoaded) {
+    messageEfficiencyUI.renderState(list, {
+      kind: "error",
+      title: "相关会话搜索失败",
+      detail: messageEfficiencyState.searchError,
+      action: messageSearchRetryAction(),
+    });
+    return true;
+  }
+  if (messageEfficiencyState.searchLoaded && !messageEfficiencyState.searchItems.length) {
+    messageEfficiencyUI.renderState(list, {
+      kind: "empty",
+      title: "没有找到相关会话",
+      detail: "可以尝试缩短关键词，或使用联系人、宠物名称重新搜索。",
+    });
+    return true;
+  }
+  return false;
 }
 
 function ensureMessageEfficiencyControls() {
@@ -44,8 +144,9 @@ function ensureMessageEfficiencyControls() {
     clear.type = "button";
     clear.id = "message-search-clear";
     clear.hidden = true;
-    const result = messageEfficiencyNode("span", "", "hint message-search-result");
+    const result = messageEfficiencyNode("div", "", "message-search-result");
     result.id = "message-search-result";
+    result.hidden = true;
     form.append(input, clear, result);
     const categoryLabel = $("message-category-filter")?.closest("label");
     if (categoryLabel) listPanel.insertBefore(form, categoryLabel);
@@ -58,9 +159,7 @@ function ensureMessageEfficiencyControls() {
       }
       messageEfficiencyState.searchTimer = window.setTimeout(() => {
         messageEfficiencyState.searchTimer = 0;
-        runMessageSearch(input.value).catch((error) => {
-          setStatus(globalStatus, error.message, "error");
-        });
+        runMessageSearch(input.value).catch(() => {});
       }, 260);
     });
     clear.addEventListener("click", () => {
@@ -104,6 +203,7 @@ function ensureMessageEfficiencyControls() {
   }
 
   ensureQuickReplySettings();
+  renderMessageSearchStatus();
 }
 
 function ensureQuickReplySettings() {
@@ -283,28 +383,83 @@ function renderConfiguredQuickReplies(conversation) {
 async function runMessageSearch(rawQuery) {
   ensureMessageEfficiencyControls();
   const query = rawQuery.trim();
+  const sameResult = Boolean(
+    query
+      && messageEfficiencyState.searchLoaded
+      && messageEfficiencyState.searchResultQuery === query,
+  );
   messageEfficiencyState.query = query;
   const clear = $("message-search-clear");
-  const result = $("message-search-result");
   if (clear) clear.hidden = !query;
+
   if (!query) {
+    messageEfficiencyState.searchRequestId += 1;
     messageEfficiencyState.searchItems = [];
     messageEfficiencyState.searchCount = 0;
-    if (result) result.textContent = "";
+    messageEfficiencyState.searchLoaded = false;
+    messageEfficiencyState.searchLoading = false;
+    messageEfficiencyState.searchError = "";
+    messageEfficiencyState.searchResultQuery = "";
+    renderMessageSearchStatus();
     renderConversations();
-    return;
+    return null;
   }
-  if (result) result.textContent = "正在搜索…";
-  const payload = await api(
-    `/api/v1/message-search?query=${encodeURIComponent(query)}&limit=100`,
-  );
-  if (messageEfficiencyState.query !== query) return;
-  messageEfficiencyState.searchItems = Array.isArray(payload?.items)
-    ? payload.items
-    : [];
-  messageEfficiencyState.searchCount = Number(payload?.count || 0);
-  if (result) result.textContent = `${messageEfficiencyState.searchCount} 个匹配会话`;
+
+  const requestId = messageEfficiencyState.searchRequestId + 1;
+  messageEfficiencyState.searchRequestId = requestId;
+  if (!sameResult) {
+    messageEfficiencyState.searchItems = [];
+    messageEfficiencyState.searchCount = 0;
+    messageEfficiencyState.searchLoaded = false;
+    messageEfficiencyState.searchResultQuery = "";
+  }
+  messageEfficiencyState.searchLoading = true;
+  messageEfficiencyState.searchError = "";
+  renderMessageSearchStatus();
   renderConversations();
+
+  try {
+    const payload = await api(
+      `/api/v1/message-search?query=${encodeURIComponent(query)}&limit=100`,
+    );
+    if (
+      messageEfficiencyState.searchRequestId !== requestId
+      || messageEfficiencyState.query !== query
+    ) {
+      return null;
+    }
+    messageEfficiencyState.searchItems = Array.isArray(payload?.items)
+      ? payload.items
+      : [];
+    messageEfficiencyState.searchCount = Number(payload?.count || 0);
+    messageEfficiencyState.searchLoaded = true;
+    messageEfficiencyState.searchResultQuery = query;
+    return payload;
+  } catch (error) {
+    if (
+      messageEfficiencyState.searchRequestId !== requestId
+      || messageEfficiencyState.query !== query
+    ) {
+      return null;
+    }
+    messageEfficiencyState.searchError = error.message || "消息搜索失败";
+    if (!sameResult) {
+      messageEfficiencyState.searchLoaded = false;
+      messageEfficiencyState.searchItems = [];
+      messageEfficiencyState.searchCount = 0;
+      messageEfficiencyState.searchResultQuery = "";
+    }
+    throw error;
+  } finally {
+    if (
+      messageEfficiencyState.searchRequestId === requestId
+      && messageEfficiencyState.query === query
+    ) {
+      messageEfficiencyState.searchLoading = false;
+      renderMessageSearchStatus();
+      renderConversations();
+    }
+  }
 }
 
 function messageSearchConversationValues() {
@@ -315,8 +470,10 @@ function messageSearchConversationValues() {
 }
 
 function decorateMessageSearchResults(values) {
-  if (!messageEfficiencyState.query) return;
-  const cards = [...$("conversation-list").children];
+  if (!messageEfficiencyState.query || !messageEfficiencyState.searchLoaded) return;
+  const list = $("conversation-list");
+  if (!list) return;
+  const cards = [...list.children].filter((item) => item.classList.contains("item-card"));
   cards.forEach((card, index) => {
     const result = values[index]?.message_search_result;
     if (!result) return;
@@ -332,6 +489,14 @@ function decorateMessageSearchResults(values) {
     if (actions) card.insertBefore(detail, actions);
     else card.append(detail);
   });
+  if (messageEfficiencyState.searchError) {
+    messageEfficiencyUI.renderInlineNotice(list, {
+      kind: "error",
+      title: "最新搜索结果暂未更新",
+      detail: `${messageEfficiencyState.searchError} 当前仍显示上次成功搜索的结果。`,
+      action: messageSearchRetryAction(),
+    });
+  }
 }
 
 async function loadUnreadNavigation(conversationId, currentSequence = 0) {
@@ -489,16 +654,20 @@ function resetMessageEfficiencyState() {
   messageEfficiencyState.query = "";
   messageEfficiencyState.searchItems = [];
   messageEfficiencyState.searchCount = 0;
+  messageEfficiencyState.searchLoaded = false;
+  messageEfficiencyState.searchLoading = false;
+  messageEfficiencyState.searchError = "";
+  messageEfficiencyState.searchResultQuery = "";
+  messageEfficiencyState.searchRequestId += 1;
   messageEfficiencyState.activeConversation = null;
   messageEfficiencyState.activeSequence = 0;
   messageEfficiencyState.unread = null;
   messageEfficiencyState.quickReplies = null;
   const input = $("message-search-input");
-  const result = $("message-search-result");
   const clear = $("message-search-clear");
   if (input) input.value = "";
-  if (result) result.textContent = "";
   if (clear) clear.hidden = true;
+  renderMessageSearchStatus();
   const dialog = $("message-quick-reply-dialog");
   if (dialog?.open) dialog.close();
   renderUnreadNavigation();
@@ -512,11 +681,15 @@ portalRuntime.registerFeature({
   mount: ensureMessageEfficiencyControls,
   onFilterConversations: (context) => {
     if (!messageEfficiencyState.query) return;
-    context.values = messageSearchConversationValues().filter(
-      (item) => context.filter === "all" || item.category === context.filter,
-    );
+    context.values = messageEfficiencyState.searchLoaded
+      ? messageSearchConversationValues().filter(
+        (item) => context.filter === "all" || item.category === context.filter,
+      )
+      : [];
   },
   onConversationsRenderComplete: ({ conversations }) => {
+    renderMessageSearchStatus();
+    if (renderMessageSearchListState()) return;
     decorateMessageSearchResults(conversations);
   },
   onConversationOpenRequest: async (context) => {
