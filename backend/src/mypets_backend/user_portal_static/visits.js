@@ -4,7 +4,19 @@ const visitState = {
   visits: { incoming_requests: [], outgoing_requests: [], active: [], history: [] },
   friendPets: [],
   friendAccountId: "",
+  friendPetsLoading: false,
+  friendPetsError: "",
+  loaded: false,
+  loading: false,
+  error: "",
 };
+
+const visitUI = window.MyPetsPortalUI;
+if (!visitUI) throw new Error("MyPets 门户 UI 组件未加载");
+
+function emptyVisitPayload() {
+  return { incoming_requests: [], outgoing_requests: [], active: [], history: [] };
+}
 
 function visitStatusLabel(value) {
   return {
@@ -69,6 +81,59 @@ function ownedAvailablePets() {
   );
 }
 
+function ensureVisitWorkspaceState() {
+  let state = $("visit-workspace-state");
+  if (state) return state;
+  const panel = document.querySelector("#visits-section .visit-compose-panel");
+  if (!panel) return null;
+  state = node("div", "", "visit-workspace-state");
+  state.id = "visit-workspace-state";
+  state.hidden = true;
+  panel.append(state);
+  return state;
+}
+
+function visitRetryAction() {
+  return {
+    label: "重新读取",
+    busyLabel: "正在读取…",
+    onClick: () => refreshVisitWorkspace({
+      includeDependencies: true,
+      announce: false,
+      showLoading: true,
+    }),
+  };
+}
+
+function renderVisitWorkspaceState() {
+  const state = ensureVisitWorkspaceState();
+  if (!state) return;
+  if (visitState.loaded && visitState.loading) {
+    state.hidden = false;
+    visitUI.renderState(state, {
+      kind: "loading",
+      compact: true,
+      title: "正在更新串门状态",
+      detail: "当前列表仍可查看，最新申请和返家状态正在同步。",
+    });
+    return;
+  }
+  if (visitState.loaded && visitState.error) {
+    state.hidden = false;
+    visitUI.renderState(state, {
+      kind: "error",
+      compact: true,
+      title: "最新串门状态暂未更新",
+      detail: `${visitState.error} 当前仍显示上次成功读取的内容。`,
+      action: visitRetryAction(),
+    });
+    return;
+  }
+  state.replaceChildren();
+  visitUI.clearState(state);
+  state.hidden = true;
+}
+
 function renderVisitComposer() {
   const visitorSelect = $("visit-visitor-pet");
   const friendSelect = $("visit-friend");
@@ -104,22 +169,25 @@ function renderVisitComposer() {
   if (friendSelect.value !== visitState.friendAccountId) {
     visitState.friendPets = [];
     visitState.friendAccountId = friendSelect.value;
+    visitState.friendPetsError = "";
   }
   const hostPets = visitState.friendPets.map((pet) => ({
     value: pet.pet_id,
     label: `${pet.name} · ${presenceLabel(pet.presence)} · ${visibilityLabel(pet.visibility)}`,
     disabled: !["home", "resting"].includes(pet.presence),
   }));
-  replaceOptions(
-    hostPetSelect,
-    hostPets,
-    friendSelect.value
-      ? (hostPets.length ? "选择接待宠物" : "该好友没有可接待的可见宠物")
-      : "先选择好友",
-    previousHostPet,
-  );
+  let hostPlaceholder = "先选择好友";
+  if (friendSelect.value) {
+    if (visitState.friendPetsLoading) hostPlaceholder = "正在读取好友宠物";
+    else if (visitState.friendPetsError) hostPlaceholder = "好友宠物读取失败，请重新选择";
+    else hostPlaceholder = hostPets.length
+      ? "选择接待宠物"
+      : "该好友没有可接待的可见宠物";
+  }
+  replaceOptions(hostPetSelect, hostPets, hostPlaceholder, previousHostPet);
+  hostPetSelect.disabled = visitState.friendPetsLoading || !friendSelect.value;
 
-  submit.disabled = !Boolean(
+  submit.disabled = visitState.loading || !Boolean(
     visitorSelect.value && friendSelect.value && hostPetSelect.value,
   );
 }
@@ -165,10 +233,34 @@ function visitMeta(visit) {
   ];
   if (visit.note) values.push(`留言：${visit.note}`);
   if (visit.started_at) values.push(`开始：${localTime(visit.started_at)}`);
-  if (visit.scheduled_end_at) {
-    values.push(`预计返家：${localTime(visit.scheduled_end_at)}`);
-  }
+  if (visit.scheduled_end_at) values.push(`预计返家：${localTime(visit.scheduled_end_at)}`);
   return values;
+}
+
+function renderVisitCollectionState(container, copy) {
+  if (visitState.loading) {
+    visitUI.renderState(container, {
+      kind: "loading",
+      title: copy.loadingTitle,
+      detail: copy.loadingDetail,
+    });
+    return true;
+  }
+  if (visitState.error) {
+    visitUI.renderState(container, {
+      kind: "error",
+      title: copy.errorTitle,
+      detail: visitState.error,
+      action: visitRetryAction(),
+    });
+    return true;
+  }
+  visitUI.renderState(container, {
+    kind: "idle",
+    title: copy.idleTitle,
+    detail: "进入串门页面后读取最新状态。",
+  });
+  return true;
 }
 
 async function mutateVisit(visit, action) {
@@ -176,11 +268,11 @@ async function mutateVisit(visit, action) {
     method: "POST",
   });
   const changesPresence = action === "accept" || action === "recall";
-  await Promise.all([
-    refreshVisits(),
-    changesPresence ? refreshDashboard() : Promise.resolve(),
-  ]);
-  renderVisitComposer();
+  await refreshVisitWorkspace({
+    includeDependencies: changesPresence,
+    announce: false,
+    showLoading: false,
+  });
   setStatus(
     globalStatus,
     {
@@ -195,14 +287,26 @@ async function mutateVisit(visit, action) {
 
 function renderRequestList(containerId, items, mode) {
   const container = $(containerId);
+  if (!container) return;
+  if (!visitState.loaded) {
+    renderVisitCollectionState(container, {
+      idleTitle: mode === "incoming" ? "收到的申请尚未读取" : "发出的申请尚未读取",
+      loadingTitle: mode === "incoming" ? "正在读取收到的申请" : "正在读取发出的申请",
+      loadingDetail: "正在同步尚未处理的串门申请。",
+      errorTitle: "串门申请读取失败",
+    });
+    return;
+  }
   container.replaceChildren();
+  visitUI.clearState(container);
   if (!items.length) {
-    empty(
-      container,
-      mode === "incoming"
-        ? "没有待处理的收到申请。"
-        : "没有待处理的发出申请。",
-    );
+    visitUI.renderState(container, {
+      kind: "empty",
+      title: mode === "incoming" ? "没有待处理的收到申请" : "没有待处理的发出申请",
+      detail: mode === "incoming"
+        ? "好友发来新的串门申请后会显示在这里。"
+        : "你发出的串门申请会在这里等待好友处理。",
+    });
     return;
   }
   items.forEach((visit) => {
@@ -232,11 +336,26 @@ function renderRequestList(containerId, items, mode) {
 
 function renderActiveVisits() {
   const container = $("active-visits");
-  container.replaceChildren();
+  if (!container) return;
   const items = visitState.visits.active || [];
   $("active-visit-count").textContent = String(items.length);
+  if (!visitState.loaded) {
+    renderVisitCollectionState(container, {
+      idleTitle: "正在串门状态尚未读取",
+      loadingTitle: "正在读取串门状态",
+      loadingDetail: "正在确认宠物是否已经出发或返家。",
+      errorTitle: "正在串门状态读取失败",
+    });
+    return;
+  }
+  container.replaceChildren();
+  visitUI.clearState(container);
   if (!items.length) {
-    empty(container, "当前没有正在进行的串门。");
+    visitUI.renderState(container, {
+      kind: "empty",
+      title: "当前没有正在进行的串门",
+      detail: "接受串门申请后，来访宠物状态会显示在这里。",
+    });
     return;
   }
   items.forEach((visit) => {
@@ -252,9 +371,7 @@ function renderActiveVisits() {
     card.append(meta);
     if (visit.can_recall) {
       const actions = node("div", "", "item-actions");
-      actions.append(
-        actionButton("立即召回", () => mutateVisit(visit, "recall"), "danger"),
-      );
+      actions.append(actionButton("立即召回", () => mutateVisit(visit, "recall"), "danger"));
       card.append(actions);
     }
     container.append(card);
@@ -263,10 +380,25 @@ function renderActiveVisits() {
 
 function renderVisitHistory() {
   const container = $("visit-history");
-  container.replaceChildren();
+  if (!container) return;
   const items = visitState.visits.history || [];
+  if (!visitState.loaded) {
+    renderVisitCollectionState(container, {
+      idleTitle: "串门历史尚未读取",
+      loadingTitle: "正在读取串门历史",
+      loadingDetail: "正在加载最近完成、召回或取消的串门记录。",
+      errorTitle: "串门历史读取失败",
+    });
+    return;
+  }
+  container.replaceChildren();
+  visitUI.clearState(container);
   if (!items.length) {
-    empty(container, "尚无串门历史。");
+    visitUI.renderState(container, {
+      kind: "empty",
+      title: "尚无串门历史",
+      detail: "完成第一场串门后，可以在这里查看返家和处理记录。",
+    });
     return;
   }
   items.forEach((visit) => {
@@ -294,57 +426,97 @@ function renderVisits() {
   renderRequestList("outgoing-visits", outgoing, "outgoing");
   renderActiveVisits();
   renderVisitHistory();
+  renderVisitWorkspaceState();
   portalRuntime.applyFeatureHook("onVisitsRenderComplete", {
     visits: visitState.visits,
+    loaded: visitState.loaded,
+    loading: visitState.loading,
+    error: visitState.error,
   });
-}
-
-async function refreshVisits() {
-  visitState.visits = await api("/api/v1/visits");
-  renderVisits();
 }
 
 async function loadFriendPets(accountId) {
   const value = accountId.trim();
+  const sameFriend = value === visitState.friendAccountId;
   visitState.friendAccountId = value;
-  visitState.friendPets = [];
+  if (!sameFriend) visitState.friendPets = [];
+  visitState.friendPetsLoading = Boolean(value);
+  visitState.friendPetsError = "";
   renderVisitComposer();
-  if (!value) return;
-  visitState.friendPets = await api(
-    `/api/v1/friends/${encodeURIComponent(value)}/pets`,
-  );
-  renderVisitComposer();
+  if (!value) {
+    visitState.friendPetsLoading = false;
+    renderVisitComposer();
+    return [];
+  }
+  try {
+    const pets = await api(`/api/v1/friends/${encodeURIComponent(value)}/pets`);
+    if (visitState.friendAccountId !== value) return [];
+    visitState.friendPets = Array.isArray(pets) ? pets : [];
+    return visitState.friendPets;
+  } catch (error) {
+    if (visitState.friendAccountId === value) {
+      visitState.friendPetsError = error.message || "好友宠物读取失败";
+    }
+    throw error;
+  } finally {
+    if (visitState.friendAccountId === value) {
+      visitState.friendPetsLoading = false;
+      renderVisitComposer();
+    }
+  }
 }
 
 async function refreshVisitWorkspace({
   includeDependencies = false,
   announce = true,
+  showLoading = !visitState.loaded,
 } = {}) {
-  if (announce) setStatus(globalStatus, "正在刷新串门数据…");
-  if (includeDependencies) {
-    await Promise.all([refreshDashboard(), refreshSocial()]);
+  if (!accessToken) {
+    resetVisitState();
+    return null;
   }
-  await refreshVisits();
-  const selectedFriend = $("visit-friend").value;
-  if (selectedFriend) await loadFriendPets(selectedFriend);
-  if (announce) {
-    setStatus(globalStatus, "串门申请、状态卡和历史已刷新。", "success");
+  visitState.loading = true;
+  visitState.error = "";
+  if (showLoading || !visitState.loaded) renderVisits();
+  else {
+    ["incoming-visits", "outgoing-visits", "active-visits", "visit-history"]
+      .forEach((id) => visitUI.setRegionBusy($(id), true));
+    renderVisitComposer();
+    renderVisitWorkspaceState();
+  }
+  if (announce) setStatus(globalStatus, "正在刷新串门数据…");
+  try {
+    if (includeDependencies) {
+      await Promise.all([refreshDashboard(), refreshSocial()]);
+    }
+    const payload = await api("/api/v1/visits");
+    visitState.visits = payload || emptyVisitPayload();
+    visitState.loaded = true;
+    const selectedFriend = $("visit-friend")?.value || visitState.friendAccountId;
+    if (selectedFriend) await loadFriendPets(selectedFriend);
+    if (announce) {
+      setStatus(globalStatus, "串门申请、状态卡和历史已刷新。", "success");
+    }
+    return payload;
+  } catch (error) {
+    visitState.error = error.message || "串门数据读取失败";
+    throw error;
+  } finally {
+    visitState.loading = false;
+    renderVisits();
   }
 }
 
 function installVisitActions() {
-  $("visit-friend")?.addEventListener("change", async (event) => {
-    try {
-      await loadFriendPets(event.target.value);
-    } catch (error) {
+  $("visit-friend")?.addEventListener("change", (event) => {
+    loadFriendPets(event.target.value).catch((error) => {
       setStatus(globalStatus, error.message, "error");
-    }
+    });
   });
-
   $("visit-visitor-pet")?.addEventListener("change", renderVisitComposer);
   $("visit-host-pet")?.addEventListener("change", renderVisitComposer);
 
-  $("visit-request-form")?.addEventListener("submit", async (event) => {
+  $("visit-request-form")?.addEventListener("submit", (event) => {
     event.preventDefault();
     const friendId = $("visit-friend").value;
     const friendEntry = (socialState.friends || []).find(
@@ -354,43 +526,52 @@ function installVisitActions() {
       setStatus(globalStatus, "请选择有效好友。", "error");
       return;
     }
-    try {
-      await api("/api/v1/visits", {
-        method: "POST",
-        json: {
-          host_username: friendEntry.friend.username,
-          visitor_pet_id: $("visit-visitor-pet").value,
-          host_pet_id: $("visit-host-pet").value,
-          duration_minutes: Number($("visit-duration").value),
-          note: $("visit-note").value.trim(),
-        },
-      });
-      $("visit-note").value = "";
-      await refreshVisits();
-      setStatus(globalStatus, "串门申请已发送，等待好友处理。", "success");
-    } catch (error) {
-      setStatus(globalStatus, error.message, "error");
-    }
+    visitUI.runAction({
+      control: $("send-visit-request"),
+      statusNode: globalStatus,
+      busyLabel: "正在发送…",
+      task: async () => {
+        await api("/api/v1/visits", {
+          method: "POST",
+          json: {
+            host_username: friendEntry.friend.username,
+            visitor_pet_id: $("visit-visitor-pet").value,
+            host_pet_id: $("visit-host-pet").value,
+            duration_minutes: Number($("visit-duration").value),
+            note: $("visit-note").value.trim(),
+          },
+        });
+        $("visit-note").value = "";
+        await refreshVisitWorkspace({ announce: false, showLoading: false });
+        setStatus(globalStatus, "串门申请已发送，等待好友处理。", "success");
+      },
+    });
   });
 
-  $("refresh-visits")?.addEventListener("click", async () => {
-    try {
-      await refreshVisitWorkspace({ includeDependencies: true });
-    } catch (error) {
-      setStatus(globalStatus, error.message, "error");
-    }
+  $("refresh-visits")?.addEventListener("click", () => {
+    visitUI.runAction({
+      control: $("refresh-visits"),
+      statusNode: globalStatus,
+      busyLabel: "正在刷新…",
+      successMessage: "串门申请、状态卡和历史已刷新。",
+      task: () => refreshVisitWorkspace({
+        includeDependencies: true,
+        announce: false,
+        showLoading: true,
+      }),
+    });
   });
 }
 
 function resetVisitState() {
-  visitState.visits = {
-    incoming_requests: [],
-    outgoing_requests: [],
-    active: [],
-    history: [],
-  };
+  visitState.visits = emptyVisitPayload();
   visitState.friendPets = [];
   visitState.friendAccountId = "";
+  visitState.friendPetsLoading = false;
+  visitState.friendPetsError = "";
+  visitState.loaded = false;
+  visitState.loading = false;
+  visitState.error = "";
   renderVisits();
 }
 
@@ -400,6 +581,7 @@ portalRuntime.registerFeature({
   order: 350,
   mount: () => {
     installVisitActions();
+    ensureVisitWorkspaceState();
     renderVisits();
   },
   onRefreshComplete: renderVisitComposer,
@@ -413,6 +595,7 @@ portalRuntime.registerFeature({
       await refreshVisitWorkspace({
         includeDependencies: true,
         announce: false,
+        showLoading: !visitState.loaded,
       });
     }
   },
@@ -422,6 +605,7 @@ portalRuntime.registerFeature({
     await refreshVisitWorkspace({
       includeDependencies: true,
       announce: false,
+      showLoading: false,
     });
   },
   onLogout: resetVisitState,
